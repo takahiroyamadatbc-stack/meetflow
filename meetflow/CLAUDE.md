@@ -27,6 +27,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - DynamoDB物理設計書のキー設計(PK/SK/GSI)から絶対に逸脱しない
 - IAM権限はLambda設計書5.3の「案C」に従う
 - 各ドメインLambdaは1ファイルにハンドラーをまとめず、ルーター+ハンドラー関数に分割する
+- コードコメント・docstringは日本語で書く（英語のコメントは書かない）。ユーザーは日本語話者であり、コードの主読者・保守者も日本語話者である前提のため
+- アプリがユーザーに返す文字列（エラーメッセージ、レスポンスメッセージ、UI表示文言等）はすべて日本語で書く。エラーコード自体（例：`PARTICIPANT_SCHEDULE_CONFLICT`）や識別子・ログ出力は英語のままでよいが、`message`フィールドやフロントエンドの表示文言は日本語にする
 
 ## Git運用方針
 
