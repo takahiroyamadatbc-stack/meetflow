@@ -39,8 +39,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MeetFlowは設計フェーズを終え、バックエンドの実装に着手している。`docs/`配下の日本語設計ドキュメント群は実装対象の仕様書として引き続き最優先で参照すること（背景資料ではない）。
 
-- `infra/`：AWS CDK（Python）。`MeetFlowDataStack`（DynamoDB単一テーブル）、`MeetFlowAuthStack`（Cognito）、`MeetFlowComputeStack`（共有Lambda Layer + 7ドメインLambda）を実装済み。PushSubscription/AvailabilityRequestまわりの新規Lambda処理・IAM権限（Lambda設計書v1.2）は未反映
-- `backend/`：7ドメインLambda（User/Community/Availability/Matching/Event/Result/Notification）+ 共通Layer（`meetflow_common`：DynamoDB/認証/ルーティング/EventBridge/エラーレスポンス等の共通処理）を実装済み。pytest+moto(mock_aws)による単体テストは`community_lambda`のみ整備済み（`functions/community_lambda/tests/`、全13ハンドラー関数の正常系+ドメインエラー系）。他6ドメインは同じパターン（`tests/conftest.py`でMeetFlowTableのPK/SK/GSI1/GSI2キー構成をmoto上に再現）を横展開すればよい状態で、**未着手**
+- `infra/`：AWS CDK（Python）。`MeetFlowDataStack`（DynamoDB単一テーブル）、`MeetFlowAuthStack`（Cognito）、`MeetFlowComputeStack`（共有Lambda Layer + 7ドメインLambda）を実装済み。AvailabilityLambdaの`events:PutEvents`権限（F-205用）は反映済み。PushSubscriptionまわりの新規Lambda処理・IAM権限（Lambda設計書v1.2 §9.2-9.4、NotificationLambda）は未反映
+- `backend/`：7ドメインLambda（User/Community/Availability/Matching/Event/Result/Notification）+ 共通Layer（`meetflow_common`：DynamoDB/認証/ルーティング/EventBridge/エラーレスポンス等の共通処理）を実装済み。AvailabilityLambdaには要件定義書v1.3 §28（F-205/F-206、空き予定提出リクエスト）のハンドラーを追加済み。`AvailabilityRequestCreated`イベントはpublishのみで、NotificationLambda側の購読・通知作成は未実装（別タスク）。pytest+moto(mock_aws)による単体テストは`community_lambda`・`availability_lambda`が整備済み（`functions/{domain}_lambda/tests/`）。他5ドメインは同じパターンを横展開すればよい状態で、**未着手**
+  - **注意**：各ドメインの`tests/conftest.py`は、同名の`handlers`パッケージ・`_factories`モジュールが複数ドメイン間で衝突しないよう、自分のテストがimportされる前に`sys.modules`から該当名を退避させている（`community_lambda`/`availability_lambda`のconftest.py参照）。新しいドメインにテストを追加する際もこのパターンを踏襲すること。踏襲しないと、そのドメイン単体では通るのに`pytest`をbackend全体に対して実行した時だけ`ImportError`になる（先に収集された他ドメインの同名モジュールがsys.modulesにキャッシュされ、後続ドメインのimportを壊すため）。
 - `frontend/`：未着手（空のプレースホルダー）
 - `.github/workflows/`：未着手
 
