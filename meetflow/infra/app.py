@@ -3,6 +3,7 @@ import os
 
 import aws_cdk as cdk
 
+from meetflow_infra.meetflow_api_stack import MeetFlowApiStack
 from meetflow_infra.meetflow_auth_stack import MeetFlowAuthStack
 from meetflow_infra.meetflow_compute_stack import MeetFlowComputeStack
 from meetflow_infra.meetflow_data_stack import MeetFlowDataStack
@@ -48,5 +49,21 @@ compute_stack = MeetFlowComputeStack(
 # (via a predicted ARN, not a construct reference), so it has no dependency
 # on compute_stack -- see MeetFlowAuthStack.add_post_confirmation_trigger.
 auth_stack.add_post_confirmation_trigger()
+
+api_stack = MeetFlowApiStack(
+    app,
+    f"{env_name}-MeetFlowApiStack",
+    env_name=env_name,
+    user_pool=auth_stack.user_pool,
+    user_lambda=compute_stack.user_lambda,
+    community_lambda=compute_stack.community_lambda,
+    availability_lambda=compute_stack.availability_lambda,
+    matching_lambda=compute_stack.matching_lambda,
+    event_lambda=compute_stack.event_lambda,
+    result_lambda=compute_stack.result_lambda,
+    notification_lambda=compute_stack.notification_lambda,
+    env=env,
+    description="MeetFlow REST API stack: API Gateway + Cognito Authorizer (API設計書v1.5)",
+)
 
 app.synth()
