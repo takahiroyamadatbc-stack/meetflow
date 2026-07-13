@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 
 # Every code from エラーコード一覧v1.1 (§1-8), centralized here rather than
 # left for each call site to remember a `status_code=` -- an earlier version
@@ -62,6 +63,19 @@ _STATUS_BY_CODE = {
 }
 
 
+def _json_default(value):
+    # boto3's Table resource deserializes every DynamoDB Number attribute to
+    # decimal.Decimal (never int/float), so any handler that echoes a value
+    # read straight from DynamoDB back into a response (as opposed to a
+    # freshly-parsed request body, which is already plain int/float) hits
+    # `TypeError: Object of type Decimal is not JSON serializable` unless
+    # it's converted first. Centralized here so every domain gets this for
+    # free instead of each call site remembering to cast.
+    if isinstance(value, Decimal):
+        return int(value) if value % 1 == 0 else float(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def error_response(code: str, message: str, *, status_code: int = None) -> dict:
     """Build an API Gateway (Lambda proxy integration) error response.
 
@@ -76,6 +90,7 @@ def error_response(code: str, message: str, *, status_code: int = None) -> dict:
         "body": json.dumps(
             {"success": False, "error": {"code": code, "message": message}},
             ensure_ascii=False,
+            default=_json_default,
         ),
     }
 
@@ -85,5 +100,7 @@ def success_response(data, *, status_code: int = 200) -> dict:
     return {
         "statusCode": status_code,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"success": True, "data": data}, ensure_ascii=False),
+        "body": json.dumps(
+            {"success": True, "data": data}, ensure_ascii=False, default=_json_default
+        ),
     }
