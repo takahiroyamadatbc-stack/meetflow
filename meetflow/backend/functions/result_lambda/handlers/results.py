@@ -121,7 +121,16 @@ def get_user_results(user_id, event):
         KeyConditionExpression=Key("GSI1PK").eq(f"USER#{target_user_id}")
         & Key("GSI1SK").begins_with(f"COMMUNITY#{community_id}"),
     )
-    stats = _aggregate(resp.get("Items", []))
+    # Membership rows share this same GSI1 prefix (GSI1SK is exactly
+    # `COMMUNITY#{communityId}`, DynamoDB物理設計書v1.3 §3.3), which is
+    # itself a prefix of GameResult's `COMMUNITY#{communityId}#{playedAt}`
+    # (§3.13) -- `begins_with` matches both, so without this filter a
+    # user's own Membership record gets counted as a phantom 0-rank game.
+    # PK discriminates cleanly: GameResult always lives under `EVENT#...`.
+    game_results = [
+        item for item in resp.get("Items", []) if item["PK"].startswith("EVENT#")
+    ]
+    stats = _aggregate(game_results)
     return success_response({"userId": target_user_id, "communityId": community_id, **stats})
 
 
