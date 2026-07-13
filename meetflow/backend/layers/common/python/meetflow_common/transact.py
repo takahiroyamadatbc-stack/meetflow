@@ -1,12 +1,4 @@
-from boto3.dynamodb.types import TypeSerializer
-
 from .dynamodb import get_table
-
-_serializer = TypeSerializer()
-
-
-def _serialize_item(item: dict) -> dict:
-    return {k: _serializer.serialize(v) for k, v in item.items()}
 
 
 def transact_write(operations: list) -> None:
@@ -19,11 +11,16 @@ def transact_write(operations: list) -> None:
 
     Each operation dict uses the same shape as the low-level
     `transact_write_items` API (e.g. `{"Put": {"Item": {...}, ...}}`,
-    `{"Update": {"Key": {...}, "UpdateExpression": ..., ...}}`), except
-    `Item`/`Key`/`ExpressionAttributeValues` may be given as plain Python
-    values (str/int/bool/dict/set/etc.) rather than hand-written
-    `{"S": ...}`-style DynamoDB JSON -- this serializes them automatically,
-    the same way the higher-level Table resource does for GetItem/PutItem.
+    `{"Update": {"Key": {...}, "UpdateExpression": ..., ...}}`), with
+    `Item`/`Key`/`ExpressionAttributeValues` given as plain Python values
+    (str/int/bool/dict/set/etc.) rather than hand-written `{"S": ...}`-style
+    DynamoDB JSON. No manual serialization is needed here: `get_table()`
+    returns a resource-level Table, so `table.meta.client` already has
+    boto3's `before-parameter-build.dynamodb` attribute-value injector
+    registered (boto3.dynamodb.transform.DynamoDBHighLevelResource) and
+    converts plain Python values on every call made through it, including
+    TransactWriteItems -- serializing them again here would double-encode
+    them into invalid DynamoDB JSON.
     """
     table = get_table()
     table_name = table.table_name
@@ -32,13 +29,5 @@ def transact_write(operations: list) -> None:
         op_type, body = next(iter(op.items()))
         body = dict(body)
         body["TableName"] = table_name
-        if "Item" in body:
-            body["Item"] = _serialize_item(body["Item"])
-        if "Key" in body:
-            body["Key"] = _serialize_item(body["Key"])
-        if "ExpressionAttributeValues" in body:
-            body["ExpressionAttributeValues"] = _serialize_item(
-                body["ExpressionAttributeValues"]
-            )
         transact_items.append({op_type: body})
     table.meta.client.transact_write_items(TransactItems=transact_items)
