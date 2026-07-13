@@ -6,13 +6,16 @@ import boto3
 import pytest
 from moto import mock_aws
 
-# Mirrors the real Lambda runtime layout: function code (community_lambda/)
+# Mirrors the real Lambda runtime layout: function code (availability_lambda/)
 # and the shared Layer (layers/common/python) are both mounted on sys.path
 # (/var/task and /opt/python respectively) -- see handler.py's
-# `from handlers import communities` and meetflow_common's own imports.
-_COMMUNITY_LAMBDA_DIR = Path(__file__).resolve().parent.parent
-_COMMON_LAYER_DIR = _COMMUNITY_LAMBDA_DIR.parent.parent / "layers" / "common" / "python"
-for _path in (_COMMUNITY_LAMBDA_DIR, _COMMON_LAYER_DIR):
+# `from handlers import availability, availability_requests` and
+# meetflow_common's own imports.
+_AVAILABILITY_LAMBDA_DIR = Path(__file__).resolve().parent.parent
+_COMMON_LAYER_DIR = (
+    _AVAILABILITY_LAMBDA_DIR.parent.parent / "layers" / "common" / "python"
+)
+for _path in (_AVAILABILITY_LAMBDA_DIR, _COMMON_LAYER_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
