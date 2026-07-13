@@ -67,7 +67,7 @@ class MeetFlowComputeStack(Stack):
             "MeetFlowCommonLayer",
             layer_version_name=f"{env_name}-meetflow-common",
             code=lambda_.Code.from_asset(str(_BACKEND_DIR / "layers" / "common")),
-            compatible_runtimes=[lambda_.Runtime.PYTHON_3_12],
+            compatible_runtimes=[lambda_.Runtime.PYTHON_3_13],
             description="Shared DynamoDB/auth/OperationLog/error helpers for all domain Lambdas",
         )
 
@@ -106,7 +106,7 @@ class MeetFlowComputeStack(Stack):
             self,
             construct_id,
             function_name=function_name,
-            runtime=lambda_.Runtime.PYTHON_3_12,
+            runtime=lambda_.Runtime.PYTHON_3_13,
             handler="handler.handler",
             code=lambda_.Code.from_asset(str(_BACKEND_DIR / "functions" / code_subdir)),
             layers=[self.common_layer, *(extra_layers or [])],
@@ -368,7 +368,7 @@ class MeetFlowComputeStack(Stack):
             code=lambda_.Code.from_asset(
                 str(_BACKEND_DIR / "layers" / "webpush"),
                 bundling=BundlingOptions(
-                    image=lambda_.Runtime.PYTHON_3_12.bundling_image,
+                    image=lambda_.Runtime.PYTHON_3_13.bundling_image,
                     command=[
                         "bash",
                         "-c",
@@ -379,7 +379,7 @@ class MeetFlowComputeStack(Stack):
                     ),
                 ),
             ),
-            compatible_runtimes=[lambda_.Runtime.PYTHON_3_12],
+            compatible_runtimes=[lambda_.Runtime.PYTHON_3_13],
             description="pywebpush + cryptography for Web Push send (Lambda設計書v1.2 §9.3b)",
         )
 

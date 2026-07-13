@@ -22,7 +22,7 @@ from aws_cdk import ILocalBundling
 # back in via `--find-links` so the rest of pywebpush's dependency tree
 # still resolves automatically in a single pip invocation.
 _MANYLINUX_PLATFORM = "manylinux2014_x86_64"
-_PYTHON_VERSION = "3.12"  # matches lambda_.Runtime.PYTHON_3_12 in meetflow_compute_stack.py
+_PYTHON_VERSION = "3.13"  # matches lambda_.Runtime.PYTHON_3_13 in meetflow_compute_stack.py
 
 
 @jsii.implements(ILocalBundling)
