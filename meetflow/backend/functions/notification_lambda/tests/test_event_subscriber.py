@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+import pytest
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import AVAILABILITY_REQUEST_CREATED, EVENT_CONFIRMED
@@ -5,6 +8,17 @@ from meetflow_common import AVAILABILITY_REQUEST_CREATED, EVENT_CONFIRMED
 from handlers import event_subscriber
 
 from _factories import domain_event, put_membership
+
+
+@pytest.fixture(autouse=True)
+def _mock_push_sender():
+    """These tests only cover in-app Notification record creation --
+    Web Push sending itself is push_sender.py's own concern (see
+    test_push_sender.py), and none of these tests register any
+    PushSubscription anyway.
+    """
+    with patch("handlers.event_subscriber.push_sender.send_push_to_user") as mock_send:
+        yield mock_send
 
 
 def _notifications_for(table, user_id):
