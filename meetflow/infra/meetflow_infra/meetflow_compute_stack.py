@@ -2,6 +2,7 @@ from pathlib import Path
 
 from aws_cdk import (
     Annotations,
+    BundlingOptions,
     CfnOutput,
     Duration,
     RemovalPolicy,
@@ -17,6 +18,7 @@ from aws_cdk import (
 from constructs import Construct
 
 from .naming import user_lambda_function_name
+from .webpush_layer_bundling import WebpushLayerLocalBundling
 
 _BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
 
@@ -87,12 +89,19 @@ class MeetFlowComputeStack(Stack):
         code_subdir: str,
         timeout: Duration = None,
         memory_size: int = 256,
+        extra_layers: list = None,
+        extra_environment: dict = None,
     ) -> lambda_.Function:
         """Shared scaffolding for every domain Lambda: same runtime,
         `handler.handler` entry point convention, common Layer attachment,
         and TABLE_NAME env var. Individual `_build_*_lambda` methods only
-        need to add their own IAM grants on top of this.
+        need to add their own IAM grants on top of this. `extra_layers`/
+        `extra_environment` exist for the rare domain-specific Layer (e.g.
+        NotificationLambda's webpush Layer) without changing every other
+        domain's call site.
         """
+        environment = {"TABLE_NAME": self.table.table_name}
+        environment.update(extra_environment or {})
         return lambda_.Function(
             self,
             construct_id,
@@ -100,10 +109,10 @@ class MeetFlowComputeStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="handler.handler",
             code=lambda_.Code.from_asset(str(_BACKEND_DIR / "functions" / code_subdir)),
-            layers=[self.common_layer],
+            layers=[self.common_layer, *(extra_layers or [])],
             timeout=timeout or Duration.seconds(10),
             memory_size=memory_size,
-            environment={"TABLE_NAME": self.table.table_name},
+            environment=environment,
         )
 
     def _build_user_lambda(self) -> lambda_.Function:
@@ -342,10 +351,48 @@ class MeetFlowComputeStack(Stack):
         return fn
 
     def _build_notification_lambda(self) -> lambda_.Function:
+        is_prod = self.env_name == "prod"
+        vapid_secret_name = f"{self.env_name}-meetflow-vapid-keys"
+
+        # Lambda設計書v1.2 §9.3b: Web Push送信には`pywebpush`(→`cryptography`
+        # 等ネイティブ拡張)が必要。meetflow_common Layerはソースをそのまま
+        # コピーするだけ(bundlingなし)なので、これらは専用の第2 Layerに
+        # 分離し、Dockerを使わずmanylinuxホイールを直接pip installする
+        # ローカルバンドリング(webpush_layer_bundling.py参照)で組み立てる。
+        # image/commandはDocker環境向けの形だけのフォールバック(local側が
+        # 常に成功するため実際には使われない)。
+        webpush_layer = lambda_.LayerVersion(
+            self,
+            "MeetFlowWebpushLayer",
+            layer_version_name=f"{self.env_name}-meetflow-webpush",
+            code=lambda_.Code.from_asset(
+                str(_BACKEND_DIR / "layers" / "webpush"),
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_12.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "pip install -r requirements.txt -t /asset-output/python",
+                    ],
+                    local=WebpushLayerLocalBundling(
+                        _BACKEND_DIR / "layers" / "webpush" / "requirements.txt"
+                    ),
+                ),
+            ),
+            compatible_runtimes=[lambda_.Runtime.PYTHON_3_12],
+            description="pywebpush + cryptography for Web Push send (Lambda設計書v1.2 §9.3b)",
+        )
+
         fn = self._build_function(
             "NotificationLambda",
             function_name=f"{self.env_name}-meetflow-notification-lambda",
             code_subdir="notification_lambda",
+            extra_layers=[webpush_layer],
+            extra_environment={
+                "VAPID_SECRET_NAME": vapid_secret_name,
+                # 実際の連絡先に差し替えること。VAPID仕様上必須(RFC8292)。
+                "VAPID_SUBJECT": "mailto:admin@meetflow.jp",
+            },
         )
 
         # Lambda設計書v1.2 §9.4: PutItem/Query/UpdateItem/DeleteItem
@@ -387,14 +434,14 @@ class MeetFlowComputeStack(Stack):
         # Lambda設計書v1.2 §9.3b/9.4, 未決事項7: Web PushのVAPID鍵ペア置き場。
         # 鍵の実際の生成・投入(aws secretsmanager put-secret-value等)は
         # 開発者がデプロイ後に別途行う運用とし、ここではSecretリソースと
-        # NotificationLambdaへの読み取り権限のみを用意する(実際の送信処理
-        # ---pywebpush等cryptography依存ライブラリが必要でLambda Layerの
-        # Dockerバンドル化が前提になる--- は別タスク)。
-        is_prod = self.env_name == "prod"
+        # NotificationLambdaへの読み取り権限のみを用意する。値は
+        # {"vapidPrivateKey": "<base64url>", "vapidPublicKey": "<base64url>"}
+        # 形式のJSON(生の鍵文字列。PEMそのものではなくbase64url表現。
+        # push_sender.py参照)を投入する前提のプレースホルダー。
         vapid_keys_secret = secretsmanager.Secret(
             self,
             "VapidKeysSecret",
-            secret_name=f"{self.env_name}-meetflow-vapid-keys",
+            secret_name=vapid_secret_name,
             description=(
                 "Web Push用VAPID鍵ペア(公開鍵/秘密鍵)。デプロイ後に手動で"
                 "生成・投入するプレースホルダー。"

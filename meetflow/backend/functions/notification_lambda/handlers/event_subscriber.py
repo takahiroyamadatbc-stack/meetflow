@@ -1,9 +1,9 @@
 """F-701 (Lambda設計書v1.1 §9): creates in-app Notification records off the
-EventBridge events published by EventLambda/MatchingLambda.
-
-MVP has only the in-app channel -- no email/push/LINE (AWSシステム構成設計書
-v1.2 §11, resolving that doc's earlier SES-vs-in-app contradiction in favor
-of 要件定義書/機能要件書).
+EventBridge events published by EventLambda/MatchingLambda, and (§9.3b,
+v1.2追加) fans each one out over Web Push too. MVP channels are in-app +
+Web Push only -- no email/LINE (AWSシステム構成設計書v1.3 §11, resolving
+that doc's earlier SES-vs-in-app contradiction in favor of 要件定義書/
+機能要件書, later extended by v1.3 27章).
 """
 
 from boto3.dynamodb.conditions import Key
@@ -18,6 +18,8 @@ from meetflow_common import (
     get_table,
     now_iso_ms,
 )
+
+from handlers import push_sender
 
 _MESSAGES = {
     "CONFIRMED": "参加予定のイベントが確定しました。",
@@ -104,3 +106,6 @@ def _create_notification(table, user_id, notif_type, related_event_id):
     if related_event_id:
         item["relatedEventId"] = related_event_id
     table.put_item(Item=item)
+    push_sender.send_push_to_user(
+        table, user_id, title="MeetFlow", body=_MESSAGES[notif_type], notif_type=notif_type
+    )
