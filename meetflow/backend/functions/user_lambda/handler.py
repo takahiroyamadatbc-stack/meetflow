@@ -51,21 +51,26 @@ def _handle_post_confirmation(event):
     if not nickname:
         nickname = email.split("@")[0] if email else "名無しさん"
 
-    get_table().put_item(
-        Item={
-            "PK": f"USER#{user_id}",
-            "SK": "PROFILE",
-            "userId": user_id,
-            "nickname": nickname,
-            "icon": "",
-            "bio": "",
-            "beginnerOk": False,
-            "createdAt": now_iso_ms(),
-        },
-        # Post Confirmation can be retried by Cognito on transient failure;
-        # don't clobber a profile that a previous attempt already created.
-        ConditionExpression="attribute_not_exists(PK)",
-    )
+    table = get_table()
+    try:
+        table.put_item(
+            Item={
+                "PK": f"USER#{user_id}",
+                "SK": "PROFILE",
+                "userId": user_id,
+                "nickname": nickname,
+                "icon": "",
+                "bio": "",
+                "beginnerOk": False,
+                "createdAt": now_iso_ms(),
+            },
+            # Post Confirmation can be retried by Cognito on transient
+            # failure; don't clobber a profile that a previous attempt
+            # already created.
+            ConditionExpression="attribute_not_exists(PK)",
+        )
+    except table.meta.client.exceptions.ConditionalCheckFailedException:
+        pass
     return event
 
 
