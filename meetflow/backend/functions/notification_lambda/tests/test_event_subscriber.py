@@ -16,8 +16,17 @@ def _mock_push_sender():
     Web Push sending itself is push_sender.py's own concern (see
     test_push_sender.py), and none of these tests register any
     PushSubscription anyway.
+
+    Patches via the already-imported `event_subscriber` module object
+    (captured above at collection time) rather than a string target: every
+    domain Lambda has its own same-named `handlers` package, and a string
+    target like "handlers.event_subscriber..." gets re-resolved by
+    unittest.mock through sys.modules at the time this fixture runs (test
+    *execution* phase, after pytest has already collected -- and imported --
+    every other domain's tests too), which can land on a different domain's
+    `handlers` package than the one this file actually imported from.
     """
-    with patch("handlers.event_subscriber.push_sender.send_push_to_user") as mock_send:
+    with patch.object(event_subscriber.push_sender, "send_push_to_user") as mock_send:
         yield mock_send
 
 
