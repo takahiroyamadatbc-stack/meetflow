@@ -4,6 +4,7 @@ from aws_cdk import (
     Annotations,
     CfnOutput,
     Duration,
+    RemovalPolicy,
     Stack,
     aws_cognito as cognito,
     aws_dynamodb as dynamodb,
@@ -11,6 +12,7 @@ from aws_cdk import (
     aws_events_targets as events_targets,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_secretsmanager as secretsmanager,
 )
 from constructs import Construct
 
@@ -346,15 +348,17 @@ class MeetFlowComputeStack(Stack):
             code_subdir="notification_lambda",
         )
 
-        # Lambda設計書v1.1 §9.4: PutItem/Query/UpdateItem (Notification).
-        # Query on Membership (via primary key, not a new grant) is needed
-        # too, to resolve a community's OWNER/ADMIN user ids for
-        # CandidateConflictDetected -- same table, same action set.
+        # Lambda設計書v1.2 §9.4: PutItem/Query/UpdateItem/DeleteItem
+        # (Notification, PushSubscription [v1.2追加]). Query on Membership
+        # (via primary key, not a new grant) is needed too, to resolve a
+        # community's member/OWNER/ADMIN user ids for CandidateConflictDetected
+        # and AvailabilityRequestCreated -- same table, same action set.
         self.table.grant(
             fn,
             "dynamodb:GetItem",
             "dynamodb:PutItem",
             "dynamodb:UpdateItem",
+            "dynamodb:DeleteItem",
             "dynamodb:Query",
         )
         if self.table.encryption_key:
@@ -374,16 +378,42 @@ class MeetFlowComputeStack(Stack):
                     "EventCancelled",
                     "CancelApproved",
                     "CandidateConflictDetected",
+                    "AvailabilityRequestCreated",
                 ],
             ),
             targets=[events_targets.LambdaFunction(fn)],
         )
+
+        # Lambda設計書v1.2 §9.3b/9.4, 未決事項7: Web PushのVAPID鍵ペア置き場。
+        # 鍵の実際の生成・投入(aws secretsmanager put-secret-value等)は
+        # 開発者がデプロイ後に別途行う運用とし、ここではSecretリソースと
+        # NotificationLambdaへの読み取り権限のみを用意する(実際の送信処理
+        # ---pywebpush等cryptography依存ライブラリが必要でLambda Layerの
+        # Dockerバンドル化が前提になる--- は別タスク)。
+        is_prod = self.env_name == "prod"
+        vapid_keys_secret = secretsmanager.Secret(
+            self,
+            "VapidKeysSecret",
+            secret_name=f"{self.env_name}-meetflow-vapid-keys",
+            description=(
+                "Web Push用VAPID鍵ペア(公開鍵/秘密鍵)。デプロイ後に手動で"
+                "生成・投入するプレースホルダー。"
+            ),
+            removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
+        )
+        vapid_keys_secret.grant_read(fn)
 
         CfnOutput(
             self,
             "NotificationLambdaArn",
             value=fn.function_arn,
             description="NotificationLambda function ARN",
+        )
+        CfnOutput(
+            self,
+            "VapidKeysSecretName",
+            value=vapid_keys_secret.secret_name,
+            description="Web Push VAPID鍵ペアを投入するSecrets Managerシークレット名",
         )
         return fn
 

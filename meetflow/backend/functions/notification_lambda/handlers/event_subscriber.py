@@ -9,6 +9,7 @@ of 要件定義書/機能要件書).
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
+    AVAILABILITY_REQUEST_CREATED,
     CANCEL_APPROVED,
     CANDIDATE_CONFLICT_DETECTED,
     EVENT_CANCELLED,
@@ -23,6 +24,7 @@ _MESSAGES = {
     "CANCELLED": "参加予定だったイベントが中止になりました。",
     "CANCEL_APPROVED": "キャンセル申請が承認されました。",
     "CANDIDATE_CONFLICT": "候補メンバーに他コミュニティとの日程重複が検知されました。",
+    "AVAILABILITY_REQUEST": "空き予定の提出が依頼されました。",
 }
 
 
@@ -54,17 +56,37 @@ def handle_domain_event(event):
         if community_id:
             for admin_id in _list_admin_user_ids(table, community_id):
                 _create_notification(table, admin_id, "CANDIDATE_CONFLICT", None)
+    elif detail_type == AVAILABILITY_REQUEST_CREATED:
+        community_id = detail.get("communityId")
+        if detail.get("targetScope") == "SPECIFIED":
+            target_user_ids = detail.get("targetUserIds", [])
+        elif community_id:
+            target_user_ids = _list_all_member_user_ids(table, community_id)
+        else:
+            target_user_ids = []
+        for target_user_id in target_user_ids:
+            _create_notification(table, target_user_id, "AVAILABILITY_REQUEST", None)
 
 
 def _list_admin_user_ids(table, community_id):
+    return [
+        user_id
+        for user_id, role in _list_member_roles(table, community_id)
+        if role in ("OWNER", "ADMIN")
+    ]
+
+
+def _list_all_member_user_ids(table, community_id):
+    return [user_id for user_id, _ in _list_member_roles(table, community_id)]
+
+
+def _list_member_roles(table, community_id):
     resp = table.query(
         KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
         & Key("SK").begins_with("MEMBER#")
     )
     return [
-        item["SK"].split("#", 1)[1]
-        for item in resp.get("Items", [])
-        if item.get("role") in ("OWNER", "ADMIN")
+        (item["SK"].split("#", 1)[1], item.get("role")) for item in resp.get("Items", [])
     ]
 
 

@@ -1,11 +1,19 @@
 from meetflow_common import dispatch
 
-from handlers import event_subscriber, notifications
+from handlers import event_subscriber, notifications, push_subscriptions
 
-# NotificationLambda (Lambda設計書v1.1 §9).
+# NotificationLambda (Lambda設計書v1.2 §9).
 _ROUTES = {
     ("GET", "/notifications"): notifications.list_notifications,
     ("PUT", "/notifications/{notificationId}/read"): notifications.mark_read,
+    (
+        "POST",
+        "/users/me/push-subscriptions",
+    ): push_subscriptions.register_push_subscription,
+    (
+        "DELETE",
+        "/users/me/push-subscriptions",
+    ): push_subscriptions.unregister_push_subscription,
 }
 
 
