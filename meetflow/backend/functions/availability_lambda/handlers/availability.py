@@ -14,18 +14,18 @@ from meetflow_common import (
     write_operation_log,
 )
 
-# Not specified in the docs; conservative MVP bounds.
+# 設計書には明記されていない、MVP向け保守的な上限値。
 _MAX_COMMENT_LENGTH = 200
 _MAX_BATCH_SIZE = 100
 
 
 def create_availability(user_id, event):
-    """F-201 (API設計書v1.4 §5.1).
+    """F-201（API設計書v1.4 §5.1）。
 
-    AVAILABILITY_OVERLAP (エラーコード一覧v1.1 §4) is explicitly left as an
-    open decision in that doc ("エラーとして弾くか警告に留めるかは実装時に
-    確定") -- deliberately not enforced here so as not to lock in a policy
-    the docs haven't settled on.
+    AVAILABILITY_OVERLAP（エラーコード一覧v1.1 §4）は、そのドキュメント内で
+    明示的に未決事項とされている（「エラーとして弾くか警告に留めるかは実装時に
+    確定」）-- 設計書がまだ確定させていない方針を先取りして固定しないよう、
+    ここでは意図的にチェックを実施していない。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -52,11 +52,11 @@ def create_availability(user_id, event):
 
 
 def create_availability_batch(user_id, event):
-    """Batch registration for the calendar UI (画面設計書 S-09), Lambda設計書
-    v1.1 §5.2. DynamoDB's real BatchWriteItem limit is 25 items per call;
-    `Table.batch_writer()` chunks that automatically, so this only needs to
-    guard against unreasonably large single requests (エラーコード一覧v1.1
-    BATCH_SIZE_EXCEEDED).
+    """カレンダーUI（画面設計書 S-09）向けのバッチ登録、Lambda設計書
+    v1.1 §5.2。DynamoDBの実際のBatchWriteItem上限は1回の呼び出しあたり
+    25件だが、`Table.batch_writer()`が自動でチャンク分割してくれるため、
+    ここでは常識的でないほど大きな単一リクエストだけをガードすればよい
+    （エラーコード一覧v1.1 BATCH_SIZE_EXCEEDED）。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -102,11 +102,11 @@ def create_availability_batch(user_id, event):
 
 
 def list_availability(user_id, event):
-    """GET /communities/{communityId}/availability (F-204: "自身の登録済み
-    予定"). Scoped to both this community (path param) and the caller --
-    community-wide, cross-user visibility is MatchingLambda's internal
-    access pattern (DynamoDB物理設計書v1.3 §4 row 6), not a member-facing
-    API.
+    """GET /communities/{communityId}/availability（F-204: 「自身の登録済み
+    予定」）。このコミュニティ（パスパラメータ）と呼び出し元の両方に
+    スコープされている -- コミュニティ全体・ユーザー横断の可視性は
+    MatchingLambdaの内部アクセスパターン（DynamoDB物理設計書v1.3 §4の
+    row 6）であり、メンバー向けAPIではない。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -125,11 +125,11 @@ def list_availability(user_id, event):
 
 
 def update_availability(user_id, event):
-    """F-202. `startTime` only exists inside SK/GSI1SK (DynamoDB物理設計書
-    v1.3 §3.6 has no top-level startTime attribute), so changing it means
-    the item's key changes. DynamoDB item keys are immutable in place, so
-    that case is an atomic delete+recreate (TransactWriteItems) rather than
-    an UpdateItem.
+    """F-202。`startTime`はSK/GSI1SKの中にしか存在しない（DynamoDB物理設計書
+    v1.3 §3.6にはトップレベルのstartTime属性は無い）ため、これを変更する
+    ことはアイテムのキー自体が変わることを意味する。DynamoDBのアイテムキーは
+    その場での変更ができないため、このケースはUpdateItemではなく、
+    アトミックなdelete+recreate（TransactWriteItems）で対応する。
     """
     availability_id = event["pathParameters"]["availabilityId"]
     table = get_table()
@@ -182,7 +182,7 @@ def update_availability(user_id, event):
 
 
 def delete_availability(user_id, event):
-    """F-203."""
+    """F-203。"""
     availability_id = event["pathParameters"]["availabilityId"]
     table = get_table()
     existing = _find_own_availability(table, user_id, availability_id)
@@ -201,9 +201,9 @@ def delete_availability(user_id, event):
 
 
 def _find_own_availability(table, user_id, availability_id):
-    """GSI1 is scoped to `USER#{user_id}` (the caller's own partition), so
-    this also doubles as the ownership check -- another user's availability
-    simply won't appear in this query regardless of its availabilityId.
+    """GSI1は`USER#{user_id}`（呼び出し元自身のパーティション）にスコープ
+    されているため、これは所有者チェックも兼ねている -- 他のユーザーの
+    空き予定は、availabilityIdが何であれ、このクエリには一切現れない。
     """
     resp = table.query(
         IndexName="GSI1",

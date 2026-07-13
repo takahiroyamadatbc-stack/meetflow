@@ -180,8 +180,7 @@ def test_list_pending_members_mixed_submission(table):
     put_membership(table, "community-1", "user-2", role="MEMBER")
     put_membership(table, "community-1", "user-3", role="MEMBER")
     put_profile(table, "user-3", nickname="みっちゃん")
-    # user-2 already submitted an availability inside the target period;
-    # user-3 has not.
+    # user-2は対象期間内の空き予定を既に提出済み。user-3はまだ未提出。
     put_availability(
         table,
         "community-1",
@@ -206,8 +205,8 @@ def test_list_pending_members_mixed_submission(table):
     assert response["statusCode"] == 200
     pending = body_of(response)["data"]["pendingMembers"]
     pending_user_ids = {m["userId"] for m in pending}
-    # user-1 (OWNER, creator) and user-2 (submitted) must not be pending;
-    # user-3 has no availability in the target period.
+    # user-1（OWNER、作成者）とuser-2（提出済み）はpendingに含まれてはならない。
+    # user-3は対象期間内に空き予定が無い。
     assert pending_user_ids == {"user-1", "user-3"}
     assert {"userId": "user-3", "nickname": "みっちゃん"} in pending
 

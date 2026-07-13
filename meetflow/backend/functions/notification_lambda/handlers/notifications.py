@@ -20,10 +20,10 @@ def mark_read(user_id, event):
     notification_id = event["pathParameters"]["notificationId"]
     table = get_table()
 
-    # The path only carries notificationId, not the createdAt embedded in
-    # the SK -- find the item within the caller's own partition (same
-    # approach as AvailabilityLambda's `_find_own_availability`; scoping to
-    # `USER#{user_id}` also doubles as the ownership check).
+    # pathにはnotificationIdのみが含まれ、SKに埋め込まれたcreatedAtは
+    # 含まれない -- 呼び出し元自身のパーティション内でアイテムを探す
+    # （AvailabilityLambdaの`_find_own_availability`と同じアプローチ。
+    # `USER#{user_id}`でスコープすることが所有権チェックも兼ねる）。
     resp = table.query(
         KeyConditionExpression=Key("PK").eq(f"USER#{user_id}")
         & Key("SK").begins_with("NOTIF#")

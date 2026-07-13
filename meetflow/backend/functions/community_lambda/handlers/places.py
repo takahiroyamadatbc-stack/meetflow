@@ -11,12 +11,12 @@ from meetflow_common import (
     write_operation_log,
 )
 
-_MAX_NAME_LENGTH = 50  # not specified in docs; conservative MVP bound
+_MAX_NAME_LENGTH = 50  # 設計書には明記されていない、MVP向け保守的な上限値
 
 
 def list_places(user_id, event):
-    """GET /communities/{communityId}/locations (API設計書v1.4 §8.5).
-    Readable by any member -- only registration (F-107) is OWNER/ADMIN-only.
+    """GET /communities/{communityId}/locations（API設計書v1.4 §8.5）。
+    どのメンバーでも閲覧可能 -- OWNER/ADMIN限定なのは登録（F-107）のみ。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -31,9 +31,9 @@ def list_places(user_id, event):
 
 
 def create_place(user_id, event):
-    """F-107 (API設計書v1.4 §8.6). MVP always registers `ownerType=COMMUNITY`
-    (DynamoDB物理設計書v1.3 §3.9) -- STORE/OFFICIAL venues are a future
-    concern for when a Place can be shared across communities."""
+    """F-107（API設計書v1.4 §8.6）。MVPでは常に`ownerType=COMMUNITY`として
+    登録する（DynamoDB物理設計書v1.3 §3.9）-- STORE/OFFICIALの会場は、
+    Placeを複数コミュニティ間で共有できるようになった際の将来的な課題。"""
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
     require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
@@ -50,7 +50,7 @@ def create_place(user_id, event):
         "GSI1PK": f"COMMUNITY#{community_id}",
         "GSI1SK": f"PLACE#{place_id}",
         "name": name,
-        # `address` is optional (要件定義書v1.2 §18: 住所を必須としない)
+        # `address`は任意項目（要件定義書v1.2 §18: 住所を必須としない）
         "address": body.get("address", ""),
         "ownerType": "COMMUNITY",
         "ownerId": community_id,

@@ -7,26 +7,27 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-# This stack implements the API Gateway layer that every other stack has so
-# far only assumed exists: AWSシステム構成設計書v1.3 §5-6 (REST API,
-# Cognito Authorizer, no custom AuthLambda) and API設計書v1.5 (endpoint
-# list). Every domain Lambda's `handler.py` already dispatches on
-# `event["httpMethod"]`/`event["resource"]`/`event["pathParameters"]` and
-# reads the caller's userId from
-# `event["requestContext"]["authorizer"]["claims"]["sub"]`
-# (meetflow_common.router.dispatch / auth.get_authenticated_user_id) --
-# that is REST API's Lambda proxy integration (payload format 1.0) shape,
-# not HTTP API's v2 shape, so this must be `aws_apigateway.RestApi`, not
-# `aws_apigatewayv2.HttpApi`.
+# このスタックは、これまで他のすべてのスタックが存在を前提としてきただけの
+# API Gatewayレイヤーを実装する：AWSシステム構成設計書v1.3 §5-6（REST API、
+# Cognito Authorizer、独自のAuthLambdaは無し）およびAPI設計書v1.5（エンド
+# ポイント一覧）。各ドメインLambdaの`handler.py`はすでに
+# `event["httpMethod"]`/`event["resource"]`/`event["pathParameters"]`で
+# ディスパッチしており、呼び出し元のuserIdを
+# `event["requestContext"]["authorizer"]["claims"]["sub"]`から読み取って
+# いる（meetflow_common.router.dispatch / auth.get_authenticated_user_id）
+# -- これはREST APIのLambdaプロキシ統合（ペイロード形式1.0）の形であり、
+# HTTP APIのv2形式ではない。そのためここでは`aws_apigateway.RestApi`を
+# 使う必要があり、`aws_apigatewayv2.HttpApi`は使えない。
 #
-# AWSシステム構成設計書v1.3 §6's "ドメイン単位ルーティング" table
-# (`/communities/*` -> CommunityLambda etc.) is illustrative, not literal:
-# several domains carve out more specific sub-paths under a prefix another
-# domain otherwise owns (e.g. `/communities/{communityId}/availability/*`
-# is AvailabilityLambda, not CommunityLambda). A prefix/proxy-based
-# integration can't express that, so every (method, path) pair below is
-# taken verbatim from each domain's `_ROUTES` dict -- the actual
-# implementation, not the doc's summary table:
+# AWSシステム構成設計書v1.3 §6の「ドメイン単位ルーティング」表
+# （`/communities/*` -> CommunityLambda等）は例示であって文字通りの規定
+# ではない：いくつかのドメインは、本来別のドメインが所有するプレフィックス
+# の下に、より具体的なサブパスを切り出している（例：
+# `/communities/{communityId}/availability/*`はCommunityLambdaではなく
+# AvailabilityLambda）。プレフィックス/プロキシベースの統合ではこれを
+# 表現できないため、以下の(method, path)の組はすべて各ドメインの
+# `_ROUTES`辞書から一字一句そのまま取得している -- ドキュメントの要約表
+# ではなく実際の実装から：
 #   backend/functions/user_lambda/handler.py
 #   backend/functions/community_lambda/handler.py
 #   backend/functions/availability_lambda/handler.py
@@ -35,10 +36,11 @@ from constructs import Construct
 #   backend/functions/result_lambda/handler.py
 #   backend/functions/notification_lambda/handler.py
 #
-# `GET /communities/{communityId}/logs` and `GET /users/{userId}/logs`
-# (API設計書v1.5 §12, OperationLog) are documented but have no handler in
-# any domain's `_ROUTES` yet, so they are intentionally omitted here --
-# routing to a Lambda that would just 404 the path serves no purpose.
+# `GET /communities/{communityId}/logs`と`GET /users/{userId}/logs`
+# （API設計書v1.5 §12、OperationLog）はドキュメントには記載されているが、
+# どのドメインの`_ROUTES`にもまだハンドラーが無いため、ここでは意図的に
+# 除外している -- 404を返すだけのLambdaにルーティングしても意味が無い
+# ため。
 _ROUTES: list[tuple[str, str, str]] = [
     # UserLambda
     ("GET", "/users/me", "user"),
@@ -108,10 +110,11 @@ _ROUTES: list[tuple[str, str, str]] = [
 
 
 class MeetFlowApiStack(Stack):
-    """CDK stack for MeetFlow's REST API (API設計書v1.5, AWSシステム構成
-    設計書v1.3 §5-6): a single API Gateway RestApi in front of all 7 domain
-    Lambdas, with every method requiring the Cognito User Pool Authorizer
-    (every route needs a logged-in caller -- there is no public endpoint).
+    """MeetFlowのREST API用CDKスタック（API設計書v1.5、AWSシステム構成
+    設計書v1.3 §5-6）：7つのドメインLambdaすべての前段に配置する単一の
+    API Gateway RestApi。すべてのメソッドでCognito User Pool Authorizerを
+    必須とする（全ルートにログイン済みの呼び出し元が必要であり、公開
+    エンドポイントは存在しない）。
     """
 
     def __init__(

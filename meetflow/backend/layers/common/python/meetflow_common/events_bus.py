@@ -2,10 +2,10 @@ import json
 
 import boto3
 
-# Lambda設計書v1.1 §7.3: EventBridge detail-type names every publishing/
-# subscribing domain Lambda needs to agree on. Centralized here rather than
-# duplicated as string literals in EventLambda/MatchingLambda/
-# NotificationLambda.
+# Lambda設計書v1.1 §7.3: publish/subscribeを行う各ドメインLambdaが
+# 合意しておく必要があるEventBridgeのdetail-type名。
+# EventLambda/MatchingLambda/NotificationLambdaに文字列リテラルとして
+# 重複して持たせるのではなく、ここに一元化している。
 EVENT_SOURCE = "meetflow.events"
 
 EVENT_CONFIRMED = "EventConfirmed"
@@ -26,9 +26,9 @@ def _get_client():
 
 
 def put_event(detail_type: str, detail: dict) -> None:
-    """Publish a MeetFlow domain event to the account's default EventBridge
-    bus (AWSシステム構成設計書v1.2 §9: used for notification/conflict-
-    detection fan-out only, never to auto-trigger matching).
+    """MeetFlowのドメインイベントを、アカウントのデフォルトEventBridgeバスに
+    publishする（AWSシステム構成設計書v1.2 §9: 通知・衝突検知の
+    ファンアウトにのみ使用し、マッチングを自動起動するためには使わない）。
     """
     _get_client().put_events(
         Entries=[

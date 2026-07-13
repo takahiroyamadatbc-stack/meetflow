@@ -61,7 +61,7 @@ def test_join_via_invite_creates_pending_join_request_when_approval_required(tab
     )["Item"]
     assert join_request["status"] == "PENDING"
     assert join_request["message"] == "よろしくお願いします"
-    # not added as a member while the request is pending.
+    # リクエストがpendingの間はメンバーとして追加されない。
     assert (
         table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-2"}).get(
             "Item"

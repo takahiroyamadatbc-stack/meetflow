@@ -65,14 +65,14 @@ def list_templates(user_id, event):
 def update_template(user_id, event):
     """F-303.
 
-    Lambda設計書v1.1 §6.2 documents this as `PUT /event-templates/{id}`
-    (no communityId segment), but EventTemplate has no GSI to resolve
-    templateId -> communityId (DynamoDB物理設計書v1.3 §3.7 only defines the
-    PK=COMMUNITY#{id} primary access pattern). The route is corrected to
-    include communityId here, matching every other community-scoped
-    sub-resource in this API and staying consistent with the documented key
-    design (CLAUDE.md: never deviate from it) -- see handler.py's routing
-    table.
+    Lambda設計書v1.1 §6.2ではこれを`PUT /event-templates/{id}`
+    （communityIdセグメント無し）と記載しているが、EventTemplateには
+    templateId -> communityIdを解決するGSIが無い（DynamoDB物理設計書v1.3
+    §3.7が定義するのはPK=COMMUNITY#{id}の主アクセスパターンのみ）。この
+    APIの他の全てのコミュニティスコープのサブリソースと一貫させ、かつ
+    ドキュメント化されたキー設計から逸脱しないよう（CLAUDE.md: 絶対に
+    逸脱しないこと）、ここではcommunityIdを含めるようルートを修正して
+    いる -- handler.pyのルーティングテーブルを参照。
     """
     community_id = event["pathParameters"]["communityId"]
     template_id = event["pathParameters"]["templateId"]
@@ -91,11 +91,12 @@ def update_template(user_id, event):
     if not body:
         return error_response("INVALID_PARAMETER", "更新項目がありません")
 
-    # existing.get(...) fallbacks come back as decimal.Decimal (DynamoDB
-    # Number attributes are never deserialized to int/float by boto3's
-    # Table resource) -- cast to int here so a partial update (e.g. only
-    # `priority` in the body) doesn't fail `_validate`'s
-    # `isinstance(min_players, int)` check on the untouched fields.
+    # existing.get(...)のフォールバック値はdecimal.Decimalとして返って
+    # くる（DynamoDBのNumber属性はboto3のTable resourceによってint/float
+    # にはデシリアライズされない）-- 部分更新（例: bodyに`priority`のみ
+    # 指定された場合）で、変更されていないフィールドに対する`_validate`の
+    # `isinstance(min_players, int)`チェックが失敗しないよう、ここでint
+    # にキャストする。
     merged = {
         "gameType": body.get("gameType", existing.get("gameType")),
         "minPlayers": body.get("minPlayers", _as_int(existing.get("minPlayers"))),
@@ -132,8 +133,8 @@ def update_template(user_id, event):
 
 
 def delete_template(user_id, event):
-    """F-304. Same routing correction as `update_template` (communityId
-    added to the path)."""
+    """F-304。`update_template`と同様のルーティング修正（pathに
+    communityIdを追加）。"""
     community_id = event["pathParameters"]["communityId"]
     template_id = event["pathParameters"]["templateId"]
     table = get_table()

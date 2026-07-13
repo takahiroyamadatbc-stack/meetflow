@@ -15,15 +15,15 @@ from meetflow_common import (
 
 from .scoring import calculate_score
 
-_MATCHING_WINDOW_DAYS = 30  # not specified in docs; MVP search horizon for F-401
-_FAIRNESS_WINDOW_DAYS = 45  # docs: "直近30〜60日"; MVP picks the midpoint
+_MATCHING_WINDOW_DAYS = 30  # ドキュメントに明記なし。F-401のMVP検索範囲
+_FAIRNESS_WINDOW_DAYS = 45  # ドキュメント: "直近30〜60日"; MVPでは中間値を採用
 
 
 def generate_candidates(user_id, event):
-    """F-401 (API設計書v1.4 §6.1). MVP: manual admin trigger only
-    (Lambda設計書v1.1 §6.6) -- kept independent of *how* it's invoked so a
-    future scheduled/automatic trigger can call the same logic without new
-    API surface.
+    """F-401 (API設計書v1.4 §6.1)。MVPでは管理者による手動実行のみ
+    （Lambda設計書v1.1 §6.6）-- 呼び出され方に依存しないよう実装しており、
+    将来的に定期実行/自動トリガーが追加されても、新たなAPI面を増やすこと
+    なく同じロジックを呼び出せる。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -42,8 +42,8 @@ def generate_candidates(user_id, event):
             "EVENT_TEMPLATE_NOT_FOUND", "指定した開催条件が見つかりません"
         )
 
-    # NO_CANDIDATES_FOUND (エラーコード一覧v1.1 §5) is a normal 200 empty
-    # result, not an error -- an empty `candidates` list covers it here.
+    # NO_CANDIDATES_FOUND（エラーコード一覧v1.1 §5）はエラーではなく正常な
+    # 200の空結果である -- ここでは空の`candidates`リストで対応する。
     candidate_items = _run_matching(table, community_id, template_id, template)
     candidates = [_to_api_candidate(table, community_id, item) for item in candidate_items]
     return success_response({"candidates": candidates}, status_code=201)
@@ -59,11 +59,11 @@ def list_candidates(user_id, event):
         KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
         & Key("SK").begins_with("CANDIDATE#")
     )
-    # DynamoDB物理設計書v1.3 §3.8 (MatchCandidate, SK=CANDIDATE#{createdAt}#
-    # {id}) and §3.11b (CandidateMember, SK=CANDIDATE#{id}#MEMBER#{userId})
-    # share the literal "CANDIDATE#" SK prefix under the same community PK,
-    # so this query also returns CandidateMember rows -- MatchCandidate's SK
-    # never contains "#MEMBER#", so that's the discriminator.
+    # DynamoDB物理設計書v1.3 §3.8（MatchCandidate、SK=CANDIDATE#{createdAt}#
+    # {id}）と§3.11b（CandidateMember、SK=CANDIDATE#{id}#MEMBER#{userId}）は
+    # 同じコミュニティPKの下で"CANDIDATE#"というSKプレフィックスを共有して
+    # いるため、このクエリはCandidateMember行も返してしまう -- MatchCandidate
+    # のSKには"#MEMBER#"が含まれることは無いため、それを判別材料にする。
     candidate_items = [
         item for item in resp.get("Items", []) if "#MEMBER#" not in item["SK"]
     ]
@@ -72,8 +72,8 @@ def list_candidates(user_id, event):
 
 
 def get_candidate_detail(user_id, event):
-    """F-404 detail (API設計書v1.4 §6.3), resolved via GSI2 without needing
-    communityId in the path (DynamoDB物理設計書v1.3 §3.8)."""
+    """F-404 detail（API設計書v1.4 §6.3）。pathにcommunityIdを含めずGSI2経由
+    で解決する（DynamoDB物理設計書v1.3 §3.8）。"""
     candidate_id = event["pathParameters"]["candidateId"]
     table = get_table()
 
@@ -92,12 +92,12 @@ def get_candidate_detail(user_id, event):
 
 
 def _run_matching(table, community_id, template_id, template):
-    """F-401 processing flow (Lambda設計書v1.1 §6.3): availability lookup ->
-    condition matching (F-402) -> scoring (F-403) -> MatchCandidate +
-    CandidateMember persistence.
+    """F-401の処理フロー（Lambda設計書v1.1 §6.3）: 空き予定の取得 ->
+    条件マッチング（F-402） -> スコアリング（F-403） -> MatchCandidate +
+    CandidateMemberの永続化。
 
-    Grouping is by exact (startTime, endTime) match, per F-402's "日時一致"
-    requirement (an exact match, not an overlap/interval computation).
+    グルーピングはF-402の「日時一致」要件に従い、(startTime, endTime)の
+    完全一致で行う（重複/区間計算ではなく厳密な一致）。
     """
     from_time = now_iso_ms()
     to_time = add_days_iso(from_time, _MATCHING_WINDOW_DAYS)
@@ -131,9 +131,9 @@ def _run_matching(table, community_id, template_id, template):
         if len(member_ids) < min_players:
             continue
         if len(member_ids) > max_players:
-            # MVP heuristic: keep required members, fill remaining slots
-            # deterministically (sorted userId) rather than search every
-            # subset -- the docs don't specify a subset-selection method.
+            # MVPのヒューリスティック: 必須メンバーは維持し、残り枠は全ての
+            # 部分集合を探索するのではなく決定的に（userIdでソート）埋める
+            # -- ドキュメントには部分集合の選定方法が指定されていないため。
             required = [m for m in member_ids if m in required_members]
             optional = [m for m in member_ids if m not in required_members]
             member_ids = sorted(required + optional[: max_players - len(required)])
@@ -178,9 +178,8 @@ def _create_candidate(
     }
     table.put_item(Item=candidate_item)
 
-    # DynamoDB物理設計書v1.3 §3.11b: one CandidateMember row per member, used
-    # for both post-hoc double-booking detection (§6.7) and the fairness
-    # indicator (§6.8).
+    # DynamoDB物理設計書v1.3 §3.11b: メンバー1人につきCandidateMemberを1行作成し、
+    # 事後のダブルブッキング検知（§6.7）と公平性指標（§6.8）の両方に使う。
     for uid in member_ids:
         table.put_item(
             Item={
@@ -254,11 +253,12 @@ def _days_since_last_participation(table, user_id):
 
 
 def _fairness_count(table, user_id):
-    """§6.8: count of this user's CandidateMember records in the trailing
-    window whose status isn't CONFIRMED (i.e. they were in a candidate that
-    didn't end up getting approved). Recomputed on every read for MVP
-    simplicity, per §6.8's own noted tradeoff (Lambda設計書v1.1 §14 未決事項
-    5: revisit with async pre-aggregation if community scale grows).
+    """§6.8: 直近の期間内で、このユーザーのCandidateMemberレコードのうち
+    statusがCONFIRMEDでないもの（＝承認に至らなかった候補に含まれていた
+    もの）の件数。MVPの単純化のため読み取りのたびに再計算する。これは
+    §6.8自身が明記しているトレードオフに従ったもの（Lambda設計書v1.1 §14
+    未決事項5: コミュニティ規模が大きくなった場合は非同期の事前集計を
+    再検討すること）。
     """
     from_time = add_days_iso(now_iso_ms(), -_FAIRNESS_WINDOW_DAYS)
     resp = table.query(

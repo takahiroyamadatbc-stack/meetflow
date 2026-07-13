@@ -46,21 +46,20 @@ def list_participants(user_id, event):
 
 
 def create_cancel_request(user_id, event):
-    """F-601 (API設計書v1.4 §9.2): a personal withdrawal request, distinct
-    from the whole event's cancellation (F-605/8.4). Doesn't take effect by
-    itself -- stays PENDING until an admin approves it (要件定義書v1.2
-    §15.1: avoids an immediate "headcount dropped" notification to already-
-    confirmed members).
+    """F-601 (API設計書v1.4 §9.2): 個人の離脱申請。イベント全体の中止
+    （F-605/8.4）とは別物。申請だけでは即座には反映されず、管理者が承認
+    するまでPENDINGのままとなる（要件定義書v1.2 §15.1: 既に確定済みの
+    メンバーに対して即座に「人数減少」通知が飛ぶことを避けるため）。
     """
     event_id = event["pathParameters"]["eventId"]
     table = get_table()
 
-    # Checked before the participant-status check below: a successful
-    # cancel request already flips the Participant's own status away from
-    # CONFIRMED (to CANCEL_REQUESTED), so on a resubmission the status
-    # check would otherwise always fire first and misreport
-    # NOT_A_PARTICIPANT instead of the more specific (and correct)
-    # CANCEL_REQUEST_ALREADY_PENDING.
+    # 下記のparticipant statusチェックより先にここでチェックする: 成功した
+    # キャンセル申請は既にParticipant自身のstatusをCONFIRMEDから変更して
+    # いる（CANCEL_REQUESTEDへ）ため、再申請時にstatusチェックを先に行うと
+    # 常にそちらが先に発火してしまい、より具体的（かつ正しい）エラーで
+    # あるCANCEL_REQUEST_ALREADY_PENDINGではなくNOT_A_PARTICIPANTを誤って
+    # 返してしまう。
     existing = table.get_item(
         Key={"PK": f"EVENT#{event_id}", "SK": f"CANCELREQ#{user_id}"}
     ).get("Item")
@@ -151,8 +150,8 @@ def list_cancel_requests(user_id, event):
 
 
 def approve_cancel_request(user_id, event):
-    """F-602 (API設計書v1.4 §9.3). `ConditionExpression: status=PENDING`
-    guards against double-approval (DynamoDB物理設計書v1.3 §3.12)."""
+    """F-602 (API設計書v1.4 §9.3)。`ConditionExpression: status=PENDING`
+    により二重承認を防止する（DynamoDB物理設計書v1.3 §3.12）。"""
     event_id = event["pathParameters"]["eventId"]
     target_user_id = event["pathParameters"]["userId"]
     table = get_table()

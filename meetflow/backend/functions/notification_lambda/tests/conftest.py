@@ -6,11 +6,11 @@ import boto3
 import pytest
 from moto import mock_aws
 
-# Mirrors the real Lambda runtime layout: function code (notification_lambda/)
-# and the shared Layer (layers/common/python) are both mounted on sys.path
-# (/var/task and /opt/python respectively) -- see handler.py's
-# `from handlers import event_subscriber, notifications, push_subscriptions`
-# and meetflow_common's own imports.
+# 実際のLambdaランタイムのレイアウトを再現している: 関数コード
+# （notification_lambda/）と共有Layer（layers/common/python）は両方とも
+# sys.pathにマウントされる（それぞれ/var/taskと/opt/python） -- handler.py
+# の`from handlers import event_subscriber, notifications, push_subscriptions`
+# やmeetflow_common自身のimportを参照。
 _NOTIFICATION_LAMBDA_DIR = Path(__file__).resolve().parent.parent
 _COMMON_LAYER_DIR = (
     _NOTIFICATION_LAMBDA_DIR.parent.parent / "layers" / "common" / "python"
@@ -19,13 +19,14 @@ for _path in (_NOTIFICATION_LAMBDA_DIR, _COMMON_LAYER_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-# Every domain Lambda ships its own top-level `handlers` package (matching
-# the real Lambda layout, where only one function's code directory is ever
-# on sys.path at a time), and every domain's tests/ directory has its own
-# same-named `_factories` helper module. Running multiple domains' tests in
-# one pytest session means whichever domain imports first gets cached in
-# sys.modules and shadows every other domain's same-named module, so each
-# domain's conftest must evict these before its own test modules import them.
+# 各ドメインLambdaはそれぞれ独自のトップレベル`handlers`パッケージを持つ
+# （実際のLambdaのレイアウトを反映しており、そこでは常に1つの関数のコード
+# ディレクトリのみがsys.path上に存在する）。また各ドメインのtests/
+# ディレクトリも同名の`_factories`ヘルパーモジュールを持つ。複数ドメインの
+# テストを1つのpytestセッションで実行すると、最初にimportされたドメインが
+# sys.modulesにキャッシュされ、他の全ドメインの同名モジュールを覆い隠して
+# しまう。そのため各ドメインのconftestは、自分のテストモジュールがこれらを
+# importする前に退避させておく必要がある。
 for _name in list(sys.modules):
     if _name in ("handlers", "_factories") or _name.startswith("handlers."):
         del sys.modules[_name]
@@ -36,11 +37,12 @@ os.environ.setdefault("TABLE_NAME", "test-MeetFlowTable")
 
 @pytest.fixture
 def table():
-    """Moto-backed DynamoDB table matching MeetFlowTable's key schema
-    (infra/meetflow_infra/meetflow_data_stack.py): PK/SK + GSI1 (ByUser) +
-    GSI2 (ByAltId). Resets meetflow_common.dynamodb's module-level table
-    cache so each test gets a Table resource bound to its own mock_aws
-    context instead of a stale one from a previous test.
+    """MeetFlowTableのキースキーマ（infra/meetflow_infra/
+    meetflow_data_stack.py）に合わせたmoto製DynamoDBテーブル: PK/SK +
+    GSI1（ByUser） + GSI2（ByAltId）。meetflow_common.dynamodbの
+    モジュールレベルのtableキャッシュをリセットすることで、各テストが
+    前のテストの古いものではなく、自分のmock_awsコンテキストに紐づいた
+    Table resourceを取得できるようにする。
     """
     import meetflow_common.dynamodb as dynamodb_module
 

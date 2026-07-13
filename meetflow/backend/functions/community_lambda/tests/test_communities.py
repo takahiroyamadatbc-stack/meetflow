@@ -24,7 +24,7 @@ def test_create_community_success(table):
     assert data["memberApprovalRequired"] is True
     community_id = data["communityId"]
 
-    # community metadata + owner membership are both written.
+    # コミュニティのメタデータとオーナーのmembershipの両方が書き込まれる。
     community = table.get_item(
         Key={"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
     )["Item"]

@@ -5,12 +5,14 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from pywebpush import WebPushException, webpush
 
-# Lambda設計書v1.2 §9.3b. VAPID_SECRET_NAME/VAPID_SUBJECT are set by
-# meetflow_compute_stack.py's `_build_notification_lambda`. The secret value
-# is JSON: {"vapidPrivateKey": "<base64url>", "vapidPublicKey": "<base64url>"}
-# -- pywebpush.webpush() treats a plain string vapid_private_key as either a
-# file path or (falling through Vapid.from_string) a base64url-encoded raw
-# key, never a PEM block, so the secret must hold the raw key, not PEM text.
+# Lambda設計書v1.2 §9.3b。VAPID_SECRET_NAME/VAPID_SUBJECTは
+# meetflow_compute_stack.pyの`_build_notification_lambda`が設定する。
+# シークレットの値はJSON:
+# {"vapidPrivateKey": "<base64url>", "vapidPublicKey": "<base64url>"}
+# -- pywebpush.webpush()は文字列のvapid_private_keyをファイルパス、または
+# （Vapid.from_stringにフォールバックして）base64urlエンコードされた生鍵
+# のいずれかとして扱い、PEMブロックとしては扱わない。そのためシークレット
+# にはPEMテキストではなく生鍵を保持させる必要がある。
 _vapid_private_key = None
 _secrets_client = None
 
@@ -26,11 +28,12 @@ def _get_vapid_private_key():
 
 
 def send_push_to_user(table, user_id, *, title, body, notif_type):
-    """Best-effort Web Push fan-out for one user's registered devices
-    (PushSubscription, DynamoDB物理設計書v1.4 §3.17). Never raises -- a
-    failed/expired push endpoint must not fail the in-app Notification
-    record that was just created, nor retry-storm the EventBridge rule that
-    triggered it for every other target user.
+    """あるユーザーの登録済み全デバイス（PushSubscription、DynamoDB物理
+    設計書v1.4 §3.17）へのベストエフォートなWeb Pushファンアウト。決して
+    例外を送出しない -- 失敗/期限切れのプッシュエンドポイントが、直前に
+    作成したアプリ内Notificationレコードを失敗させたり、これを発火させた
+    EventBridge Ruleを他の全対象ユーザー分リトライストームさせたりしては
+    ならないため。
     """
     resp = table.query(
         KeyConditionExpression=Key("PK").eq(f"USER#{user_id}")

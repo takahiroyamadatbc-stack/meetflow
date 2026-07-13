@@ -7,8 +7,8 @@ from meetflow_common import (
     success_response,
 )
 
-# Not specified in the design docs; conservative MVP bounds for
-# PROFILE_VALIDATION_ERROR (エラーコード一覧v1.1 §2).
+# 設計書には明記されていない、PROFILE_VALIDATION_ERROR
+# （エラーコード一覧v1.1 §2）のためのMVP向け保守的な上限値。
 _MAX_NICKNAME_LENGTH = 30
 _MAX_BIO_LENGTH = 300
 
@@ -19,13 +19,13 @@ _ROUTES = {
 
 
 def handler(event, context):
-    """UserLambda (Lambda設計書v1.1 §3): F-001 registration via Cognito Post
-    Confirmation trigger, plus F-003 profile get/update via API Gateway.
+    """UserLambda（Lambda設計書v1.1 §3）: Cognito Post Confirmationトリガー
+    経由のF-001登録処理、およびAPI Gateway経由のF-003プロフィール取得/更新。
 
-    Cognito trigger events always carry `triggerSource` and never
-    `httpMethod`; API Gateway proxy events always carry `httpMethod`. That's
-    enough to route between the two without a separate entry point per
-    trigger.
+    Cognitoトリガーイベントは常に`triggerSource`を持ち`httpMethod`は持たない。
+    API Gatewayプロキシイベントは常に`httpMethod`を持つ。トリガーごとに
+    別々のエントリポイントを用意しなくても、この違いだけで両者を振り分けるのに
+    十分である。
     """
     if "triggerSource" in event:
         return _handle_post_confirmation(event)
@@ -33,8 +33,8 @@ def handler(event, context):
 
 
 def _handle_post_confirmation(event):
-    # This trigger slot also fires for other Cognito flows (e.g. forgotten
-    # password); only create a profile on actual sign-up confirmation.
+    # このトリガー枠は他のCognitoフロー（パスワード忘れ等）でも発火するため、
+    # 実際のサインアップ確認時にのみプロフィールを作成する。
     if event.get("triggerSource") != "PostConfirmation_ConfirmSignUp":
         return event
 
@@ -42,11 +42,11 @@ def _handle_post_confirmation(event):
     user_id = attrs["sub"]
     email = attrs.get("email", "")
 
-    # Cognito holds only email/password (Lambda設計書v1.1 §3.1); nickname is
-    # collected on the sign-up form (F-001) but is not a Cognito attribute,
-    # so the client must pass it through SignUp's ClientMetadata to reach
-    # this trigger. Fall back to the email's local part so registration
-    # never hard-fails just because a client forgot to send it.
+    # Cognitoが保持するのはメール/パスワードのみ（Lambda設計書v1.1 §3.1）。
+    # ニックネームはサインアップフォーム（F-001）で収集するがCognito属性では
+    # ないため、クライアントはSignUpのClientMetadata経由でこのトリガーまで
+    # 渡す必要がある。クライアントが送り忘れただけで登録が完全に失敗しない
+    # よう、メールのローカル部にフォールバックする。
     nickname = event.get("request", {}).get("clientMetadata", {}).get("nickname")
     if not nickname:
         nickname = email.split("@")[0] if email else "名無しさん"
@@ -64,9 +64,8 @@ def _handle_post_confirmation(event):
                 "beginnerOk": False,
                 "createdAt": now_iso_ms(),
             },
-            # Post Confirmation can be retried by Cognito on transient
-            # failure; don't clobber a profile that a previous attempt
-            # already created.
+            # Post Confirmationは一時的な失敗時にCognitoからリトライされうる。
+            # 前回の試行ですでに作成済みのプロフィールを上書きしないこと。
             ConditionExpression="attribute_not_exists(PK)",
         )
     except table.meta.client.exceptions.ConditionalCheckFailedException:
@@ -86,8 +85,8 @@ def _get_profile(user_id):
 def _update_profile(user_id, event):
     body = parse_body(event)
 
-    # F-003 manageable fields: nickname, icon, bio ("profile" in the API
-    # contract, API設計書v1.4 §3.2), gameTypes, beginnerOk.
+    # F-003で更新可能なフィールド: nickname, icon, bio（APIの契約上は
+    # "profile"、API設計書v1.4 §3.2）, gameTypes, beginnerOk。
     nickname = body.get("nickname")
     if nickname is not None and not (
         isinstance(nickname, str) and 1 <= len(nickname) <= _MAX_NICKNAME_LENGTH
@@ -121,8 +120,8 @@ def _update_profile(user_id, event):
         if game_types:
             _set("gameTypes", set(game_types))
         else:
-            # DynamoDB rejects empty String Sets -- clearing the list means
-            # removing the attribute entirely rather than SET-ing it to [].
+            # DynamoDBは空のString Setを拒否する -- リストのクリアは
+            # 空配列でSETするのではなく、属性自体をREMOVEすることを意味する。
             names["#gameTypes"] = "gameTypes"
             remove_clauses.append("#gameTypes")
 
@@ -154,8 +153,8 @@ def _update_profile(user_id, event):
 
 
 def _to_api_profile(item):
-    # DynamoDB attribute `bio` is exposed as `profile` in the API contract
-    # (API設計書v1.4 §3.1/3.2 response/request examples).
+    # DynamoDBの`bio`属性は、APIの契約上は`profile`として公開される
+    # （API設計書v1.4 §3.1/3.2のレスポンス/リクエスト例）。
     return {
         "userId": item.get("userId"),
         "nickname": item.get("nickname"),

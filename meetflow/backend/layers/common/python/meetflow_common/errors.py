@@ -1,15 +1,15 @@
 import json
 from decimal import Decimal
 
-# Every code from エラーコード一覧v1.1 (§1-8), centralized here rather than
-# left for each call site to remember a `status_code=` -- an earlier version
-# of this dict only had the common (§1) codes plus a couple of extras, and
-# several call sites across domain Lambdas forgot to pass `status_code`
-# explicitly for their own domain's codes (e.g. EVENT_NOT_FOUND silently
-# falling back to this function's 400 default instead of the documented
-# 404). Keeping the full table here means a call site only needs
-# `status_code=` for the rare case for where NO_CANDIDATES_FOUND-style logic
-# means the "error" is actually a normal response.
+# エラーコード一覧v1.1（§1-8）の全コードをここに集約している。各呼び出し元に
+# `status_code=` を覚えさせておくのではなく、ここで一元管理する方式にした
+# -- 以前のバージョンではこのdictに共通（§1）コードといくつかの追加分しか
+# 無く、ドメインLambda各所の呼び出し元が自ドメインのコード用に`status_code`を
+# 明示的に渡し忘れていた（例：EVENT_NOT_FOUNDが、ドキュメント通りの404では
+# なく、この関数のデフォルトである400に黙ってフォールバックしていた）。
+# 全コードの表をここに保持しておけば、呼び出し元が`status_code=`を渡す必要が
+# あるのは、NO_CANDIDATES_FOUNDのように「エラー」が実質的には正常レスポンス
+# として扱われるような稀なケースだけになる。
 _STATUS_BY_CODE = {
     # §1 共通エラー
     "USER_NOT_FOUND": 404,
@@ -64,25 +64,26 @@ _STATUS_BY_CODE = {
 
 
 def _json_default(value):
-    # boto3's Table resource deserializes every DynamoDB Number attribute to
-    # decimal.Decimal (never int/float), so any handler that echoes a value
-    # read straight from DynamoDB back into a response (as opposed to a
-    # freshly-parsed request body, which is already plain int/float) hits
-    # `TypeError: Object of type Decimal is not JSON serializable` unless
-    # it's converted first. Centralized here so every domain gets this for
-    # free instead of each call site remembering to cast.
+    # boto3のTable resourceは、DynamoDBのNumber属性を常に
+    # decimal.Decimalとしてデシリアライズする（int/floatにはならない）。
+    # そのため、DynamoDBから読み込んだ値をそのままレスポンスにエコーバックする
+    # ハンドラー（すでに素のint/floatになっている、パース直後のリクエスト
+    # ボディとは異なる）は、事前に変換しないと
+    # `TypeError: Object of type Decimal is not JSON serializable`に
+    # ぶつかる。ここに一元化しておくことで、各呼び出し元がキャストを
+    # 覚えておかなくても全ドメインがこの恩恵を受けられる。
     if isinstance(value, Decimal):
         return int(value) if value % 1 == 0 else float(value)
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def error_response(code: str, message: str, *, status_code: int = None) -> dict:
-    """Build an API Gateway (Lambda proxy integration) error response.
+    """API Gateway（Lambdaプロキシ統合）向けのエラーレスポンスを組み立てる。
 
-    Envelope matches API設計書v1.4 §2. `status_code` only needs to be passed
-    explicitly to override the table above (e.g. NO_CANDIDATES_FOUND is
-    handled as a normal empty-list response rather than through this
-    function at all -- see MatchingLambda).
+    エンベロープはAPI設計書v1.4 §2に準拠。`status_code`は、上のテーブルを
+    上書きする必要がある場合にのみ明示的に渡せばよい（例：
+    NO_CANDIDATES_FOUNDはこの関数を通さず、通常の空リストレスポンスとして
+    扱われる -- MatchingLambda参照）。
     """
     return {
         "statusCode": status_code or _STATUS_BY_CODE.get(code, 400),
@@ -96,7 +97,7 @@ def error_response(code: str, message: str, *, status_code: int = None) -> dict:
 
 
 def success_response(data, *, status_code: int = 200) -> dict:
-    """Build an API Gateway (Lambda proxy integration) success response."""
+    """API Gateway（Lambdaプロキシ統合）向けの成功レスポンスを組み立てる。"""
     return {
         "statusCode": status_code,
         "headers": {"Content-Type": "application/json"},

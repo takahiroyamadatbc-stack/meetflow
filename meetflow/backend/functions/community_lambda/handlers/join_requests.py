@@ -10,17 +10,17 @@ from meetflow_common import (
     write_operation_log,
 )
 
-# JoinRequest is keyed as SK=JOINREQ#{userId} (DynamoDB物理設計書v1.3 §3.5) --
-# there is no separate generated request id in the physical design, even
-# though API設計書v1.4's paths call this path segment `{requestId}`. Every
-# handler here treats that path parameter as the target user's id.
+# JoinRequestはSK=JOINREQ#{userId}としてキー付けされる（DynamoDB物理設計書
+# v1.3 §3.5）-- API設計書v1.4のパスではこのパスセグメントを`{requestId}`と
+# 呼んでいるが、物理設計上は個別に生成されたリクエストIDは存在しない。
+# ここの各ハンドラーは、このパスパラメータを対象ユーザーのidとして扱う。
 
 
 def list_join_requests(user_id, event):
-    """GET /communities/{communityId}/join-requests (API設計書v1.4 §4.6,
-    画面設計書 S-07). Enriches each JoinRequest with the requester's profile
-    since a nickname alone isn't enough for an admin to decide (API設計書
-    v1.4 changelog v1.2->v1.3)."""
+    """GET /communities/{communityId}/join-requests（API設計書v1.4 §4.6,
+    画面設計書 S-07）。管理者が判断するにはニックネームだけでは不十分なため
+    （API設計書v1.4 変更履歴 v1.2->v1.3）、各JoinRequestに申請者のプロフィール
+    を付加している。"""
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
     require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
@@ -63,10 +63,10 @@ def list_join_requests(user_id, event):
 
 
 def approve_join_request(user_id, event):
-    """F-104b (API設計書v1.4 §4.4b): JoinRequest status update + Membership
-    creation as a single TransactWriteItems call (DynamoDB物理設計書v1.3
-    §3.5), so a mid-way failure can't leave an approved request with no
-    Membership (or vice versa)."""
+    """F-104b（API設計書v1.4 §4.4b）: JoinRequestのステータス更新と
+    Membership作成を、1回のTransactWriteItems呼び出しにまとめている
+    （DynamoDB物理設計書v1.3 §3.5）ため、途中での失敗によって承認済みの
+    リクエストにMembershipが存在しない（またはその逆の）状態にはならない。"""
     community_id = event["pathParameters"]["communityId"]
     target_user_id = event["pathParameters"]["requestId"]
     table = get_table()
@@ -136,7 +136,7 @@ def approve_join_request(user_id, event):
 
 
 def reject_join_request(user_id, event):
-    """F-104c (API設計書v1.4 §4.4c)."""
+    """F-104c（API設計書v1.4 §4.4c）。"""
     community_id = event["pathParameters"]["communityId"]
     target_user_id = event["pathParameters"]["requestId"]
     table = get_table()

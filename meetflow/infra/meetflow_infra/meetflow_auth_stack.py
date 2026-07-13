@@ -12,29 +12,30 @@ from constructs import Construct
 
 from .naming import user_lambda_function_name
 
-# This stack implements AWSシステム構成設計書v1.2 §5 (認証) and the parts of
-# Lambda設計書v1.1 §3 that concern Cognito.
+# このスタックは、AWSシステム構成設計書v1.2 §5（認証）と、Lambda設計書v1.1
+# §3のうちCognitoに関する部分を実装する。
 #
-# Design points carried over from the docs:
-#   - Cognito holds ONLY email + password. Nickname/profile/etc. live in
-#     DynamoDB (MeetFlowDataStack), created by UserLambda off the Post
-#     Confirmation trigger (Lambda設計書v1.1 §3.1, F-001). There is no public
-#     `POST /users` endpoint.
-#   - JWT verification is done entirely by API Gateway's Cognito Authorizer;
-#     there is no custom AuthLambda (AWSシステム構成設計書v1.2 §5, §13).
-#     Domain Lambdas only receive already-verified claims via the event.
-#   - 画面設計書v1.2 S-01 is a custom email/password screen, not Cognito
-#     Hosted UI, so no OAuth/Hosted UI domain is configured here — the SPA
-#     talks to Cognito directly via SRP (e.g. Amplify/aws-sdk).
+# ドキュメントから引き継いでいる設計上のポイント：
+#   - Cognitoが保持するのはメールアドレス＋パスワードのみ。ニックネーム／
+#     プロフィール等はDynamoDB（MeetFlowDataStack）に置かれ、Post
+#     Confirmationトリガー経由でUserLambdaが作成する（Lambda設計書v1.1
+#     §3.1、F-001）。公開の`POST /users`エンドポイントは存在しない。
+#   - JWT検証はAPI GatewayのCognito Authorizerで完結させ、独自のAuthLambda
+#     は持たない（AWSシステム構成設計書v1.2 §5、§13）。ドメインLambdaは
+#     eventを通じてすでに検証済みのクレームを受け取るのみ。
+#   - 画面設計書v1.2 S-01はCognito Hosted UIではなく独自のメール／パスワード
+#     画面のため、OAuth/Hosted UIドメインはここでは設定しない -- SPAは
+#     SRP経由（例：Amplify/aws-sdk）でCognitoと直接やり取りする。
 #
-# UserLambda lives in a separate stack (MeetFlowComputeStack), so the Post
-# Confirmation trigger is wired via `add_post_confirmation_trigger()` using a
-# *predicted* Lambda ARN rather than a real cross-stack construct reference,
-# to avoid a circular stack dependency — see that method's docstring for why.
+# UserLambdaは別スタック（MeetFlowComputeStack）に存在するため、Post
+# Confirmationトリガーは、実際のクロススタックconstruct参照ではなく
+# *予測した*Lambda ARNを使って`add_post_confirmation_trigger()`経由で
+# 配線している。これはスタック間の循環依存を避けるためであり、理由の詳細は
+# 同メソッドのdocstringを参照。
 
 
 class MeetFlowAuthStack(Stack):
-    """CDK stack for MeetFlow's Cognito User Pool (email/password auth)."""
+    """MeetFlowのCognito User Pool（メールアドレス／パスワード認証）用CDKスタック。"""
 
     def __init__(
         self,
@@ -49,10 +50,10 @@ class MeetFlowAuthStack(Stack):
         self.env_name = env_name
         is_prod = env_name == "prod"
 
-        # F-001: email + password registration. Nickname is NOT a Cognito
-        # attribute (Lambda設計書v1.1 §3.1) — it is created in DynamoDB by
-        # UserLambda after Post Confirmation, so no custom attributes are
-        # declared here.
+        # F-001: メールアドレス＋パスワードでの登録。ニックネームはCognito
+        # の属性ではない（Lambda設計書v1.1 §3.1）-- Post Confirmation後に
+        # UserLambdaがDynamoDBに作成するため、ここではカスタム属性を宣言
+        # しない。
         self.user_pool = cognito.UserPool(
             self,
             "MeetFlowUserPool",
@@ -63,11 +64,10 @@ class MeetFlowAuthStack(Stack):
                 email=cognito.StandardAttribute(required=True, mutable=True),
             ),
             auto_verify=cognito.AutoVerifiedAttrs(email=True),
-            # MVP uses Cognito's built-in email sending for verification
-            # codes. SES integration (custom FROM address, SPF/DKIM) is only
-            # required for the Phase2 notification-email channel
-            # (AWSシステム構成設計書v1.2 §11), which is a separate concern
-            # from Cognito's own verification emails.
+            # MVPでは確認コードの送信にCognito組み込みのメール送信機能を
+            # 使う。SES連携（カスタムFROMアドレス、SPF/DKIM）が必要になる
+            # のはPhase2の通知メールチャネル（AWSシステム構成設計書v1.2
+            # §11）のみであり、Cognito自体の確認メールとは別の関心事。
             email=cognito.UserPoolEmail.with_cognito(),
             # 要件定義書24章「セキュリティ」に対する妥当な既定値。docs内に
             # 具体的なパスワードポリシーの規定はないため、一般的な安全な
@@ -84,11 +84,12 @@ class MeetFlowAuthStack(Stack):
             deletion_protection=is_prod,
         )
 
-        # Public SPA client (画面設計書v1.2: モバイルファーストのReact SPA).
-        # No client secret — a browser client cannot keep one confidential.
-        # SRP is the standard secure flow for a custom (non-Hosted-UI) login
-        # screen; no OAuth flows are configured since S-01 is a custom
-        # email/password form, not Cognito Hosted UI.
+        # 公開SPAクライアント（画面設計書v1.2：モバイルファーストのReact
+        # SPA）。クライアントシークレットは無し -- ブラウザクライアントは
+        # シークレットを機密に保てないため。SRPは、（Hosted UIではない）
+        # 独自ログイン画面における標準的な安全なフロー。S-01はCognito
+        # Hosted UIではなく独自のメール／パスワードフォームのため、OAuth
+        # フローは設定しない。
         self.user_pool_client = self.user_pool.add_client(
             "MeetFlowWebClient",
             user_pool_client_name=f"{env_name}-meetflow-web-client",
@@ -120,35 +121,35 @@ class MeetFlowAuthStack(Stack):
         )
 
     def add_post_confirmation_trigger(self) -> None:
-        """Wire UserLambda's Post Confirmation trigger onto this User Pool.
+        """UserLambdaのPost ConfirmationトリガーをこのUser Poolに配線する。
 
-        UserLambda itself is built in MeetFlowComputeStack, a separate
-        stack. Passing that stack's real Lambda construct into
-        `add_trigger()` here would force a *two-way* cross-stack dependency
-        that CDK refuses to synthesize:
-          - this User Pool's LambdaConfig would need to import UserLambda's
-            ARN from the compute stack, AND
-          - `add_trigger()` also tries to grant Cognito permission to
-            invoke the function, which must be attached to the Lambda
-            resource itself (i.e. in the compute stack), scoped to *this*
-            User Pool's ARN.
-        Each stack would need to import a value from the other -- a cycle.
+        UserLambda自体は別スタックであるMeetFlowComputeStackで構築される。
+        そのスタックの実際のLambda constructをここで`add_trigger()`に渡す
+        と、CDKがsynth時に拒否する*双方向*のクロススタック依存を強制する
+        ことになる：
+          - このUser PoolのLambdaConfigは、compute stackからUserLambdaの
+            ARNをインポートする必要があり、かつ
+          - `add_trigger()`は、Lambdaを呼び出すためのCognito許可も付与
+            しようとするが、これはLambdaリソース自体（つまりcompute
+            stack側）に、*この*User PoolのARNをスコープとしてアタッチ
+            する必要がある。
+        各スタックが互いから値をインポートする必要が生じ -- 循環になる。
 
-        Instead, the target ARN is *predicted* here from the shared naming
-        convention (`naming.user_lambda_function_name`), built only from
-        this stack's own account/region tokens -- no reference to the
-        compute stack at all, so this half of the wiring has zero
-        cross-stack dependency. `add_trigger()` will also try to grant an
-        invoke permission on this predicted/imported function reference,
-        which is a harmless no-op (CDK cannot attach permissions to a
-        function it doesn't own here) -- the real permission is granted
-        from MeetFlowComputeStack instead, which owns the actual Lambda and
-        only needs a one-directional import of this User Pool's ARN (see
-        that stack's `_grant_cognito_invoke`).
+        代わりに、対象のARNは共有の命名規則（`naming.
+        user_lambda_function_name`）からここで*予測*しており、このスタック
+        自身のaccount/regionトークンのみから構築している -- compute
+        stackへの参照は一切無いため、配線のこちら側にはクロススタック依存
+        が全く生じない。`add_trigger()`は、この予測／インポートした
+        function参照に対しても呼び出し許可の付与を試みるが、これは無害な
+        no-opになる（CDKは、ここで所有していないfunctionに許可をアタッチ
+        できないため）-- 実際の許可は代わりにMeetFlowComputeStack側から
+        付与され、そちらが実際のLambdaを所有し、このUser PoolのARNを
+        一方向にインポートするだけで済む（そのスタックの
+        `_grant_cognito_invoke`を参照）。
 
-        MeetFlowComputeStack must actually be deployed, with a function name
-        matching this convention, for sign-up to work end-to-end -- this
-        method alone only configures the User Pool side.
+        サインアップがエンドツーエンドで動作するには、この命名規則に一致
+        するfunction名でMeetFlowComputeStackが実際にデプロイされている
+        必要がある -- このメソッド単体ではUser Pool側の設定しか行わない。
         """
         predicted_arn = self.format_arn(
             service="lambda",
@@ -163,12 +164,12 @@ class MeetFlowAuthStack(Stack):
             cognito.UserPoolOperation.POST_CONFIRMATION, predicted_user_lambda
         )
 
-        # CDK warns that `add_trigger`'s automatic `addPermission()` call on
-        # this imported reference "has no effect", because it can't prove
-        # same-account/region for an ARN built from unresolved tokens. That
-        # is expected here -- we deliberately do NOT want this call to
-        # create the permission (see docstring above); the real one is
-        # granted from MeetFlowComputeStack, which owns the real resource.
+        # CDKは、この予測ARNへの`add_trigger`による自動`addPermission()`
+        # 呼び出しが「効果を持たない」と警告する。未解決のトークンから
+        # 構築したARNでは同一account/regionであることを証明できないため。
+        # これは想定通りであり、この呼び出しで許可が作成されることは
+        # 意図的に望んでいない（上記docstring参照）-- 実際の許可は、実
+        # リソースを所有するMeetFlowComputeStackから付与される。
         Annotations.of(predicted_user_lambda).acknowledge_warning(
             "UnclearLambdaEnvironment"
         )

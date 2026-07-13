@@ -10,8 +10,9 @@ from meetflow_infra.meetflow_data_stack import MeetFlowDataStack
 
 app = cdk.App()
 
-# Single-account, prefix-based environment separation (dev / staging / prod),
-# per AWSシステム構成設計書v1.2 §15. Override with `cdk deploy -c env=prod`.
+# AWSシステム構成設計書v1.2 §15に従い、単一アカウント内でのプレフィックス
+# ベースの環境分離(dev / staging / prod)を行う。`cdk deploy -c env=prod`で
+# 上書きできる。
 env_name = app.node.try_get_context("env") or "dev"
 
 env = cdk.Environment(
@@ -45,9 +46,10 @@ compute_stack = MeetFlowComputeStack(
     description="MeetFlow domain Lambda stack: shared Layer + UserLambda (Lambda設計書v1.1)",
 )
 
-# Wired after both stacks exist: this only configures the User Pool side
-# (via a predicted ARN, not a construct reference), so it has no dependency
-# on compute_stack -- see MeetFlowAuthStack.add_post_confirmation_trigger.
+# 両スタックが存在した後に配線する: これはUser Pool側のみを
+# (constructの参照ではなく、予測したARN経由で)設定するので、
+# compute_stackへの依存は無い -- MeetFlowAuthStack.
+# add_post_confirmation_triggerを参照。
 auth_stack.add_post_confirmation_trigger()
 
 api_stack = MeetFlowApiStack(

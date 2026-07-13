@@ -1,14 +1,15 @@
 """F-403 scoring (機能要件書v1.1 §8/F-403, 要件定義書v1.2 §13.2).
 
-Kept as an isolated, pure function -- not because the docs mandate this
-specific weighting (they only give qualitative bonus factors, not point
-values), but because Lambda設計書v1.1 §6.4 explicitly recommends separating
-the scoring calculation so Phase2 trust-score/NG-set factors can be added
-later without restructuring the matching flow. The weights below are an MVP
-heuristic invented to fit the qualitative factors in 要件定義書v1.2 §13.2
-into a 0-100 score (要件定義書v1.2 §13.4's example candidate shows a
-92-point score) -- there is no canonical point breakdown in the docs, so
-treat these weights as adjustable, not authoritative.
+孤立した純粋関数として実装しているのは、ドキュメントがこの重み付けを
+規定しているから（実際には定性的な加点要素のみが示されており、点数配分
+は示されていない）ではなく、Lambda設計書v1.1 §6.4がスコア計算の分離を
+明示的に推奨しているためである。これにより、Phase2の信頼スコア/NG設定
+要素を、マッチングフローを再構築することなく後から追加できる。以下の
+重みは、要件定義書v1.2 §13.2の定性的要素を0-100のスコアに落とし込むために
+考案したMVPのヒューリスティックである（要件定義書v1.2 §13.4のサンプル
+候補は92点のスコアを示している）-- ドキュメントに正典となる点数配分は
+存在しないため、これらの重みは権威あるものではなく調整可能な値として
+扱うこと。
 """
 
 _CONDITION_MATCH_WEIGHT = 30
@@ -20,14 +21,14 @@ _RECENCY_CAP_DAYS = 30
 
 def calculate_score(*, template, members_profiles, members_days_since_last_played):
     """
-    template: EventTemplate item (dict) -- needs `conditions` (Map) and
-        `priority` (0-100).
-    members_profiles: User profile dicts for the candidate's members.
-    members_days_since_last_played: list of int, one per member -- days
-        since their last CONFIRMED Participant record, or None if they have
-        no participation history at all (treated as maximally "fresh").
+    template: EventTemplateアイテム（dict）-- `conditions`（Map）と
+        `priority`（0-100）が必要。
+    members_profiles: 候補メンバーのUserプロフィールdictのリスト。
+    members_days_since_last_played: メンバーごとのint値のリスト -- 各人の
+        直近のCONFIRMED Participantレコードからの経過日数。参加履歴が
+        一件も無い場合はNone（最大限「新鮮」として扱う）。
 
-    Returns (score: int 0-100, reasons: list[str]).
+    戻り値: (score: int 0-100, reasons: list[str])。
     """
     reasons = ["全員予定一致"]  # F-402の必須条件（日時一致）を満たした候補
     conditions = template.get("conditions") or {}
@@ -38,7 +39,7 @@ def calculate_score(*, template, members_profiles, members_days_since_last_playe
             1 for p in members_profiles if p.get("beginnerOk")
         ) / len(members_profiles)
     else:
-        beginner_fraction = 1.0  # no requirement -> trivially satisfied
+        beginner_fraction = 1.0  # 要件が無い場合は自明に満たされる
     if beginner_fraction == 1.0:
         reasons.append("初心者対応可能" if wants_beginner_ok else "条件一致")
 
@@ -53,11 +54,11 @@ def calculate_score(*, template, members_profiles, members_days_since_last_playe
     if recency_fraction > 0.5:
         reasons.append("最近参加していない人を含む")
 
-    # template.get("priority") comes back as decimal.Decimal when the
-    # EventTemplate item was read via DynamoDB (boto3's Table resource
-    # deserializes all Number attributes to Decimal, never int/float) --
-    # mixing that into the float arithmetic below raises TypeError, so cast
-    # to int here rather than at every call site.
+    # EventTemplateアイテムをDynamoDB経由で読み込んだ場合、
+    # template.get("priority")はdecimal.Decimalとして返ってくる（boto3の
+    # Table resourceは全てのNumber属性をDecimalにデシリアライズし、
+    # int/floatにはならない）-- これを下の浮動小数点演算に混ぜるとTypeError
+    # になるため、各呼び出し箇所ではなくここでintにキャストする。
     priority = min(max(int(template.get("priority", 0) or 0), 0), 100)
 
     total = (

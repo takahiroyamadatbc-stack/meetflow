@@ -6,15 +6,15 @@ from handlers import matching
 from _factories import api_event, body_of, put_availability, put_membership, put_template
 
 _START = add_days_iso(now_iso_ms(), 5)
-_END = add_days_iso(now_iso_ms(), 5)  # same-day slot; exact value unused by grouping logic
+_END = add_days_iso(now_iso_ms(), 5)  # 同日枠。厳密な値はグルーピングロジックで使用しない
 
 
 def _seed_matching_group(table, community_id, user_ids, *, game_type="MAHJONG4"):
-    """Only registers availability -- callers are expected to have already
-    set up membership themselves (e.g. the OWNER calling generate_candidates
-    via a separate put_membership call), since re-registering membership
-    here for a user who already has a non-MEMBER role would silently
-    overwrite it.
+    """空き予定の登録のみを行う -- 呼び出し元は既に自分でmembershipを
+    セットアップ済みであることを期待する（例: generate_candidatesを呼び
+    出すOWNERは別途put_membershipを呼んでおく）。ここでmembershipを
+    再登録すると、既にMEMBER以外のroleを持つユーザーの場合、それを
+    黙って上書きしてしまうため。
     """
     for uid in user_ids:
         put_availability(

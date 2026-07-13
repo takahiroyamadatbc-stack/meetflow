@@ -12,10 +12,10 @@ _ROUTES = {
         "GET",
         "/communities/{communityId}/event-templates",
     ): event_templates.list_templates,
-    # Lambda設計書v1.1 §6.2 documents these without a communityId segment
-    # (`PUT/DELETE /event-templates/{templateId}`); corrected here since
-    # EventTemplate has no GSI to resolve templateId -> communityId
-    # (see handlers/event_templates.py docstrings).
+    # Lambda設計書v1.1 §6.2ではcommunityIdセグメント無し
+    # (`PUT/DELETE /event-templates/{templateId}`)と記載されているが、
+    # EventTemplateにはtemplateId -> communityIdを解決するGSIが無いため
+    # ここで修正している（handlers/event_templates.pyのdocstring参照）。
     (
         "PUT",
         "/communities/{communityId}/event-templates/{templateId}",
@@ -34,8 +34,8 @@ _ROUTES = {
 
 
 def handler(event, context):
-    # EventBridge events (§6.7 EventConfirmed subscription) carry
-    # `detail-type`/`source`, never `httpMethod`.
+    # EventBridgeイベント（§6.7 EventConfirmed購読）は`detail-type`/
+    # `source`を持つが、`httpMethod`は持たない。
     if "detail-type" in event:
         return conflict_detection.handle_event_confirmed(event)
     return dispatch(_ROUTES, event)

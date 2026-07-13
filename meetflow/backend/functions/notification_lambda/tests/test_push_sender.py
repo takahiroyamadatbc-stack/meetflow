@@ -77,7 +77,7 @@ def test_send_push_to_user_keeps_subscription_on_other_errors(table):
     with patch.object(
         push_sender, "webpush", side_effect=WebPushException("server error", response=response)
     ):
-        # must not raise -- a transient push failure can't fail notification creation.
+        # 例外を送出してはならない -- 一時的なプッシュ失敗が通知作成を失敗させてはならない。
         push_sender.send_push_to_user(
             table, "user-1", title="MeetFlow", body="hello", notif_type="CONFIRMED"
         )

@@ -18,9 +18,9 @@ _ROUTES = {
 
 
 def handler(event, context):
-    # EventBridge events (EventConfirmed/EventCancelled/CancelApproved/
-    # CandidateConflictDetected, §9.1) carry `detail-type`/`source`, never
-    # `httpMethod`.
+    # EventBridgeイベント（EventConfirmed/EventCancelled/CancelApproved/
+    # CandidateConflictDetected、§9.1）は`detail-type`/`source`を持つが、
+    # `httpMethod`は持たない。
     if "detail-type" in event:
         return event_subscriber.handle_domain_event(event)
     return dispatch(_ROUTES, event)

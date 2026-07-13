@@ -12,14 +12,14 @@ from meetflow_common import (
     write_operation_log,
 )
 
-_MAX_NAME_LENGTH = 50  # not specified in docs; conservative MVP bound
+_MAX_NAME_LENGTH = 50  # 設計書には明記されていない、MVP向け保守的な上限値
 
 
 def create_community(user_id, event):
-    """F-101 (API設計書v1.4 §4.1). Community creation + owner Membership are
-    two plain PutItems, not a transaction -- DynamoDB物理設計書v1.3 §5 only
-    lists join request approval / owner transfer / event confirmation as
-    needing TransactWriteItems, so this intentionally doesn't go beyond that.
+    """F-101（API設計書v1.4 §4.1）。コミュニティ作成 + owner Membershipは、
+    トランザクションではなく単純な2回のPutItemである -- DynamoDB物理設計書
+    v1.3 §5がTransactWriteItemsを要求するとしているのは参加リクエスト承認/
+    オーナー移譲/イベント確定のみなので、意図的にそれ以上のことはしていない。
     """
     body = parse_body(event)
     name = body.get("name")
@@ -42,8 +42,8 @@ def create_community(user_id, event):
             "description": description,
             "genre": genre,
             "memberApprovalRequired": member_approval_required,
-            # MVP always creates PERSONAL communities (DynamoDB物理設計書v1.3
-            # §3.2); STORE/OFFICIAL is a Phase3 concern.
+            # MVPでは常にPERSONALコミュニティを作成する（DynamoDB物理設計書
+            # v1.3 §3.2）。STORE/OFFICIALはPhase3で扱う。
             "communityType": "PERSONAL",
             "ownerId": user_id,
             "createdAt": created_at,
@@ -80,10 +80,11 @@ def create_community(user_id, event):
 
 
 def list_communities(user_id, event):
-    """GET /communities (API設計書v1.4 §4.2): communities the caller
-    belongs to, via GSI1 (`USER#{userId}` / `COMMUNITY#`). Community count
-    per user is small at this project's scale (10-30 members per
-    community), so a GetItem per community here is simpler than batching.
+    """GET /communities（API設計書v1.4 §4.2）: 呼び出し元が所属する
+    コミュニティ一覧を、GSI1（`USER#{userId}` / `COMMUNITY#`）経由で取得する。
+    このプロジェクトの規模（コミュニティあたり10〜30メンバー）では
+    ユーザーあたりのコミュニティ数は少ないため、ここではバッチ処理より
+    コミュニティごとにGetItemする方がシンプルである。
     """
     table = get_table()
     resp = table.query(
@@ -113,8 +114,8 @@ def list_communities(user_id, event):
 
 
 def update_community(user_id, event):
-    """PUT /communities/{communityId} (要件定義書v1.2 §10.1: 管理者は情報編集
-    を実施できる -> OWNER/ADMIN)."""
+    """PUT /communities/{communityId}（要件定義書v1.2 §10.1: 管理者は情報編集
+    を実施できる -> OWNER/ADMIN）。"""
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
     require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
@@ -177,11 +178,11 @@ def update_community(user_id, event):
 
 
 def transfer_owner(user_id, event):
-    """F-106 (Lambda設計書v1.1 §4.2): OWNER transfers ownership; the
-    previous OWNER reverts to MEMBER (要件定義書v1.2 §9, not demoted to
-    ADMIN). Both role changes + Community.ownerId are one TransactWriteItems
-    call (DynamoDB物理設計書v1.3 §5) so a partial failure can't leave two
-    members simultaneously holding/lacking the OWNER role.
+    """F-106（Lambda設計書v1.1 §4.2）: OWNERがオーナー権を移譲する。移譲元の
+    OWNERはMEMBERに戻る（要件定義書v1.2 §9、ADMINへの降格ではない）。
+    両方のロール変更 + Community.ownerIdは1回のTransactWriteItems呼び出しに
+    まとめる（DynamoDB物理設計書v1.3 §5）ため、部分的な失敗によって2人の
+    メンバーが同時にOWNERロールを持つ/持たない状態になることはない。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()

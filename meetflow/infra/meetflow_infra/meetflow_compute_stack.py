@@ -24,11 +24,11 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
 
 
 class MeetFlowComputeStack(Stack):
-    """CDK stack for MeetFlow's domain Lambdas (Lambda設計書v1.1).
+    """MeetFlowのドメインLambda群のCDKスタック(Lambda設計書v1.1)。
 
-    All 7 domain Lambdas: shared Layer (§12.1) + UserLambda (§3) +
-    CommunityLambda (§4) + AvailabilityLambda (§5) + MatchingLambda (§6) +
-    EventLambda (§7) + ResultLambda (§8) + NotificationLambda (§9).
+    7ドメインLambda全て: 共有Layer(§12.1) + UserLambda(§3) +
+    CommunityLambda(§4) + AvailabilityLambda(§5) + MatchingLambda(§6) +
+    EventLambda(§7) + ResultLambda(§8) + NotificationLambda(§9)。
     """
 
     def __init__(
@@ -43,15 +43,15 @@ class MeetFlowComputeStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # This stack takes cross-stack references to both MeetFlowDataStack
-        # (`table`) and MeetFlowAuthStack (`user_pool`), which makes CDK
-        # warn about the default "strong" cross-stack reference export
-        # behavior. Setting the `@aws-cdk/core:crossStackReferencesDefaultStrong`
-        # context flag in cdk.json alone did not suppress it in practice, so
-        # explicitly acknowledge it here using the id CDK's own warning
-        # printed -- "strong" (the current default) is the right choice for
-        # this project anyway: it protects the producer stacks (data/auth)
-        # from being updated in a way that would break this consumer stack.
+        # このスタックはMeetFlowDataStack(`table`)とMeetFlowAuthStack
+        # (`user_pool`)の両方をクロススタック参照するため、CDKがデフォルトの
+        # "strong"クロススタック参照エクスポート挙動について警告を出す。
+        # cdk.jsonで`@aws-cdk/core:crossStackReferencesDefaultStrong`
+        # contextフラグを設定するだけでは実際には抑止できなかったため、
+        # CDK自身が出力した警告のidを使ってここで明示的にacknowledgeする --
+        # そもそも"strong"(現在のデフォルト)はこのプロジェクトにとって
+        # 正しい選択である: producer側のスタック(data/auth)が、この
+        # consumerスタックを壊すような形で更新されることから守られる。
         Annotations.of(self).acknowledge_warning(
             "@aws-cdk/core:crossStackReferencesDefaultStrong"
         )
@@ -59,9 +59,9 @@ class MeetFlowComputeStack(Stack):
         self.env_name = env_name
         self.table = table
 
-        # Lambda設計書v1.1 §12.1: DynamoDB client/query helpers, membership +
-        # permission checks, OperationLog writer, and common error
-        # responses, shared by every domain Lambda.
+        # Lambda設計書v1.1 §12.1: DynamoDBクライアント/クエリヘルパー、
+        # メンバーシップ・権限チェック、OperationLogライター、共通エラー
+        # レスポンスを、全ドメインLambdaで共有する。
         self.common_layer = lambda_.LayerVersion(
             self,
             "MeetFlowCommonLayer",
@@ -92,13 +92,13 @@ class MeetFlowComputeStack(Stack):
         extra_layers: list = None,
         extra_environment: dict = None,
     ) -> lambda_.Function:
-        """Shared scaffolding for every domain Lambda: same runtime,
-        `handler.handler` entry point convention, common Layer attachment,
-        and TABLE_NAME env var. Individual `_build_*_lambda` methods only
-        need to add their own IAM grants on top of this. `extra_layers`/
-        `extra_environment` exist for the rare domain-specific Layer (e.g.
-        NotificationLambda's webpush Layer) without changing every other
-        domain's call site.
+        """全ドメインLambdaに共通する組み立て処理: 同一ランタイム、
+        `handler.handler`というエントリポイント規約、共通Layerのアタッチ、
+        TABLE_NAME環境変数。個々の`_build_*_lambda`メソッドはこの上に
+        自分自身のIAM grantを追加するだけでよい。`extra_layers`/
+        `extra_environment`は、他の全ドメインの呼び出し箇所を変更せずに
+        まれなドメイン固有Layer(例: NotificationLambdaのwebpush Layer)を
+        扱うために存在する。
         """
         environment = {"TABLE_NAME": self.table.table_name}
         environment.update(extra_environment or {})
@@ -118,24 +118,25 @@ class MeetFlowComputeStack(Stack):
     def _build_user_lambda(self) -> lambda_.Function:
         fn = self._build_function(
             "UserLambda",
-            # Explicit, predictable name: MeetFlowAuthStack's Post
-            # Confirmation trigger references this exact name (see
-            # naming.py) without importing this stack's construct, to avoid
-            # a circular cross-stack dependency (see
-            # MeetFlowAuthStack.add_post_confirmation_trigger).
+            # 明示的で予測可能な名前にする: MeetFlowAuthStackのPost
+            # Confirmationトリガーは、循環クロススタック依存を避けるため
+            # このスタックのconstructをimportせずに、この正確な名前を
+            # (naming.py経由で)参照する(MeetFlowAuthStack.
+            # add_post_confirmation_triggerを参照)。
             function_name=user_lambda_function_name(self.env_name),
             code_subdir="user_lambda",
         )
 
-        # Lambda設計書v1.1 §3.3: PutItem (profile creation only), GetItem,
-        # UpdateItem, scoped to this table's actions. Note: DynamoDB's
-        # `dynamodb:LeadingKeys` IAM condition only supports exact
-        # partition-key matches (typically used for per-identity access from
-        # federated/Cognito Identity Pool credentials) -- it cannot express
-        # a "PK begins_with USER#" condition for a Lambda execution role. So
-        # the enforceable IAM boundary here is action-level (no
-        # DeleteItem/Query/Scan); the PK-prefix isolation the design doc
-        # describes is enforced by this Lambda's own code, not by IAM.
+        # Lambda設計書v1.1 §3.3: PutItem(プロフィール作成のみ)、GetItem、
+        # UpdateItemを、このテーブルに対するactionとしてスコープする。
+        # 注意: DynamoDBの`dynamodb:LeadingKeys`というIAM条件は、
+        # パーティションキーの完全一致のみをサポートする(典型的には
+        # フェデレーテッド/Cognito Identity Pool認証情報によるID単位の
+        # アクセスに使われる) -- Lambda実行ロールに対して"PK begins_with
+        # USER#"という条件を表現することはできない。そのため、ここで
+        # 強制可能なIAM境界はaction単位(DeleteItem/Query/Scanは許可しない)
+        # に留まり、設計書が記述するPKプレフィックスによる分離は、IAMでは
+        # なくこのLambda自身のコードによって強制される。
         self.table.grant(
             fn, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"
         )
@@ -158,14 +159,14 @@ class MeetFlowComputeStack(Stack):
         )
 
         # Lambda設計書v1.1 §4.3: Community, Membership, Invite, JoinRequest,
-        # Place -- PutItem/GetItem/UpdateItem/Query, plus TransactWriteItems
-        # for join-request approval and OWNER transfer (DynamoDB物理設計書
-        # v1.3 §5). DeleteItem is needed for forced member removal (F-104,
-        # 要件定義書v1.2 §10.3) even though the Lambda design doc's action
-        # list for this Lambda doesn't explicitly call it out. As with
-        # UserLambda, `dynamodb:LeadingKeys` can't express "PK begins_with
-        # COMMUNITY#" for a Lambda execution role, so entity-prefix
-        # isolation is enforced by this Lambda's own code, not IAM.
+        # Place -- PutItem/GetItem/UpdateItem/Query、加えて参加リクエスト
+        # 承認とOWNER移譲のためのTransactWriteItems(DynamoDB物理設計書
+        # v1.3 §5)。Lambda設計書のこのLambdaに対するaction一覧には明示的に
+        # 挙げられていないが、強制メンバー除名(F-104、要件定義書v1.2
+        # §10.3)にはDeleteItemが必要。UserLambdaと同様、`dynamodb:
+        # LeadingKeys`はLambda実行ロールに対して"PK begins_with
+        # COMMUNITY#"を表現できないため、エンティティプレフィックスによる
+        # 分離はIAMではなくこのLambda自身のコードによって強制される。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
@@ -193,12 +194,12 @@ class MeetFlowComputeStack(Stack):
             code_subdir="availability_lambda",
         )
 
-        # Lambda設計書v1.1 §5.3: PutItem/BatchWriteItem/GetItem/UpdateItem/
-        # DeleteItem/Query on Availability's PK/SK + GSI1. TransactWriteItems
-        # is needed too (not listed in §5.3, which predates this
-        # implementation choice): editing an availability's startTime
-        # changes its SK/GSI1SK, and DynamoDB item keys can't be updated in
-        # place, so that case is an atomic delete+recreate.
+        # Lambda設計書v1.1 §5.3: AvailabilityのPK/SK + GSI1に対する
+        # PutItem/BatchWriteItem/GetItem/UpdateItem/Query。TransactWriteItems
+        # も必要(この実装判断より前に書かれた§5.3には列挙されていない):
+        # 空き予定のstartTimeを編集するとSK/GSI1SKが変わり、DynamoDBの
+        # アイテムキーはその場で更新できないため、このケースはatomicな
+        # delete+recreateになる。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
@@ -231,19 +232,19 @@ class MeetFlowComputeStack(Stack):
             "MatchingLambda",
             function_name=f"{self.env_name}-meetflow-matching-lambda",
             code_subdir="matching_lambda",
-            # F-401 candidate generation is the "heavy" path this Lambda was
-            # split out for (Lambda設計書v1.1 §1, §6.4): longer timeout and
-            # more memory than the CRUD-style domain Lambdas.
+            # F-401の候補生成は、このLambdaが分離された理由である"重い"
+            # 処理パス(Lambda設計書v1.1 §1, §6.4)なので、CRUD系の
+            # ドメインLambdaよりタイムアウトを長く、メモリを多くしている。
             timeout=Duration.seconds(30),
             memory_size=512,
         )
 
-        # Lambda設計書v1.1 §6.5: Query (Availability, EventTemplate),
-        # PutItem/GetItem/Query (MatchCandidate incl. GSI2),
-        # PutItem/UpdateItem/Query (CandidateMember incl. GSI1). UpdateItem/
-        # DeleteItem on EventTemplate are needed for F-303/F-304 (edit/
-        # delete) even though §6.5's action list doesn't call them out
-        # (same kind of gap as CommunityLambda's DeleteItem).
+        # Lambda設計書v1.1 §6.5: Query(Availability, EventTemplate)、
+        # PutItem/GetItem/Query(MatchCandidate、GSI2含む)、
+        # PutItem/UpdateItem/Query(CandidateMember、GSI1含む)。§6.5の
+        # action一覧には挙げられていないが(CommunityLambdaのDeleteItemと
+        # 同種のギャップ)、F-303/F-304(編集/削除)にはEventTemplateへの
+        # UpdateItem/DeleteItemが必要。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
@@ -255,17 +256,17 @@ class MeetFlowComputeStack(Stack):
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
-        # §6.5: `events:PutEvents` for `CandidateConflictDetected`.
+        # §6.5: `CandidateConflictDetected`用の`events:PutEvents`。
         events.EventBus.grant_all_put_events(fn)
 
-        # §6.1/§6.7: subscribe to `EventConfirmed` (published later by
-        # EventLambda) for post-hoc double-booking detection. The rule can
-        # be created before EventLambda exists -- it just won't have
-        # anything to match yet. The source/detail-type strings must match
-        # backend/layers/common/python/meetflow_common/events_bus.py
-        # (EVENT_SOURCE, EVENT_CONFIRMED) -- CDK (this file) and the Lambda
-        # runtime code are separate Python environments, so this can't
-        # import that module directly.
+        # §6.1/§6.7: 事後的なダブルブッキング検知のため、(後でEventLambdaが
+        # publishする)`EventConfirmed`を購読する。このruleはEventLambdaが
+        # 存在する前に作成してもよい -- まだマッチする対象が無いだけである。
+        # source/detail-type文字列はbackend/layers/common/python/
+        # meetflow_common/events_bus.py(EVENT_SOURCE, EVENT_CONFIRMED)と
+        # 一致していなければならない -- CDK(このファイル)とLambdaの
+        # ランタイムコードは別のPython環境なので、このモジュールを直接
+        # importすることはできない。
         events.Rule(
             self,
             "MatchingEventConfirmedRule",
@@ -291,15 +292,15 @@ class MeetFlowComputeStack(Stack):
             code_subdir="event_lambda",
         )
 
-        # Lambda設計書v1.1 §7.4: Event, Participant (incl. GSI1 for the
-        # double-booking check), CancelRequest, EventStatusHistory --
-        # PutItem/GetItem/UpdateItem/Query, TransactWriteItems (event
-        # confirmation). Also needs read/update access to MatchCandidate +
-        # CandidateMember (incl. GSI2, to resolve candidateId at creation/
-        # confirm time and mark them used), and read access to Place/User
-        # for the event detail/list responses -- all the same table, so
-        # granted as one set of table-level actions like the other domain
-        # Lambdas.
+        # Lambda設計書v1.1 §7.4: Event, Participant(ダブルブッキング
+        # チェック用のGSI1含む)、CancelRequest, EventStatusHistory --
+        # PutItem/GetItem/UpdateItem/Query、TransactWriteItems(イベント
+        # 確定用)。加えて、作成/確定時にcandidateIdを解決し使用済みとして
+        # マークするためのMatchCandidate + CandidateMember(GSI2含む)への
+        # 読み取り/更新アクセス、イベント詳細/一覧レスポンス用の
+        # Place/Userへの読み取りアクセスも必要 -- 全て同一テーブルなので、
+        # 他のドメインLambdaと同様、テーブルレベルのaction群としてまとめて
+        # grantしている。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
@@ -311,8 +312,8 @@ class MeetFlowComputeStack(Stack):
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
-        # §7.4: `events:PutEvents` for EventConfirmed/EventCancelled/
-        # CancelApproved.
+        # §7.4: EventConfirmed/EventCancelled/CancelApproved用の
+        # `events:PutEvents`。
         events.EventBus.grant_all_put_events(fn)
 
         CfnOutput(
@@ -330,9 +331,9 @@ class MeetFlowComputeStack(Stack):
             code_subdir="result_lambda",
         )
 
-        # Lambda設計書v1.1 §8.4: PutItem/Query (GameSession, GameResult incl.
-        # GSI1). GetItem is also needed (not listed in §8.4) to look up the
-        # Event/Membership context for permission checks.
+        # Lambda設計書v1.1 §8.4: PutItem/Query(GameSession, GameResult、
+        # GSI1含む)。権限チェック用にEvent/Membershipのコンテキストを
+        # 参照するため、GetItemも必要(§8.4には挙げられていない)。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
@@ -396,10 +397,11 @@ class MeetFlowComputeStack(Stack):
         )
 
         # Lambda設計書v1.2 §9.4: PutItem/Query/UpdateItem/DeleteItem
-        # (Notification, PushSubscription [v1.2追加]). Query on Membership
-        # (via primary key, not a new grant) is needed too, to resolve a
-        # community's member/OWNER/ADMIN user ids for CandidateConflictDetected
-        # and AvailabilityRequestCreated -- same table, same action set.
+        # (Notification, PushSubscription [v1.2追加])。CandidateConflict
+        # DetectedとAvailabilityRequestCreated向けにコミュニティの
+        # member/OWNER/ADMINのuser idを解決するため、Membershipへの
+        # Query(プライマリキー経由。新たなgrantは不要)も必要 -- 同一
+        # テーブル・同一action群。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
@@ -411,9 +413,9 @@ class MeetFlowComputeStack(Stack):
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
-        # §9.1: subscribe to every domain event that fans out to a
-        # notification. Source/detail-type strings must match
-        # backend/layers/common/python/meetflow_common/events_bus.py.
+        # §9.1: 通知にファンアウトする全てのドメインイベントを購読する。
+        # source/detail-type文字列はbackend/layers/common/python/
+        # meetflow_common/events_bus.pyと一致していなければならない。
         events.Rule(
             self,
             "NotificationDomainEventsRule",
@@ -465,16 +467,16 @@ class MeetFlowComputeStack(Stack):
         return fn
 
     def _grant_cognito_invoke(self, user_pool: cognito.IUserPool) -> None:
-        """Grant Cognito permission to invoke UserLambda as its Post
-        Confirmation trigger.
+        """Post ConfirmationトリガーとしてUserLambdaを起動する権限をCognitoに
+        付与する。
 
-        This is the other half of the wiring described in
-        MeetFlowAuthStack.add_post_confirmation_trigger: this stack owns the
-        real Lambda resource, so the AWS::Lambda::Permission must be created
-        here. It only needs a one-directional import of the User Pool's ARN
-        (this stack already depends on MeetFlowAuthStack for the User Pool
-        object itself, via the `user_pool` constructor argument), so no
-        cycle is introduced.
+        これはMeetFlowAuthStack.add_post_confirmation_triggerで説明されている
+        配線のもう半分にあたる: このスタックが実際のLambdaリソースを
+        所有しているため、AWS::Lambda::Permissionはここで作成しなければ
+        ならない。必要なのはUser PoolのARNの一方向のimportのみ(このスタックは
+        `user_pool`コンストラクタ引数経由で、既にUser Poolオブジェクト
+        自体についてMeetFlowAuthStackに依存している)なので、循環は
+        発生しない。
         """
         self.user_lambda.add_permission(
             "AllowCognitoInvokePostConfirmation",

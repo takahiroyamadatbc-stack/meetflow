@@ -24,18 +24,17 @@ from ._shared import (
 
 
 def create_event(user_id, event):
-    """F-501 (API設計書v1.4 §8.1).
+    """F-501 (API設計書v1.4 §8.1)。
 
-    Only candidate-based creation is implemented. 機能要件書 F-501 mentions
-    manual creation ("手動作成") as an alternative, but DynamoDB物理設計書
-    v1.3 §3.10's Event entity has no attribute to hold an intended
-    participant list before confirmation (unlike candidate-based creation,
-    where MatchCandidate.members already exists) -- there's no documented
-    place to persist "who's coming" for a manually-created event prior to
-    `confirm_event` creating Participant rows. Implementing it would mean
-    inventing an attribute outside the physical design (CLAUDE.md: never
-    deviate from the DynamoDB key/attribute design), so it's left
-    unsupported pending that gap being resolved in the docs.
+    候補ベースの作成のみを実装している。機能要件書 F-501は代替案として
+    手動作成（「手動作成」）に言及しているが、DynamoDB物理設計書v1.3
+    §3.10のEventエンティティには、承認前の参加予定者リストを保持する属性
+    が無い（候補ベースの作成ではMatchCandidate.membersが既に存在するのと
+    対照的）-- `confirm_event`がParticipant行を作成する前に、手動作成
+    イベントの「誰が参加するか」を永続化する場所がドキュメント上定義され
+    ていない。これを実装するには物理設計の外側に属性を作ることになって
+    しまう（CLAUDE.md: 絶対に逸脱しないこと）ため、このギャップがドキュ
+    メント側で解消されるまで未対応のままとする。
     """
     body = parse_body(event)
     candidate_id = body.get("candidateId")
@@ -67,8 +66,8 @@ def create_event(user_id, event):
     if not member_ids:
         return error_response("CANDIDATE_NOT_FOUND", "指定した候補が見つかりません")
 
-    # startTime/endTime live on CandidateMember rows, not MatchCandidate
-    # itself (DynamoDB物理設計書v1.3 §3.8's attribute list has neither).
+    # startTime/endTimeはMatchCandidate自体ではなくCandidateMember行に
+    # 存在する（DynamoDB物理設計書v1.3 §3.8の属性一覧にはどちらも無い）。
     sample_member = (
         table.get_item(
             Key={
@@ -102,12 +101,12 @@ def create_event(user_id, event):
         "createdAt": created_at,
     }
 
-    # Candidate -> Event is committed atomically: repurposing
-    # MatchCandidate.status=CONFIRMED here (there's no separate "USED"
-    # value in the PENDING/CONFIRMED/DISCARDED enum, DynamoDB物理設計書
-    # v1.3 §3.8) to mean "spoken for", guarded by a ConditionExpression so
-    # two concurrent event-creation attempts on the same candidate can't
-    # both succeed (CANDIDATE_ALREADY_USED).
+    # Candidate -> Eventはアトミックにコミットされる: ここでは
+    # MatchCandidate.status=CONFIRMEDを「使用済み」を表すために転用して
+    # いる（PENDING/CONFIRMED/DISCARDEDのenumに独立した"USED"値は無い、
+    # DynamoDB物理設計書v1.3 §3.8）。ConditionExpressionでガードすること
+    # で、同じ候補に対する2つの同時イベント作成試行が両方成功することを
+    # 防ぐ（CANDIDATE_ALREADY_USED）。
     try:
         transact_write(
             [
@@ -136,9 +135,9 @@ def create_event(user_id, event):
             "CANDIDATE_ALREADY_USED", "既にイベント化済みの候補です", status_code=409
         )
 
-    # CandidateMember.status mirrors MatchCandidate.status (§3.11b) --
-    # best-effort, not part of the transaction above (a brief mirror lag is
-    # acceptable for this display-only field).
+    # CandidateMember.statusはMatchCandidate.statusをミラーする（§3.11b）
+    # -- ベストエフォートであり、上記トランザクションには含まれない
+    # （表示専用のフィールドなので、ミラーの一時的な遅延は許容できる）。
     for uid in member_ids:
         table.update_item(
             Key={
@@ -174,16 +173,15 @@ def get_event(user_id, event):
 
 
 def confirm_event(user_id, event):
-    """F-502 (API設計書v1.4 §8.3, Lambda設計書v1.1 §7.2/§7.2b).
+    """F-502 (API設計書v1.4 §8.3, Lambda設計書v1.1 §7.2/§7.2b)。
 
-    Runs the double-booking hard check (candidate members vs. already
-    CONFIRMED Participant rows, via Participant's GSI1 time-range query)
-    *before* the TransactWriteItems that flips the event to CONFIRMED and
-    creates Participant rows -- this is the synchronous "実害防止" half of
-    the two-layer double-booking design (要件定義書v1.2 §17); the
-    asynchronous half (post-hoc conflictWarning on other communities'
-    PENDING candidates) lives in MatchingLambda's EventConfirmed
-    subscriber.
+    イベントをCONFIRMEDに切り替えてParticipant行を作成するTransactWriteItems
+    の*前に*、ダブルブッキングのハードチェック（候補メンバーと既に
+    CONFIRMEDなParticipant行を、ParticipantのGSI1時間範囲クエリで突き
+    合わせる）を実行する -- これは二層のダブルブッキング防止設計
+    （要件定義書v1.2 §17）のうち、同期的な「実害防止」側にあたる。非同期
+    側（他コミュニティのPENDING候補への事後的なconflictWarning付与）は
+    MatchingLambdaのEventConfirmed購読側にある。
     """
     event_id = event["pathParameters"]["eventId"]
     table = get_table()
@@ -301,8 +299,8 @@ def confirm_event(user_id, event):
 
 
 def cancel_event(user_id, event):
-    """F-605 (API設計書v1.4 §8.4): cancels the whole event, distinct from a
-    single participant's cancel request (F-601/9.2)."""
+    """F-605 (API設計書v1.4 §8.4): イベント全体を中止する。参加者個人の
+    キャンセル申請（F-601/9.2）とは別物。"""
     event_id = event["pathParameters"]["eventId"]
     table = get_table()
     event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(

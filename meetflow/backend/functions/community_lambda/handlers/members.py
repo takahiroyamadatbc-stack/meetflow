@@ -11,7 +11,7 @@ from meetflow_common import (
 
 
 def list_members(user_id, event):
-    """GET /communities/{communityId}/members (API設計書v1.4 §4.5)."""
+    """GET /communities/{communityId}/members（API設計書v1.4 §4.5）。"""
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
     require_membership(table, community_id, user_id)
@@ -43,12 +43,12 @@ def list_members(user_id, event):
 
 
 def update_member(user_id, event):
-    """PUT /communities/{communityId}/members/{userId} (F-104: role change,
-    suspend, forced removal -- 要件定義書v1.2 §10.3).
+    """PUT /communities/{communityId}/members/{userId}（F-104: ロール変更、
+    一時停止、強制退会 -- 要件定義書v1.2 §10.3）。
 
-    Not in DynamoDB物理設計書v1.3's schema yet, so not implemented here:
-    "募集参加制限" (per-member matching/recruitment restriction) has no
-    Membership attribute defined for it.
+    DynamoDB物理設計書v1.3のスキーマにまだ無いため、ここでは未実装:
+    「募集参加制限」（メンバーごとのマッチング/募集参加制限）に対応する
+    Membership属性は定義されていない。
     """
     community_id = event["pathParameters"]["communityId"]
     target_user_id = event["pathParameters"]["userId"]
@@ -66,9 +66,9 @@ def update_member(user_id, event):
     new_status = body.get("status")
     new_role = body.get("role")
 
-    # 要件定義書v1.2 §9 / エラーコード一覧v1.1 LAST_OWNER_CANNOT_LEAVE: the
-    # sole OWNER must transfer ownership (owner-transfer endpoint) before
-    # leaving or being suspended.
+    # 要件定義書v1.2 §9 / エラーコード一覧v1.1 LAST_OWNER_CANNOT_LEAVE: 唯一の
+    # OWNERは、退出や一時停止の前に（オーナー移譲用エンドポイントで）
+    # オーナー権を移譲しなければならない。
     if (remove or new_status == "SUSPENDED") and target.get("role") == "OWNER":
         return error_response(
             "LAST_OWNER_CANNOT_LEAVE",

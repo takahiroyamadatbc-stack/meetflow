@@ -15,9 +15,9 @@ _DEFAULT_INVITE_BASE_URL = "https://meetflow.jp/invite"
 
 
 def create_invite(user_id, event):
-    """F-102 (API設計書v1.4 §4.3): OWNER/ADMIN issue an invite URL, keyed
-    directly by an unguessable token (DynamoDB物理設計書v1.3 §3.4) so
-    joining is a single GetItem.
+    """F-102（API設計書v1.4 §4.3）: OWNER/ADMINが招待URLを発行する。推測
+    不可能なトークンを直接キーとする（DynamoDB物理設計書v1.3 §3.4）ため、
+    参加処理はGetItem1回で済む。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -46,9 +46,9 @@ def create_invite(user_id, event):
 
 
 def join_via_invite(user_id, event):
-    """F-103 (API設計書v1.4 §4.4): branches on the community's
-    `memberApprovalRequired` flag (要件定義書v1.2 §10.1) between immediate
-    Membership creation and a PENDING JoinRequest.
+    """F-103（API設計書v1.4 §4.4）: コミュニティの`memberApprovalRequired`
+    フラグ（要件定義書v1.2 §10.1）によって、即時のMembership作成とPENDING
+    JoinRequestのどちらになるかが分岐する。
     """
     token = event["pathParameters"]["token"]
     body = parse_body(event)
@@ -62,9 +62,9 @@ def join_via_invite(user_id, event):
         return error_response(
             "INVITE_REVOKED", "招待URLが無効化されています", status_code=410
         )
-    # expiresAt (DynamoDB物理設計書v1.3 §3.4) is a future/optional field for
-    # time-limited invites; MVP always creates non-expiring invites so it's
-    # not enforced here yet.
+    # expiresAt（DynamoDB物理設計書v1.3 §3.4）は、期限付き招待のための
+    # 将来的/任意のフィールドである。MVPでは常に無期限の招待を作成するため、
+    # ここではまだ強制していない。
 
     community_id = invite["communityId"]
     if table.get_item(

@@ -132,14 +132,15 @@ def test_post_confirmation_ignores_non_confirm_signup_trigger(table):
 
 
 def test_post_confirmation_is_idempotent_on_cognito_retry(table):
-    """Cognito can retry the Post Confirmation trigger on transient failure
-    (handler.py's own docstring/comment). A retry must not raise -- an
-    uncaught exception here would fail the user's sign-up confirmation.
+    """Cognitoは一時的な失敗時にPost Confirmationトリガーをリトライすることが
+    ある（handler.py自身のdocstring/コメント参照）。リトライ時に例外が
+    発生してはならない -- ここで例外が捕捉されないと、ユーザーのサインアップ
+    確認自体が失敗してしまう。
     """
     event = cognito_post_confirmation_event(user_id="user-1", nickname="たろう")
     handler._handle_post_confirmation(event)
 
-    # Must not raise on the second (retried) invocation.
+    # 2回目（リトライ）の呼び出しで例外が発生してはならない。
     handler._handle_post_confirmation(event)
 
     item = table.get_item(Key={"PK": "USER#user-1", "SK": "PROFILE"})["Item"]

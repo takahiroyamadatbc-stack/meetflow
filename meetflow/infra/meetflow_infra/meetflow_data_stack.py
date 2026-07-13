@@ -7,20 +7,20 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-# This stack implements DynamoDB物理設計書v1.3 §1-§3: a single DynamoDB table
-# ("MeetFlowTable") shared by every entity in the system, using PK/SK prefixes
-# to distinguish entity types, plus two overloaded GSIs (GSI1 "ByUser",
-# GSI2 "ByAltId") that are likewise shared across entities.
+# このスタックはDynamoDB物理設計書v1.3 §1-§3を実装する: システム内の
+# 全エンティティが共有する単一のDynamoDBテーブル("MeetFlowTable")で、
+# PK/SKプレフィックスによってエンティティ種別を区別し、加えて同様に
+# エンティティ間で共有される2本のオーバーロードGSI(GSI1 "ByUser"、
+# GSI2 "ByAltId")を持つ。
 #
-# There is intentionally only ONE physical dynamodb.Table here — per §1 of the
-# design doc, single-table design was chosen specifically to avoid RDB-style
-# joins at this community scale (10-30 members). The comment block below
-# enumerates every entity from §3 and the exact key attributes it uses, so
-# that this table definition can be checked against the design doc entity by
-# entity without missing one.
+# ここに物理的なdynamodb.Tableが意図的に1つしか無いのは、設計書§1に
+# 従い、このコミュニティ規模(10-30人)ではRDB的なjoinを避けるために
+# 単一テーブル設計を選んだためである。以下のコメントブロックは§3の
+# 全エンティティと、それぞれが使う正確なキー属性を列挙しており、この
+# テーブル定義を設計書とエンティティごとに漏れなく突き合わせられるように
+# している。
 #
-# Entity -> key structure (see DynamoDB物理設計書v1.3 §3 for full attribute
-# lists):
+# エンティティ -> キー構造(全属性一覧はDynamoDB物理設計書v1.3 §3を参照):
 #
 #   3.1  User              PK=USER#{userId}                SK=PROFILE
 #   3.2  Community          PK=COMMUNITY#{communityId}       SK=METADATA
@@ -35,7 +35,7 @@ from constructs import Construct
 #   3.8  MatchCandidate     PK=COMMUNITY#{communityId}       SK=CANDIDATE#{createdAt}#{candidateId}
 #                           GSI2PK=CANDIDATE#{candidateId}   GSI2SK=METADATA
 #   3.9  Place              PK=PLACE#{placeId}               SK=METADATA
-#                           GSI1PK=COMMUNITY#{communityId}   GSI1SK=PLACE#{placeId}  (ownerType=COMMUNITY only)
+#                           GSI1PK=COMMUNITY#{communityId}   GSI1SK=PLACE#{placeId}  (ownerType=COMMUNITYの場合のみ)
 #   3.10 Event              PK=EVENT#{eventId}               SK=METADATA
 #                           GSI1PK=COMMUNITY#{communityId}   GSI1SK=EVENT#{startTime}#{eventId}
 #   3.11 Participant        PK=EVENT#{eventId}               SK=PARTICIPANT#{userId}
@@ -49,17 +49,17 @@ from constructs import Construct
 #   3.14 Notification       PK=USER#{userId}                 SK=NOTIF#{createdAt}#{notificationId}
 #   3.15 OperationLog       PK=LOG#{communityId}              SK={createdAt}#{logId}
 #                           GSI1PK=USER#{userId}             GSI1SK=LOG#{createdAt}#{logId}
-#                           ttl={unix timestamp}  (only entity that populates the TTL attribute)
+#                           ttl={unix timestamp}  (TTL属性を実際に持つのはこのエンティティのみ)
 #   3.16 EventStatusHistory PK=EVENT#{eventId}               SK=STATUS#{createdAt}
 #
-# All of the above share the same physical attributes: PK, SK, GSI1PK, GSI1SK,
-# GSI2PK, GSI2SK, ttl. No entity-specific attributes appear in the key
-# schema itself (they are plain item attributes), so a single dynamodb.Table
-# with this key schema and these two GSIs covers every entity in §3.
+# 上記は全て同じ物理属性(PK, SK, GSI1PK, GSI1SK, GSI2PK, GSI2SK, ttl)を
+# 共有する。キースキーマ自体にはエンティティ固有の属性は一切現れない
+# (それらは単なるアイテム属性である)ため、このキースキーマと2本のGSIを
+# 持つ単一のdynamodb.Tableで、§3の全エンティティをカバーできる。
 
 
 class MeetFlowDataStack(Stack):
-    """CDK stack for MeetFlow's single-table DynamoDB design (v1.3)."""
+    """MeetFlowの単一テーブルDynamoDB設計(v1.3)のCDKスタック。"""
 
     def __init__(
         self,
@@ -74,11 +74,11 @@ class MeetFlowDataStack(Stack):
         self.env_name = env_name
         is_prod = env_name == "prod"
 
-        # DynamoDB物理設計書v1.3 §1: "暗号化：AWS所有キーではなくKMS". A
-        # customer-managed key (rather than the AWS_MANAGED "aws/dynamodb"
-        # key) is used so that key policy / IAM grants can be scoped per
-        # domain Lambda later, matching the least-privilege IAM direction in
-        # Lambda設計書v1.1 §12.2.
+        # DynamoDB物理設計書v1.3 §1: "暗号化：AWS所有キーではなくKMS"。
+        # (AWS_MANAGEDの"aws/dynamodb"キーではなく)カスタマー管理キーを
+        # 使うことで、後からkey policy / IAM grantをドメインLambdaごとに
+        # スコープできるようにし、Lambda設計書v1.1 §12.2の最小権限方針に
+        # 合わせている。
         self.table_key = kms.Key(
             self,
             "MeetFlowTableKey",
@@ -88,9 +88,9 @@ class MeetFlowDataStack(Stack):
             removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
         )
 
-        # DynamoDB物理設計書v1.3 §1: single table, on-demand capacity, PITR,
-        # KMS encryption. AWSシステム構成設計書v1.2 §15: dev-/staging-/prod-
-        # resource-name prefixing for environment separation.
+        # DynamoDB物理設計書v1.3 §1: 単一テーブル、オンデマンドキャパシティ、
+        # PITR、KMS暗号化。AWSシステム構成設計書v1.2 §15: 環境分離のための
+        # dev-/staging-/prod-リソース名プレフィックス。
         self.table = dynamodb.Table(
             self,
             "MeetFlowTable",
@@ -107,22 +107,22 @@ class MeetFlowDataStack(Stack):
             point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
                 point_in_time_recovery_enabled=True
             ),
-            # Only OperationLog (§3.15) populates this attribute; DynamoDB
-            # TTL only expires items that actually carry the attribute, so
-            # every other entity is unaffected by declaring it table-wide.
+            # この属性を実際に持つのはOperationLog(§3.15)のみ。DynamoDBの
+            # TTLはその属性を実際に持つアイテムしか失効させないため、
+            # テーブル全体でこれを宣言しても他のエンティティには影響しない。
             time_to_live_attribute="ttl",
             removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
             deletion_protection=is_prod,
         )
 
-        # GSI1 "ByUser": overloaded across Membership, JoinRequest,
-        # Availability, Place, Event, Participant, CandidateMember,
-        # GameResult, Notification (PK-only, no GSI needed) and OperationLog.
-        # ALL projection because the entities sharing this index need
-        # different attribute sets returned (e.g. candidate score/members vs.
-        # notification message), and community scale (10-30 members) makes
-        # the extra storage/throughput cost of ALL negligible versus keeping
-        # a second lookup per query.
+        # GSI1「ByUser」: Membership, JoinRequest, Availability, Place,
+        # Event, Participant, CandidateMember, GameResult, Notification
+        # (PKのみでGSI不要)、OperationLogにまたがってオーバーロードされる。
+        # このインデックスを共有するエンティティはそれぞれ異なる属性集合
+        # (例: 候補のスコア/メンバー vs. 通知メッセージ)を返す必要があり、
+        # かつコミュニティ規模(10-30人)ではALLプロジェクションの追加の
+        # ストレージ/スループットコストは、クエリごとに2回目のlookupを
+        # 行うコストに比べて無視できるため、ALLプロジェクションとする。
         self.table.add_global_secondary_index(
             index_name="GSI1",
             partition_key=dynamodb.Attribute(
@@ -134,10 +134,10 @@ class MeetFlowDataStack(Stack):
             projection_type=dynamodb.ProjectionType.ALL,
         )
 
-        # GSI2 "ByAltId": direct ID lookup that bypasses the community
-        # partition. Only MatchCandidate (§3.8) uses this today (candidate
-        # detail lookup by candidateId alone), but it is defined at the table
-        # level per the design doc's key-design overview (§2).
+        # GSI2 "ByAltId": コミュニティのパーティションを介さない直接ID
+        # lookup。現時点で使っているのはMatchCandidate(§3.8)のみ
+        # (candidateId単独での候補詳細lookup)だが、設計書のキー設計
+        # 概要(§2)に従い、テーブルレベルで定義している。
         self.table.add_global_secondary_index(
             index_name="GSI2",
             partition_key=dynamodb.Attribute(

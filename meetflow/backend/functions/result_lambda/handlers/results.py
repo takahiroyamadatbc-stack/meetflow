@@ -12,13 +12,14 @@ from meetflow_common import (
 
 
 def create_session(user_id, event):
-    """F-801〜F-803 (API設計書v1.4 §10.1).
+    """F-801〜F-803 (API設計書v1.4 §10.1)。
 
-    Whether COMPLETED status should be required before results can be
-    registered (`EVENT_NOT_COMPLETED`) is explicitly left open in
-    エラーコード一覧v1.1 §7 ("実装方針次第で許可する場合は不要。要検討") --
-    left unenforced here so mid-event/session-by-session score entry isn't
-    blocked, rather than locking in a policy the docs haven't settled on.
+    成績登録前にCOMPLETEDステータスを必須とすべきか（`EVENT_NOT_COMPLETED`）
+    は、エラーコード一覧v1.1 §7で明示的に未決事項とされている
+    （「実装方針次第で許可する場合は不要。要検討」）-- ドキュメントが
+    まだ確定していない方針を先に決め打ちするのではなく、イベント進行中の
+    セッションごとのスコア入力がブロックされないよう、ここでは強制しない
+    ことにしている。
     """
     event_id = event["pathParameters"]["eventId"]
     table = get_table()
@@ -83,15 +84,15 @@ def create_session(user_id, event):
 
 
 def get_user_results(user_id, event):
-    """F-804 (API設計書v1.4 §10.2): only viewable by someone who shares a
-    community with the target user, scoped to that community.
+    """F-804 (API設計書v1.4 §10.2): 対象ユーザーと同じコミュニティに所属
+    する人のみ閲覧可能で、そのコミュニティにスコープされる。
 
-    Stats are aggregated on read from GameResult rows (GSI1) rather than a
-    stored running total. Lambda設計書v1.1 §8.3 describes updating totals
-    "in place at registration time", but DynamoDB物理設計書v1.3 §3.13
-    defines no aggregate/stats entity to hold such a running total --
-    reconciled here by computing it at read time instead of inventing an
-    attribute outside the physical design.
+    統計情報は、保存された累計値ではなくGameResult行（GSI1）から読み取り
+    時に集計する。Lambda設計書v1.1 §8.3は「登録時にその場で累計を更新
+    する」と記載しているが、DynamoDB物理設計書v1.3 §3.13にはそのような
+    累計値を保持する集計/統計エンティティが定義されていない -- 物理設計の
+    外側に属性を作るのではなく、読み取り時に計算することで整合を取って
+    いる。
     """
     target_user_id = event["pathParameters"]["userId"]
     table = get_table()
@@ -121,12 +122,13 @@ def get_user_results(user_id, event):
         KeyConditionExpression=Key("GSI1PK").eq(f"USER#{target_user_id}")
         & Key("GSI1SK").begins_with(f"COMMUNITY#{community_id}"),
     )
-    # Membership rows share this same GSI1 prefix (GSI1SK is exactly
-    # `COMMUNITY#{communityId}`, DynamoDB物理設計書v1.3 §3.3), which is
-    # itself a prefix of GameResult's `COMMUNITY#{communityId}#{playedAt}`
-    # (§3.13) -- `begins_with` matches both, so without this filter a
-    # user's own Membership record gets counted as a phantom 0-rank game.
-    # PK discriminates cleanly: GameResult always lives under `EVENT#...`.
+    # Membership行もこれと同じGSI1プレフィックスを共有している（GSI1SKが
+    # ちょうど`COMMUNITY#{communityId}`、DynamoDB物理設計書v1.3 §3.3）。
+    # これはGameResultの`COMMUNITY#{communityId}#{playedAt}`（§3.13）の
+    # プレフィックスでもあるため、`begins_with`は両方にマッチしてしまい、
+    # このフィルタが無いとユーザー自身のMembershipレコードが幻の0位ゲーム
+    # としてカウントされてしまう。PKで綺麗に判別できる: GameResultは常に
+    # `EVENT#...`配下に存在する。
     game_results = [
         item for item in resp.get("Items", []) if item["PK"].startswith("EVENT#")
     ]
@@ -141,8 +143,8 @@ def _next_session_no(table, event_id):
     )
     existing_nos = set()
     for item in resp.get("Items", []):
-        # SESSION#{sessionNo} (session item, 2 "#"-parts) vs.
-        # SESSION#{sessionNo}#RESULT#{userId} (result item, 4 parts).
+        # SESSION#{sessionNo}（セッションアイテム、"#"区切りで2パーツ） vs.
+        # SESSION#{sessionNo}#RESULT#{userId}（結果アイテム、4パーツ）。
         parts = item["SK"].split("#")
         if len(parts) == 2:
             existing_nos.add(int(parts[1]))
@@ -188,11 +190,11 @@ def _aggregate(results):
 
     ranks = [r.get("rank", 0) for r in results]
     points = sum(r.get("rankPoints", 0) for r in results)
-    # Approximation: "last place" is inferred from the worst rank this user
-    # has actually recorded, rather than each session's true player count
-    # (not stored on GameResult) -- fine as long as a community mostly
-    # plays one fixed game type, less accurate if a user mixes e.g.
-    # 3-player and 4-player sessions.
+    # 近似値: 「最下位」は各セッションの実際のプレイヤー数（GameResultには
+    # 保存されていない）ではなく、このユーザーが実際に記録した最も悪い
+    # 着順から推測する -- コミュニティがほぼ固定のゲーム種別のみをプレイ
+    # している限りは問題ないが、例えば3人打ちと4人打ちが混在するユーザー
+    # では精度が落ちる。
     worst_rank = max(ranks)
 
     return {
