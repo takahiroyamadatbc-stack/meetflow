@@ -1,11 +1,9 @@
-import json
-
 from meetflow_common import (
-    AuthError,
+    dispatch,
     error_response,
-    get_authenticated_user_id,
     get_table,
     now_iso_ms,
+    parse_body,
     success_response,
 )
 
@@ -13,6 +11,11 @@ from meetflow_common import (
 # PROFILE_VALIDATION_ERROR (エラーコード一覧v1.1 §2).
 _MAX_NICKNAME_LENGTH = 30
 _MAX_BIO_LENGTH = 300
+
+_ROUTES = {
+    ("GET", "/users/me"): lambda user_id, event: _get_profile(user_id),
+    ("PUT", "/users/me"): lambda user_id, event: _update_profile(user_id, event),
+}
 
 
 def handler(event, context):
@@ -26,7 +29,7 @@ def handler(event, context):
     """
     if "triggerSource" in event:
         return _handle_post_confirmation(event)
-    return _handle_api_gateway(event)
+    return dispatch(_ROUTES, event)
 
 
 def _handle_post_confirmation(event):
@@ -66,20 +69,6 @@ def _handle_post_confirmation(event):
     return event
 
 
-def _handle_api_gateway(event):
-    method = event.get("httpMethod")
-    try:
-        user_id = get_authenticated_user_id(event)
-    except AuthError as exc:
-        return error_response(exc.code, exc.message)
-
-    if method == "GET":
-        return _get_profile(user_id)
-    if method == "PUT":
-        return _update_profile(user_id, event)
-    return error_response("INVALID_PARAMETER", f"unsupported method: {method}")
-
-
 def _get_profile(user_id):
     item = get_table().get_item(Key={"PK": f"USER#{user_id}", "SK": "PROFILE"}).get(
         "Item"
@@ -90,10 +79,7 @@ def _get_profile(user_id):
 
 
 def _update_profile(user_id, event):
-    try:
-        body = json.loads(event.get("body") or "{}")
-    except ValueError:
-        return error_response("INVALID_PARAMETER", "リクエストボディの形式が不正です")
+    body = parse_body(event)
 
     # F-003 manageable fields: nickname, icon, bio ("profile" in the API
     # contract, API設計書v1.4 §3.2), gameTypes, beginnerOk.
