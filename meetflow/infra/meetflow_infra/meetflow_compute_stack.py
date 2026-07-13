@@ -201,6 +201,12 @@ class MeetFlowComputeStack(Stack):
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
+        # Lambda設計書v1.2 §5.3 [v1.2追加]: `events:PutEvents`
+        # (`AvailabilityRequestCreated`発行用)。AvailabilityRequest自体は
+        # Availabilityと同じテーブルの別PK/SKプレフィックスなので、上記の
+        # DynamoDB権限に追加のgrantは不要。
+        events.EventBus.grant_all_put_events(fn)
+
         CfnOutput(
             self,
             "AvailabilityLambdaArn",

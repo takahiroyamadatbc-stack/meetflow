@@ -2,6 +2,7 @@ from .auth import AuthError, get_authenticated_user_id, require_membership
 from .dynamodb import get_table
 from .errors import error_response, success_response
 from .events_bus import (
+    AVAILABILITY_REQUEST_CREATED,
     CANCEL_APPROVED,
     CANDIDATE_CONFLICT_DETECTED,
     EVENT_CANCELLED,
@@ -30,6 +31,7 @@ __all__ = [
     "CANCEL_APPROVED",
     "CANDIDATE_CONFLICT_DETECTED",
     "EVENT_STATUS_CHANGED",
+    "AVAILABILITY_REQUEST_CREATED",
     "put_event",
     "BadRequest",
     "parse_body",
