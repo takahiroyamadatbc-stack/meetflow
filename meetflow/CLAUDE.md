@@ -40,14 +40,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MeetFlowは設計フェーズを終え、バックエンドの実装に着手している。`docs/`配下の日本語設計ドキュメント群は実装対象の仕様書として引き続き最優先で参照すること（背景資料ではない）。
 
 - `infra/`：AWS CDK（Python）。`MeetFlowDataStack`（DynamoDB単一テーブル）、`MeetFlowAuthStack`（Cognito）、`MeetFlowComputeStack`（共有Lambda Layer + 7ドメインLambda）を実装済み。PushSubscription/AvailabilityRequestまわりの新規Lambda処理・IAM権限（Lambda設計書v1.2）は未反映
-- `backend/`：7ドメインLambda（User/Community/Availability/Matching/Event/Result/Notification）+ 共通Layer（`meetflow_common`：DynamoDB/認証/ルーティング/EventBridge/エラーレスポンス等の共通処理）を実装済み。**pytest等の自動テストは未整備**（motoを使ったDynamoDBモックでの単体テスト追加が望ましい）
+- `backend/`：7ドメインLambda（User/Community/Availability/Matching/Event/Result/Notification）+ 共通Layer（`meetflow_common`：DynamoDB/認証/ルーティング/EventBridge/エラーレスポンス等の共通処理）を実装済み。pytest+moto(mock_aws)による単体テストは`community_lambda`のみ整備済み（`functions/community_lambda/tests/`、全13ハンドラー関数の正常系+ドメインエラー系）。他6ドメインは同じパターン（`tests/conftest.py`でMeetFlowTableのPK/SK/GSI1/GSI2キー構成をmoto上に再現）を横展開すればよい状態で、**未着手**
 - `frontend/`：未着手（空のプレースホルダー）
 - `.github/workflows/`：未着手
 
 この開発環境にはPython 3.14（miniconda3）、Node.js v24、AWS CDK CLI 2.xがグローバルに導入済みで、Claude側でもコード実行・テスト実行ができる。プロジェクト依存関係は用途ごとに分離したvenvにインストールしてある：
 
 - `infra/.venv` — `infra/requirements.txt`（aws-cdk-lib, constructs）。`cdk synth`はこのvenvのpythonをPATH優先にして実行する（例：`PATH="$(pwd)/.venv/Scripts:$PATH" cdk synth`）。cdk.jsonの`"app": "python app.py"`はPATH上のpythonをそのまま使うため、venvを有効化しない状態で実行するとaws-cdk-libが見つからずに失敗する。
-- `backend/.venv` — `boto3`, `pytest`, `moto`。共通Layer（`meetflow_common`）やドメインLambdaのハンドラーをimport・テストする際は`PYTHONPATH=layers/common/python`を通す必要がある。backend用の`requirements.txt`はまだ存在しないため、依存関係を追加した場合は都度このvenvにも反映すること。
+- `backend/.venv` — `backend/requirements-dev.txt`（boto3, pytest, moto）。共通Layer（`meetflow_common`）やドメインLambdaのハンドラーをimport・テストする際は`PYTHONPATH=layers/common/python`を通す必要がある（`community_lambda/tests/conftest.py`が実例）。依存関係を追加した場合はこのファイルとvenvの両方を更新すること。
 
 Bashツールは呼び出しごとにシェル状態がリセットされるため、venvの有効化（activate）は次のコマンド実行時には引き継がれない。各コマンドでvenv内の`python.exe`/`pip.exe`を直接パス指定するか、PATHをそのコマンド内で明示的に前置すること。
 
