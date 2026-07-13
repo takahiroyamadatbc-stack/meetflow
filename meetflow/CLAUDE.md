@@ -44,7 +44,12 @@ MeetFlowは設計フェーズを終え、バックエンドの実装に着手し
 - `frontend/`：未着手（空のプレースホルダー）
 - `.github/workflows/`：未着手
 
-コードの実行確認（`cdk synth`等）は開発者側のローカル環境で行う。この開発環境にはPython/Node/CDK CLIが無いため、Claude側でのコード実行・テスト実行はできない。
+この開発環境にはPython 3.14（miniconda3）、Node.js v24、AWS CDK CLI 2.xがグローバルに導入済みで、Claude側でもコード実行・テスト実行ができる。プロジェクト依存関係は用途ごとに分離したvenvにインストールしてある：
+
+- `infra/.venv` — `infra/requirements.txt`（aws-cdk-lib, constructs）。`cdk synth`はこのvenvのpythonをPATH優先にして実行する（例：`PATH="$(pwd)/.venv/Scripts:$PATH" cdk synth`）。cdk.jsonの`"app": "python app.py"`はPATH上のpythonをそのまま使うため、venvを有効化しない状態で実行するとaws-cdk-libが見つからずに失敗する。
+- `backend/.venv` — `boto3`, `pytest`, `moto`。共通Layer（`meetflow_common`）やドメインLambdaのハンドラーをimport・テストする際は`PYTHONPATH=layers/common/python`を通す必要がある。backend用の`requirements.txt`はまだ存在しないため、依存関係を追加した場合は都度このvenvにも反映すること。
+
+Bashツールは呼び出しごとにシェル状態がリセットされるため、venvの有効化（activate）は次のコマンド実行時には引き継がれない。各コマンドでvenv内の`python.exe`/`pip.exe`を直接パス指定するか、PATHをそのコマンド内で明示的に前置すること。
 
 ## ドキュメントの読み方
 
