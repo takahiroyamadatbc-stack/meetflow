@@ -239,7 +239,7 @@ class MeetFlowComputeStack(Stack):
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
         # §6.5: `events:PutEvents` for `CandidateConflictDetected`.
-        events.EventBus.grant_put_events_to(fn)
+        events.EventBus.grant_all_put_events(fn)
 
         # §6.1/§6.7: subscribe to `EventConfirmed` (published later by
         # EventLambda) for post-hoc double-booking detection. The rule can
@@ -296,7 +296,7 @@ class MeetFlowComputeStack(Stack):
 
         # §7.4: `events:PutEvents` for EventConfirmed/EventCancelled/
         # CancelApproved.
-        events.EventBus.grant_put_events_to(fn)
+        events.EventBus.grant_all_put_events(fn)
 
         CfnOutput(
             self,
