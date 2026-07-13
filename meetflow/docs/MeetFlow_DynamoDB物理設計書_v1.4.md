@@ -1,7 +1,7 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.3
+# MeetFlow DynamoDB 物理テーブル設計書 v1.4
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
-> v1.0→v1.1、v1.1→v1.2、v1.2→v1.3の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
+> v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
 
 ---
 
@@ -455,6 +455,56 @@ SK:   STATUS#{createdAt}
 
 ---
 
+### 3.17 PushSubscription（プッシュ通知購読情報） **[v1.4新規]**
+
+```
+PK:   USER#{userId}
+SK:   PUSHSUB#{endpointHash}
+```
+
+| 属性 | 型 | 説明 |
+|---|---|---|
+| endpoint | S | ブラウザのPush ServiceエンドポイントURL |
+| p256dh | S | 購読者公開鍵（Web Push暗号化用） |
+| auth | S | 認証シークレット（Web Push暗号化用） |
+| userAgent | S | 端末識別用の参考情報（任意） |
+| createdAt | S | ISO8601 |
+
+**アクセスパターン**
+- あるユーザーの全端末購読情報取得：`PK=USER#{userId}, SK begins_with PUSHSUB#`
+- 特定端末の購読解除：`PK=USER#{userId}, SK=PUSHSUB#{endpointHash}` を直接`DeleteItem`
+
+> **[v1.4新規]** F-703／F-704（機能要件書v1.3）に対応。`endpointHash`はendpoint文字列のハッシュ値（例：SHA-256）とし、同一端末の再登録（購読更新）が自然に`PutItem`で上書きされ、購読解除もクライアントが送る`endpoint`から同じハッシュを計算して`DeleteItem`するだけで完結するようにする（別途Query不要）。GSIは不要（通知送信は常にuserId起点で発生するため、`USER#{userId}`パーティション直下で完結する）。
+
+---
+
+### 3.18 AvailabilityRequest（空き予定提出リクエスト） **[v1.4新規]**
+
+```
+PK:   COMMUNITY#{communityId}
+SK:   AVAILREQ#{requestId}
+```
+
+| 属性 | 型 | 説明 |
+|---|---|---|
+| targetPeriodStart | S | 提出してほしい空き予定の対象期間（開始）ISO8601 |
+| targetPeriodEnd | S | 対象期間（終了）ISO8601 |
+| deadline | S | 提出期限 ISO8601 |
+| targetScope | S | ALL / SPECIFIED |
+| targetUserIds | SS | targetScope=SPECIFIEDの場合の対象userId一覧（ALLの場合は省略） |
+| message | S | 任意のメッセージ |
+| createdBy | S | 依頼した管理者userId |
+| createdAt | S | ISO8601 |
+
+**アクセスパターン**
+- コミュニティのリクエスト一覧：`PK=COMMUNITY#{id}, SK begins_with AVAILREQ#`
+- リクエスト詳細：`PK=COMMUNITY#{id}, SK=AVAILREQ#{requestId}`（`GetItem`）
+- 未提出メンバー確認：対象メンバー一覧（`targetScope=ALL`ならMembership一覧、`SPECIFIED`なら`targetUserIds`）を求めた上で、メンバーごとにAvailabilityの既存GSI1（`GSI1PK=USER#{userId}, GSI1SK between AVAIL#{targetPeriodStart}~{targetPeriodEnd}`）をQueryし、0件のユーザーを「未提出」とする
+
+> **[v1.4新規]** F-205／F-206（機能要件書v1.3）に対応。新規GSIは追加しない。「未提出者確認」は対象メンバー数分のQueryを都度実行する軽量な実装とする（コミュニティ規模10〜30人を前提とすれば許容範囲。将来の事前集計化は8章の未決事項として扱う）。リクエスト作成時の対象メンバーへの通知は、他の通知と同様にEventBridge経由（`AvailabilityRequestCreated`、Lambda設計書v1.2参照）でNotificationLambdaが受け取り作成する。
+
+---
+
 ## 4. アクセスパターン一覧（総括）
 
 | No | アクセスパターン | 使用キー |
@@ -484,6 +534,9 @@ SK:   STATUS#{createdAt}
 | 22 | イベントの状態遷移履歴 | PK=EVENT#{id}, SK begins_with STATUS# |
 | 23 | あるユーザーが含まれる時間帯重複PENDING候補の横断検索（衝突検知） [v1.3] | GSI1PK=USER#{id}, SK between CANDIDATE#{from}~{to} |
 | 24 | あるユーザーの「候補止まり」回数集計（公平性指標） [v1.3] | GSI1PK=USER#{id}, SK begins_with CANDIDATE#、期間指定＋status絞り込み |
+| 25 | ユーザーの全プッシュ通知購読情報 [v1.4] | PK=USER#{id}, SK begins_with PUSHSUB# |
+| 26 | コミュニティの空き予定提出リクエスト一覧 [v1.4] | PK=COMMUNITY#{id}, SK begins_with AVAILREQ# |
+| 27 | 未提出メンバー確認（対象期間内の空き予定有無判定。アクセスパターン7の応用） [v1.4] | GSI1PK=USER#{id}, SK between AVAIL#{targetPeriodStart}~{targetPeriodEnd} |
 
 ---
 
@@ -526,6 +579,8 @@ SK:   STATUS#{createdAt}
 | Notification | F-701, F-702 | 11.1, 11.2 |
 | OperationLog | F-1301, F-1302 | 12.1, 12.2 |
 | EventStatusHistory | 要件定義書14章 | （内部利用、API非公開） |
+| PushSubscription [v1.4] | F-703, F-704 | 11.3, 11.4 |
+| AvailabilityRequest [v1.4] | F-205, F-206 | 5.5〜5.7 |
 
 ---
 
@@ -538,6 +593,7 @@ SK:   STATUS#{createdAt}
 5. **店舗（STORE）自体のエンティティ化**：現状Placeの`ownerId`は`communityId`のみを想定しているが、店舗展開時に「Store」を独立したエンティティ（`PK=STORE#{storeId}`）として持つかどうかは、店舗アカウント機能の要件が固まってから決定する
 6. **複数コミュニティ横断の優先度比較（Phase3）**：`priorityWeight`/`desiredFrequency`属性は確保済みだが、実際にどう使うか（単純ソートか、スコアへの重み付けか）は満足度の定義が固まってから設計する
 7. **公平性指標（3.11b CandidateMember）の集計をどのLambdaが担うか**：候補一覧取得時にMatchingLambdaが都度計算するか、非同期で事前集計しておくかは、コミュニティ規模が大きくなった際のクエリコストを見て判断する
+8. **AvailabilityRequestの未提出者確認のスケーリング** [v1.4]：対象メンバー数分のQueryを都度実行する軽量実装（3.18参照）はコミュニティ規模10〜30人であれば十分だが、規模が大きくなった場合は提出済みユーザーIDのSetをAvailabilityRequest側にキャッシュする等の事前集計化を検討する
 
 ---
 
@@ -571,3 +627,15 @@ SK:   STATUS#{createdAt}
 | 3 | CandidateMember（3.11b）を新規追加 | ①候補確定後の事後衝突検知、②「候補止まり」の公平性指標表示、の2用途を1エンティティで実現 |
 | 4 | トランザクション設計方針にイベント承認時のダブルブッキング事前チェックを追加 | 実害の防止を確定処理の直前でハードチェックする方針を明記 |
 | 5 | 対応関係表・アクセスパターン一覧を更新 | 整合性維持 |
+
+---
+
+## 12. v1.3 → v1.4 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | PushSubscription（3.17）を新規追加 | 要件定義書v1.3 27章：PWA化とWebプッシュ通知（F-703/F-704） |
+| 2 | AvailabilityRequest（3.18）を新規追加 | 要件定義書v1.3 28章：管理者からの空き予定提出リクエスト（F-205/F-206） |
+| 3 | アクセスパターン一覧に25〜27を追加 | 上記2エンティティの整合 |
+| 4 | 対応関係表に上記2エンティティを追加 | 整合性維持 |
+| 5 | 未決事項にAvailabilityRequestの未提出者確認のスケーリングを追加 | 将来のコミュニティ規模拡大時の検討事項として明記 |

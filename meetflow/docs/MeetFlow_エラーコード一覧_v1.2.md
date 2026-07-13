@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.1
+# MeetFlow エラーコード一覧 v1.2
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -53,7 +53,7 @@
 
 ---
 
-## 4. Availability ドメイン
+## 4. Availability ドメイン **[v1.2修正]**
 
 | コード | HTTPステータス | 内容 | 発生API |
 |---|---|---|---|
@@ -61,6 +61,9 @@
 | `AVAILABILITY_NOT_FOUND` | 404 | 指定した空き予定が存在しない | `PUT/DELETE /availability/{id}` |
 | `AVAILABILITY_OVERLAP` | 409 | 同一ユーザー・同一コミュニティで時間帯が重複する予定が既に存在する（画面設計書v1.0 S-09のハイライト表示と連動。エラーとして弾くか警告に留めるかは実装時に確定） | `POST .../availability`, `.../availability/batch` |
 | `BATCH_SIZE_EXCEEDED` | 400 | バッチ登録の1回あたり上限（DynamoDB BatchWriteItemの25件制約に対するアプリ側チェック。実際は内部でチャンク分割するため通常発生しないが、極端に大きいリクエストの防御用） | `POST .../availability/batch` |
+| `AVAILABILITY_REQUEST_NOT_FOUND` **[v1.2新規]** | 404 | 指定した空き予定提出リクエストが存在しない | `GET /communities/{id}/availability-requests/{requestId}/pending-members` |
+
+> **[v1.2新規]** 空き予定提出リクエストの対象範囲・期間・期限の入力不正は、専用コードを新設せず既存の`INVALID_PARAMETER`（400）で扱う（機能要件書v1.3 F-205/F-206に対応するAPI設計書v1.5 5.5〜5.7）。
 
 ---
 
@@ -107,11 +110,13 @@
 
 ---
 
-## 8. Notification ドメイン
+## 8. Notification ドメイン **[v1.2修正]**
 
 | コード | HTTPステータス | 内容 | 発生API |
 |---|---|---|---|
 | `NOTIFICATION_NOT_FOUND` | 404 | 指定した通知が存在しない | `PUT /notifications/{id}/read` |
+
+> **[v1.2新規]** プッシュ通知購読解除（`DELETE /users/me/push-subscriptions`）は冪等な操作とし、指定した`endpoint`の購読情報が存在しなくても専用エラーは返さず成功として扱う（ブラウザ側が既に失効した購読を解除しようとするケースを想定）。
 
 ---
 
@@ -150,3 +155,12 @@
 | 1 | Eventドメインに`PARTICIPANT_SCHEDULE_CONFLICT`（409）を追加 | イベント承認時のダブルブッキング事前チェック |
 | 2 | Matchingドメインの補足に`conflictWarning`/`fairnessCount`がエラーではなく参考情報である旨を追記 | API設計書v1.4 6.2との整合 |
 | 3 | フロントエンド表示方針表に`PARTICIPANT_SCHEDULE_CONFLICT`をモーダル表示対象として追加 | 承認ブロックの明示的な伝達が必要なため |
+
+---
+
+## v1.1 → v1.2 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | Availabilityドメインに`AVAILABILITY_REQUEST_NOT_FOUND`（404）を追加 | 要件定義書v1.3 28章：管理者からの空き予定提出リクエスト（F-206） |
+| 2 | Notificationドメインにプッシュ通知購読解除の冪等性方針を追記（新規エラーコードなし） | 要件定義書v1.3 27章：PWA化とWebプッシュ通知（F-704） |

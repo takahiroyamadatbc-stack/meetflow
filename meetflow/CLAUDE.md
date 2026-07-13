@@ -6,13 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 実装前に必ず docs/ 内の以下を読むこと:
 
-- 要件定義書v1.2
-- 機能要件書v1.2
-- DynamoDB物理設計書v1.3（特に単一テーブル設計のPK/SK/GSI1/GSI2）
-- Lambda設計書v1.1（7ドメイン構成、IAM権限は「案C」を採用）
-- API設計書v1.4
-- 画面設計書v1.2
-- エラーコード一覧v1.1
+- 要件定義書v1.3
+- 機能要件書v1.3
+- DynamoDB物理設計書v1.4（特に単一テーブル設計のPK/SK/GSI1/GSI2）
+- Lambda設計書v1.2（7ドメイン構成、IAM権限は「案C」を採用）
+- API設計書v1.5
+- 画面設計書v1.3
+- エラーコード一覧v1.2
+- AWSシステム構成設計書v1.3
 
 ## 技術スタック
 
@@ -36,9 +37,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-MeetFlowは現在**設計フェーズ**にある。実装コードはまだ存在しない — `backend/`、`frontend/`、`infra/`は空のプレースホルダーディレクトリであり、`.github/workflows/`にもワークフローファイルはない。システムの唯一の正としての情報源は`docs/`配下の日本語設計ドキュメント群である。何かをスキャフォールドする、あるいは実装するよう依頼された場合、これらのドキュメントは背景資料ではなく、実装対象の仕様書として扱うこと。
+MeetFlowは設計フェーズを終え、バックエンドの実装に着手している。`docs/`配下の日本語設計ドキュメント群は実装対象の仕様書として引き続き最優先で参照すること（背景資料ではない）。
 
-コードがまだ存在しないため、実行すべきbuild/lint/testコマンドは無い。実装が始まった時点で、実際のコマンド（下記のAWS Lambda + React構成を踏まえると、`backend/`・`frontend/`配下のパッケージ単位になる可能性が高い）をこのファイルに追記すること。
+- `infra/`：AWS CDK（Python）。`MeetFlowDataStack`（DynamoDB単一テーブル）、`MeetFlowAuthStack`（Cognito）、`MeetFlowComputeStack`（共有Lambda Layer + 7ドメインLambda）を実装済み。PushSubscription/AvailabilityRequestまわりの新規Lambda処理・IAM権限（Lambda設計書v1.2）は未反映
+- `backend/`：7ドメインLambda（User/Community/Availability/Matching/Event/Result/Notification）+ 共通Layer（`meetflow_common`：DynamoDB/認証/ルーティング/EventBridge/エラーレスポンス等の共通処理）を実装済み。**pytest等の自動テストは未整備**（motoを使ったDynamoDBモックでの単体テスト追加が望ましい）
+- `frontend/`：未着手（空のプレースホルダー）
+- `.github/workflows/`：未着手
+
+コードの実行確認（`cdk synth`等）は開発者側のローカル環境で行う。この開発環境にはPython/Node/CDK CLIが無いため、Claude側でのコード実行・テスト実行はできない。
 
 ## ドキュメントの読み方
 
@@ -80,7 +86,7 @@ User → CloudFront → S3 (React SPA) / API Gateway (Cognito Authorizer) → 7 
 - **DynamoDB**：単一テーブル（`MeetFlowTable`）、オンデマンドキャパシティ、PITR有効、KMS暗号化。GSIは2本のみで、オーバーロードGSIパターンを採用：
   - GSI1（`ByUser`）— 「あるユーザーの○○」系の横断取得（所属コミュニティ、空き予定、参加イベント、成績、操作ログ）に加え、時間範囲をキーにした複数の衝突検知/公平性クエリにも使う。
   - GSI2（`ByAltId`）— コミュニティのパーティションを介さない直接IDルックアップ（例：`candidateId`のみで候補詳細を取得）。
-  - 各エンティティはPK/SKのプレフィックス（`USER#`、`COMMUNITY#`、`INVITE#`、`EVENT#`、`PLACE#`、`LOG#`等）でテーブルを共有する。全エンティティ・キー一覧は`docs/MeetFlow_DynamoDB物理設計書_v1.3.md` §3、集約されたアクセスパターン一覧は§4を参照。新しいクエリを追加する前に必ず読むこと。このスキーマ全体は場当たり的なクエリではなく、事前に洗い出されたアクセスパターン集合の上に構築されている。
+  - 各エンティティはPK/SKのプレフィックス（`USER#`、`COMMUNITY#`、`INVITE#`、`EVENT#`、`PLACE#`、`LOG#`等）でテーブルを共有する。全エンティティ・キー一覧は`docs/MeetFlow_DynamoDB物理設計書_v1.4.md` §3、集約されたアクセスパターン一覧は§4を参照。新しいクエリを追加する前に必ず読むこと。このスキーマ全体は場当たり的なクエリではなく、事前に洗い出されたアクセスパターン集合の上に構築されている。
   - 部分適用してはいけない処理（参加リクエスト承認、OWNER変更、イベント承認）には`TransactWriteItems`を使用し、二重書き込みのレース（キャンセル申請の二重承認等）には`ConditionExpression`でガードする。
 - **ダブルブッキング防止**は、ユーザーが複数コミュニティに所属しうるという前提から、意図的に二層・非対称な設計になっている：（1）イベント確定時に`Participant`のGSI1を時間範囲でクエリする同期的なハードチェックで、重複があれば確定を**ブロック**する（`409 PARTICIPANT_SCHEDULE_CONFLICT`）。対して（2）非同期の事後チェック（`CandidateMember`エンティティ＋`EventConfirmed`購読）は、管理者向けに`conflictWarning`フラグを立てるだけで、誰かを自動的に除外することは無い。マッチング/イベント確定まわりのコードを触る際は、この2つの仕組みを混同しないこと。
 - **公平性指標**（`CandidateMember`の`fairnessCount`）と**衝突警告**は、あくまで管理者向けの表示専用シグナルであり、スコアリングや自動除外ロジックに組み込んではならない。これは上記の「システムが提案し、人間が判断する」という中核原則を反映したものである。
@@ -89,9 +95,9 @@ User → CloudFront → S3 (React SPA) / API Gateway (Cognito Authorizer) → 7 
 
 - REST over HTTPS、JSON、`Authorization: Bearer {JWT}`。
 - 統一されたレスポンス形式：`{"success": true, "data": {...}}` または `{"success": false, "error": {"code": "...", "message": "..."}}`。
-- エラーコードは`docs/MeetFlow_エラーコード一覧_v1.1.md`にドメインごとに一元管理されており、それぞれHTTPステータスと、4種類のフロントエンド表示方式（インラインのフォームエラー / トースト / モーダル / 空状態画面）のいずれかに対応付けられている。新しいコードを作るのではなく既存のものを再利用し、既存のドメインエラーの命名パターン（例：`PARTICIPANT_SCHEDULE_CONFLICT`、`CANCEL_REQUEST_ALREADY_PROCESSED`）に従うこと。
+- エラーコードは`docs/MeetFlow_エラーコード一覧_v1.2.md`にドメインごとに一元管理されており、それぞれHTTPステータスと、4種類のフロントエンド表示方式（インラインのフォームエラー / トースト / モーダル / 空状態画面）のいずれかに対応付けられている。新しいコードを作るのではなく既存のものを再利用し、既存のドメインエラーの命名パターン（例：`PARTICIPANT_SCHEDULE_CONFLICT`、`CANCEL_REQUEST_ALREADY_PROCESSED`）に従うこと。
 - 人数条件は常に**範囲判定**（最低〜最大）であり、厳密一致では決してない。これは以前のバージョンからの意図的な修正なので、厳密一致に「単純化」して戻さないこと。
-- フロントエンドはモバイルファースト（幅375〜430px）のReact SPAで、Tailwind CSS + shadcn/ui、画面下部のタブバーナビゲーション（ホーム / コミュニティ / 予定 / 通知 / マイページ）を採用する（`docs/MeetFlow_画面設計書_v1.2.md`参照）。
+- フロントエンドはモバイルファースト（幅375〜430px）のReact SPAで、Tailwind CSS + shadcn/ui、画面下部のタブバーナビゲーション（ホーム / コミュニティ / 予定 / 通知 / マイページ）を採用する（`docs/MeetFlow_画面設計書_v1.3.md`参照）。PWA化（Service Worker + Webアプリマニフェスト）とWebプッシュ通知（VAPID鍵、Amazon SNS等は使わない）がMVPスコープに含まれる（要件定義書v1.3 27章）。
 
 ## CI/CD（計画中）
 
