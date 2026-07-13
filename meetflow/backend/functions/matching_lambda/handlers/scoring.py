@@ -53,7 +53,12 @@ def calculate_score(*, template, members_profiles, members_days_since_last_playe
     if recency_fraction > 0.5:
         reasons.append("最近参加していない人を含む")
 
-    priority = min(max(template.get("priority", 0) or 0, 0), 100)
+    # template.get("priority") comes back as decimal.Decimal when the
+    # EventTemplate item was read via DynamoDB (boto3's Table resource
+    # deserializes all Number attributes to Decimal, never int/float) --
+    # mixing that into the float arithmetic below raises TypeError, so cast
+    # to int here rather than at every call site.
+    priority = min(max(int(template.get("priority", 0) or 0), 0), 100)
 
     total = (
         _CONDITION_MATCH_WEIGHT * beginner_fraction

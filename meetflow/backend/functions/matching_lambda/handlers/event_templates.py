@@ -91,11 +91,16 @@ def update_template(user_id, event):
     if not body:
         return error_response("INVALID_PARAMETER", "更新項目がありません")
 
+    # existing.get(...) fallbacks come back as decimal.Decimal (DynamoDB
+    # Number attributes are never deserialized to int/float by boto3's
+    # Table resource) -- cast to int here so a partial update (e.g. only
+    # `priority` in the body) doesn't fail `_validate`'s
+    # `isinstance(min_players, int)` check on the untouched fields.
     merged = {
         "gameType": body.get("gameType", existing.get("gameType")),
-        "minPlayers": body.get("minPlayers", existing.get("minPlayers")),
-        "maxPlayers": body.get("maxPlayers", existing.get("maxPlayers")),
-        "priority": body.get("priority", existing.get("priority", 0)),
+        "minPlayers": body.get("minPlayers", _as_int(existing.get("minPlayers"))),
+        "maxPlayers": body.get("maxPlayers", _as_int(existing.get("maxPlayers"))),
+        "priority": body.get("priority", _as_int(existing.get("priority", 0))),
         "conditions": body.get("conditions", existing.get("conditions", {})),
     }
     validation_error = _validate(merged)
@@ -152,6 +157,10 @@ def delete_template(user_id, event):
         target_id=template_id,
     )
     return success_response({"templateId": template_id, "deleted": True})
+
+
+def _as_int(value):
+    return None if value is None else int(value)
 
 
 def _validate(body):
