@@ -55,14 +55,12 @@ def create_cancel_request(user_id, event):
     event_id = event["pathParameters"]["eventId"]
     table = get_table()
 
-    participant = table.get_item(
-        Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{user_id}"}
-    ).get("Item")
-    if participant is None or participant.get("status") != "CONFIRMED":
-        return error_response(
-            "NOT_A_PARTICIPANT", "イベント参加者ではありません", status_code=403
-        )
-
+    # Checked before the participant-status check below: a successful
+    # cancel request already flips the Participant's own status away from
+    # CONFIRMED (to CANCEL_REQUESTED), so on a resubmission the status
+    # check would otherwise always fire first and misreport
+    # NOT_A_PARTICIPANT instead of the more specific (and correct)
+    # CANCEL_REQUEST_ALREADY_PENDING.
     existing = table.get_item(
         Key={"PK": f"EVENT#{event_id}", "SK": f"CANCELREQ#{user_id}"}
     ).get("Item")
@@ -71,6 +69,14 @@ def create_cancel_request(user_id, event):
             "CANCEL_REQUEST_ALREADY_PENDING",
             "既にキャンセル申請済みです",
             status_code=409,
+        )
+
+    participant = table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{user_id}"}
+    ).get("Item")
+    if participant is None or participant.get("status") != "CONFIRMED":
+        return error_response(
+            "NOT_A_PARTICIPANT", "イベント参加者ではありません", status_code=403
         )
 
     body = parse_body(event)
