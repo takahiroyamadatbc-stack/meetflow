@@ -1,4 +1,5 @@
 from .auth import AuthError, get_authenticated_user_id, require_membership
+from .display_name import get_display_name, is_display_name_taken, resolve_display_name
 from .dynamodb import get_table
 from .errors import error_response, success_response
 from .events_bus import (
@@ -22,6 +23,9 @@ __all__ = [
     "AuthError",
     "get_authenticated_user_id",
     "require_membership",
+    "get_display_name",
+    "is_display_name_taken",
+    "resolve_display_name",
     "get_table",
     "error_response",
     "success_response",
