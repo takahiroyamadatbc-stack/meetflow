@@ -14,6 +14,10 @@ _ROUTES = {
     ("GET", "/communities/{communityId}/members"): members.list_members,
     ("PUT", "/communities/{communityId}/members/{userId}"): members.update_member,
     (
+        "PUT",
+        "/communities/{communityId}/members/me/display-name",
+    ): members.update_my_display_name,
+    (
         "GET",
         "/communities/{communityId}/join-requests",
     ): join_requests.list_join_requests,

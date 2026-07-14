@@ -3,11 +3,15 @@ from boto3.dynamodb.conditions import Key
 from meetflow_common import (
     error_response,
     get_table,
+    is_display_name_taken,
     parse_body,
     require_membership,
+    resolve_display_name,
     success_response,
     write_operation_log,
 )
+
+_MAX_DISPLAY_NAME_LENGTH = 30
 
 
 def list_members(user_id, event):
@@ -33,7 +37,7 @@ def list_members(user_id, event):
         members.append(
             {
                 "userId": member_user_id,
-                "nickname": profile.get("nickname", ""),
+                "nickname": resolve_display_name(item, profile),
                 "role": item.get("role"),
                 "status": item.get("status"),
                 "joinedAt": item.get("joinedAt"),
@@ -133,5 +137,72 @@ def update_member(user_id, event):
             "userId": target_user_id,
             "role": new_role or target.get("role"),
             "status": new_status or target.get("status"),
+        }
+    )
+
+
+def update_my_display_name(user_id, event):
+    """PUT /communities/{communityId}/members/me/display-name（F-108:
+    コミュニティごとの表示名設定・変更 -- 機能要件書v1.5）。
+
+    自分自身のMembership.displayNameを設定・変更・解除する。空文字列/null
+    送信は解除（User.nicknameへのフォールバック表示に戻す）を意味する。
+    表示ロジック自体はmeetflow_common.display_nameに一元化している。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id)
+
+    body = parse_body(event)
+    raw = body.get("displayName")
+    if raw is not None and not isinstance(raw, str):
+        return error_response("PROFILE_VALIDATION_ERROR", "表示名が不正です")
+
+    display_name = (raw or "").strip()
+    if display_name and len(display_name) > _MAX_DISPLAY_NAME_LENGTH:
+        return error_response(
+            "PROFILE_VALIDATION_ERROR",
+            f"表示名は{_MAX_DISPLAY_NAME_LENGTH}文字以内で入力してください",
+        )
+
+    # なりすまし・混同防止: 同一コミュニティ内で他メンバーの実効表示名
+    # （displayNameまたはフォールバック後のnickname）と重複しないか確認する。
+    if display_name and is_display_name_taken(
+        table, community_id, display_name, exclude_user_id=user_id
+    ):
+        return error_response(
+            "DISPLAY_NAME_ALREADY_TAKEN",
+            "この名前は既に使われています",
+            status_code=409,
+        )
+
+    key = {"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"}
+    if display_name:
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET displayName = :v",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":v": display_name},
+        )
+    else:
+        table.update_item(
+            Key=key,
+            UpdateExpression="REMOVE displayName",
+            ConditionExpression="attribute_exists(PK)",
+        )
+
+    write_operation_log(
+        action="UPDATE_DISPLAY_NAME",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Membership",
+        target_id=user_id,
+        after={"displayName": display_name or None},
+    )
+    return success_response(
+        {
+            "communityId": community_id,
+            "userId": user_id,
+            "displayName": display_name or None,
         }
     )
