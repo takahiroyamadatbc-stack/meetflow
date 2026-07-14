@@ -202,6 +202,8 @@ def _create_candidate(
 def _to_api_candidate(table, community_id, item):
     candidate_id = item["GSI2PK"].split("#", 1)[1]
     members = []
+    start_time = None
+    end_time = None
     for user_id in sorted(item.get("members", [])):
         candidate_member = (
             table.get_item(
@@ -212,6 +214,14 @@ def _to_api_candidate(table, community_id, item):
             ).get("Item")
             or {}
         )
+        # startTime/endTimeはMatchCandidate自体には無く（DynamoDB物理設計書
+        # v1.5 §3.8）、全メンバーで共通の値がCandidateMember行にミラーされて
+        # いる（event_lambdaのcreate_eventが候補からEventを作る際に行う読み
+        # 取りと同一パターン）。フロントの候補レビュー画面が「いつ開催され
+        # るか」を表示するために必要。
+        if start_time is None:
+            start_time = candidate_member.get("startTime")
+            end_time = candidate_member.get("endTime")
         profile = (
             table.get_item(Key={"PK": f"USER#{user_id}", "SK": "PROFILE"}).get("Item")
             or {}
@@ -232,6 +242,8 @@ def _to_api_candidate(table, community_id, item):
         "score": item.get("score"),
         "status": item.get("status"),
         "reasons": sorted(item.get("reasons", [])),
+        "startTime": start_time,
+        "endTime": end_time,
         "members": members,
     }
 

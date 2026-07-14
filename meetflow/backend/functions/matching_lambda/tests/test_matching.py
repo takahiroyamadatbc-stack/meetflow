@@ -44,6 +44,8 @@ def test_generate_candidates_success(table):
     candidates = body_of(response)["data"]["candidates"]
     assert len(candidates) == 1
     assert candidates[0]["status"] == "PENDING"
+    assert candidates[0]["startTime"] == _START
+    assert candidates[0]["endTime"] == _END
     member_ids = {m["userId"] for m in candidates[0]["members"]}
     assert member_ids == {"user-1", "user-2", "user-3", "user-4"}
 
