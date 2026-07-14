@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.2
+# MeetFlow エラーコード一覧 v1.3
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -32,7 +32,7 @@
 
 | コード | HTTPステータス | 内容 | 発生API |
 |---|---|---|---|
-| `PROFILE_VALIDATION_ERROR` | 400 | ニックネーム未入力・文字数超過等 | `PUT /users/me` |
+| `PROFILE_VALIDATION_ERROR` | 400 | ニックネーム未入力・文字数超過等（コミュニティ表示名の文字数超過を含む **[v1.3修正]**） | `PUT /users/me`, `PUT /communities/{id}/members/me/display-name` |
 
 ---
 
@@ -50,6 +50,9 @@
 | `LAST_OWNER_CANNOT_LEAVE` | 409 | コミュニティに1人しかいないOWNERが退出・降格しようとした | `PUT /communities/{id}/members/{userId}`, `POST .../owner-transfer` |
 | `MEMBER_SUSPENDED` | 403 | 一時停止中のメンバーによる操作 | 全メンバー操作系API |
 | `LOCATION_NOT_FOUND` | 404 | 指定した会場（Place）が存在しない | `POST /events`（locationId指定時）, `GET/POST /communities/{id}/locations` |
+| `DISPLAY_NAME_ALREADY_TAKEN` **[v1.3新規]** | 409 | 同一コミュニティ内で実効表示名（設定済みdisplayName、または未設定メンバーのUser.nickname）が重複している | `PUT /communities/{id}/members/me/display-name` |
+
+> **[v1.3新規]** コミュニティごとの表示名（F-108）の文字数超過等の基本バリデーションは、専用コードを新設せず既存の`PROFILE_VALIDATION_ERROR`（Userドメイン、400）を流用する。
 
 ---
 
@@ -132,7 +135,7 @@
 
 | 表示形式 | 該当するエラーコードの傾向 |
 |---|---|
-| インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR` |
+| インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR`, `DISPLAY_NAME_ALREADY_TAKEN`（**[v1.3追加]**） |
 | トースト（一時的なエラー） | `INTERNAL_ERROR`, `AVAILABILITY_OVERLAP`, `ALREADY_MEMBER`, `JOIN_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PROCESSED`, `CANDIDATE_ALREADY_USED`, `EVENT_ALREADY_CONFIRMED`, `EVENT_ALREADY_CANCELLED` |
 | モーダル（明示的な操作が必要） | `UNAUTHORIZED`（再ログイン誘導）, `FORBIDDEN`（権限不足の説明）, **`PARTICIPANT_SCHEDULE_CONFLICT`（承認をブロックした理由の明示、[v1.1追加]）** |
 | 空状態画面 | `NO_CANDIDATES_FOUND`, 各種`*_NOT_FOUND`（削除済みリソースへのアクセス） |
@@ -164,3 +167,13 @@
 |---|---|---|
 | 1 | Availabilityドメインに`AVAILABILITY_REQUEST_NOT_FOUND`（404）を追加 | 要件定義書v1.3 28章：管理者からの空き予定提出リクエスト（F-206） |
 | 2 | Notificationドメインにプッシュ通知購読解除の冪等性方針を追記（新規エラーコードなし） | 要件定義書v1.3 27章：PWA化とWebプッシュ通知（F-704） |
+
+---
+
+## v1.2 → v1.3 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | Communityドメインに`DISPLAY_NAME_ALREADY_TAKEN`（409）を追加 | 機能要件書v1.5 F-108：コミュニティごとの表示名の重複チェック |
+| 2 | `PROFILE_VALIDATION_ERROR`の発生APIにコミュニティ表示名設定エンドポイントを追加（バリデーションを流用） | 上記と同一の決定事項 |
+| 3 | フロントエンド表示方針表のインライン欄に`DISPLAY_NAME_ALREADY_TAKEN`を追加 | 上記と同一の決定事項 |

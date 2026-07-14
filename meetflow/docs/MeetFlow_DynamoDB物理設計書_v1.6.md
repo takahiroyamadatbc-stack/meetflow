@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.5
+# MeetFlow DynamoDB 物理テーブル設計書 v1.6
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -92,14 +92,18 @@ GSI1SK:  COMMUNITY#{communityId}
 | joinedAt | S | ISO8601 |
 | **priorityWeight** | **N** | **（Phase3予約属性・未使用）複数コミュニティ横断比較用の優先度。値は0〜100等を想定 [v1.3追加]** |
 | **desiredFrequency** | **N** | **（Phase3予約属性・未使用）月あたりの希望参加頻度 [v1.3追加]** |
+| **displayName** | **S** | **（任意）コミュニティごとの表示名。未設定時はUser.nicknameにフォールバックして表示する [v1.6追加]** |
 
 **アクセスパターン**
 - コミュニティのメンバー一覧：`PK=COMMUNITY#{id}, SK begins_with MEMBER#`
 - ユーザーの所属コミュニティ一覧：`GSI1PK=USER#{userId}, GSI1SK begins_with COMMUNITY#`
+- **[v1.6追加]** 表示名重複チェック：コミュニティのメンバー一覧を取得し（上記と同じクエリ）、各メンバーの実効表示名（`displayName`が未設定のメンバーはUser.nicknameを都度`GetItem`）をアプリケーション側で突き合わせる。コミュニティ規模（10〜30人程度）では軽い処理のため、専用GSIは追加しない。
 
-> F-104, F-105, F-106（OWNER変更時は該当Membershipのroleを書き換え。元OWNERはrole=MEMBERに更新 [v1.1]）に対応。
+> F-104, F-105, F-106（OWNER変更時は該当Membershipのroleを書き換え。元OWNERはrole=MEMBERに更新 [v1.1]）、F-108（コミュニティごとの表示名 [v1.6追加]）に対応。
 >
 > **[v1.3追加]** `priorityWeight`/`desiredFrequency`はPhase3（複数コミュニティ横断の優先度・満足度比較機能）向けの予約属性。今は値を使わないが、後からの一括マイグレーションを避けるため属性だけ先に確保しておく。
+>
+> **[v1.6追加]** `displayName`はコミュニティ単位のMembershipエンティティへの属性追加のみで、PK/SK/GSI1の構造には一切手を加えていない。表示側の解決ロジック（`displayName`優先、無ければUser.nicknameにフォールバック）はLambda層（`meetflow_common.display_name`）に集約し、DynamoDB設計はシンプルな任意属性として持つのみに留める。
 
 ---
 
@@ -539,6 +543,7 @@ SK:   AVAILREQ#{requestId}
 | 25 | ユーザーの全プッシュ通知購読情報 [v1.4] | PK=USER#{id}, SK begins_with PUSHSUB# |
 | 26 | コミュニティの空き予定提出リクエスト一覧 [v1.4] | PK=COMMUNITY#{id}, SK begins_with AVAILREQ# |
 | 27 | 未提出メンバー確認（対象期間内の空き予定有無判定。アクセスパターン7の応用） [v1.4] | GSI1PK=USER#{id}, SK between AVAIL#{targetPeriodStart}~{targetPeriodEnd} |
+| 28 | コミュニティ表示名の重複チェック（実効表示名の突き合わせ。アクセスパターン2の応用） [v1.6] | PK=COMMUNITY#{id}, SK begins_with MEMBER# |
 
 ---
 
@@ -650,3 +655,13 @@ SK:   AVAILREQ#{requestId}
 |---|---|---|
 | 1 | 3.6 Availabilityのアクセスパターンについて、コミュニティ横断クエリがマッチング処理（F-401）内部専用であり公開APIとして提供しないことを明記 | 要件定義書v1.4 29章：相互非公開型マッチング（コア設計原則）をデータ構造レベルで担保する旨の記録 |
 | 2 | 4章アクセスパターン一覧No.6に同様の注記を追加 | 上記との整合 |
+
+---
+
+## 14. v1.5 → v1.6 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.3 Membershipに`displayName`（S、任意）属性を追加 | コミュニティごとに表示名を変えたいという要望への対応（F-108）。未設定時はUser.nicknameにフォールバックする後方互換設計とし、既存ユーザーは無設定で従来通り動作する |
+| 2 | 3.3のアクセスパターン節に表示名重複チェックのクエリパターンを追記 | なりすまし・混同防止のため、同一コミュニティ内での実効表示名（displayNameまたはフォールバック後のnickname）の重複を防ぐ必要があるため。10〜30人規模のメンバー一覧取得+アプリケーション側比較で十分軽く、専用GSIは追加しない |
+| 3 | 4章アクセスパターン一覧にNo.28を追加 | 上記と同一のアクセスパターンを総括表にも反映 |
