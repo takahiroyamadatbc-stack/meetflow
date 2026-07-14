@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/form";
 import { confirmSignUpCode } from "@/features/auth/api";
 import { paths } from "@/routes/paths";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const confirmSchema = z.object({
   code: z.string().min(1, "確認コードを入力してください"),
@@ -52,6 +53,7 @@ export function ConfirmSignUpPage() {
 
   return (
     <div className="flex flex-1 flex-col justify-center px-6 py-10">
+      <BrandLogo />
       <Card>
         <CardHeader>
           <CardTitle>確認コード入力</CardTitle>

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/form";
 import { signUpUser } from "@/features/auth/api";
 import { paths } from "@/routes/paths";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const signUpSchema = z.object({
   nickname: z.string().min(1, "ニックネームを入力してください").max(30, "30文字以内で入力してください"),
@@ -52,6 +53,7 @@ export function SignUpPage() {
 
   return (
     <div className="flex flex-1 flex-col justify-center px-6 py-10">
+      <BrandLogo />
       <Card>
         <CardHeader>
           <CardTitle>新規登録</CardTitle>

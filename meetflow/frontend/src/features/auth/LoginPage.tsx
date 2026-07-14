@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/form";
 import { signInUser } from "@/features/auth/api";
 import { paths } from "@/routes/paths";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const loginSchema = z.object({
   email: z.string().min(1, "メールアドレスを入力してください").email("メールアドレスの形式が正しくありません"),
@@ -57,6 +58,7 @@ export function LoginPage() {
 
   return (
     <div className="flex flex-1 flex-col justify-center px-6 py-10">
+      <BrandLogo />
       <Card>
         <CardHeader>
           <CardTitle>ログイン</CardTitle>
