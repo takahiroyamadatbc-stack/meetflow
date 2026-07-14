@@ -1,22 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { CommunityCard } from "@/features/community/components/CommunityCard";
 import { communityKeys, listCommunities } from "@/features/community/api";
+import { useUnreadNotificationCount } from "@/features/notification/api";
+import { paths } from "@/routes/paths";
 
-/**
- * S-02 ホーム画面（Phase1は最小構成）。
- * 通知バッジは GET /notifications がPhase2スコープのため非表示。
- */
+/** S-02 ホーム画面 */
 export function HomePage() {
   const { data: communities, isLoading } = useQuery({
     queryKey: communityKeys.all,
     queryFn: listCommunities,
   });
+  const unreadCount = useUnreadNotificationCount();
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-lg font-semibold">ホーム</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">ホーム</h1>
+        {unreadCount > 0 && (
+          <Link to={paths.notifications}>
+            <Badge variant="destructive">未読の通知 {unreadCount}件</Badge>
+          </Link>
+        )}
+      </div>
 
       {isLoading && <Skeleton className="h-20 w-full" />}
 

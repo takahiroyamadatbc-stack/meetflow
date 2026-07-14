@@ -6,7 +6,6 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { SignUpPage } from "@/features/auth/SignUpPage";
 import { ConfirmSignUpPage } from "@/features/auth/ConfirmSignUpPage";
 import { HomePage } from "@/features/home/HomePage";
-import { NotificationsStubPage } from "@/features/home/NotificationsStubPage";
 import { MyPage } from "@/features/user/MyPage";
 import { ProfileEditPage } from "@/features/user/ProfileEditPage";
 import { CommunityListPage } from "@/features/community/CommunityListPage";
@@ -20,6 +19,17 @@ import { AvailabilityListPage } from "@/features/availability/AvailabilityListPa
 import { AvailabilityCalendarPage } from "@/features/availability/AvailabilityCalendarPage";
 import { AvailabilityRequestListPage } from "@/features/availability/AvailabilityRequestListPage";
 import { AvailabilityRequestCreatePage } from "@/features/availability/AvailabilityRequestCreatePage";
+import { EventTemplateListPage } from "@/features/matching/EventTemplateListPage";
+import { EventTemplateFormPage } from "@/features/matching/EventTemplateFormPage";
+import { MatchingCandidateListPage } from "@/features/matching/MatchingCandidateListPage";
+import { MatchingCandidateDetailPage } from "@/features/matching/MatchingCandidateDetailPage";
+import { EventListPage } from "@/features/event/EventListPage";
+import { EventDetailPage } from "@/features/event/EventDetailPage";
+import { CancelRequestCreatePage } from "@/features/event/CancelRequestCreatePage";
+import { CancelRequestListPage } from "@/features/event/CancelRequestListPage";
+import { ResultSessionCreatePage } from "@/features/result/ResultSessionCreatePage";
+import { ResultSummaryPage } from "@/features/result/ResultSummaryPage";
+import { NotificationListPage } from "@/features/notification/NotificationListPage";
 import { paths } from "@/routes/paths";
 
 export const router = createBrowserRouter([
@@ -44,7 +54,7 @@ export const router = createBrowserRouter([
       { path: paths.home, element: <HomePage /> },
       { path: paths.communityList, element: <CommunityListPage /> },
       { path: paths.availabilityList, element: <AvailabilityListPage /> },
-      { path: paths.notifications, element: <NotificationsStubPage /> },
+      { path: paths.notifications, element: <NotificationListPage /> },
       { path: paths.myPage, element: <MyPage /> },
     ],
   },
@@ -99,6 +109,61 @@ export const router = createBrowserRouter([
         path: "/mypage/profile",
         element: <ProfileEditPage />,
         handle: { title: "プロフィール編集" },
+      },
+      {
+        path: "/communities/:communityId/event-templates",
+        element: <EventTemplateListPage />,
+        handle: { title: "開催条件" },
+      },
+      {
+        path: "/communities/:communityId/event-templates/new",
+        element: <EventTemplateFormPage />,
+        handle: { title: "開催条件を追加" },
+      },
+      {
+        path: "/communities/:communityId/event-templates/:templateId/edit",
+        element: <EventTemplateFormPage />,
+        handle: { title: "開催条件を編集" },
+      },
+      {
+        path: "/communities/:communityId/matching/candidates",
+        element: <MatchingCandidateListPage />,
+        handle: { title: "マッチング候補" },
+      },
+      {
+        path: "/communities/:communityId/matching/candidates/:candidateId",
+        element: <MatchingCandidateDetailPage />,
+        handle: { title: "候補詳細" },
+      },
+      {
+        path: "/communities/:communityId/events",
+        element: <EventListPage />,
+        handle: { title: "イベント一覧" },
+      },
+      {
+        path: "/events/:eventId",
+        element: <EventDetailPage />,
+        handle: { title: "イベント詳細" },
+      },
+      {
+        path: "/events/:eventId/cancel-request",
+        element: <CancelRequestCreatePage />,
+        handle: { title: "キャンセル申請" },
+      },
+      {
+        path: "/events/:eventId/cancel-requests",
+        element: <CancelRequestListPage />,
+        handle: { title: "キャンセル申請一覧" },
+      },
+      {
+        path: "/events/:eventId/sessions/new",
+        element: <ResultSessionCreatePage />,
+        handle: { title: "成績登録" },
+      },
+      {
+        path: "/communities/:communityId/results/:userId",
+        element: <ResultSummaryPage />,
+        handle: { title: "成績" },
       },
     ],
   },

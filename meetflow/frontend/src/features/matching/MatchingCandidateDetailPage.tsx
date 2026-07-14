@@ -1,0 +1,255 @@
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
+import { format, parseISO } from "date-fns";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { EmptyState } from "@/components/feedback/EmptyState";
+import { communityKeys, createPlace, listPlaces } from "@/features/community/api";
+import { getCandidateDetail, matchingKeys } from "@/features/matching/api";
+import { createEvent } from "@/features/event/api";
+import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
+import { paths } from "@/routes/paths";
+
+type Step = "review" | "place" | "confirm";
+
+const placeSchema = z.object({
+  name: z.string().min(1, "会場名を入力してください").max(50, "50文字以内で入力してください"),
+  address: z.string().max(200, "200文字以内で入力してください"),
+  note: z.string().max(200, "200文字以内で入力してください"),
+});
+type PlaceFormValues = z.infer<typeof placeSchema>;
+
+/** S-13〜S-15：マッチング候補詳細→会場選択→イベント作成確認 */
+export function MatchingCandidateDetailPage() {
+  const { communityId, candidateId } = useParams<{ communityId: string; candidateId: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const handleApiError = useApiErrorToast();
+
+  const [step, setStep] = useState<Step>("review");
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const [locationNote, setLocationNote] = useState("");
+  const [showNewPlaceForm, setShowNewPlaceForm] = useState(false);
+
+  const { data: candidate, isLoading } = useQuery({
+    queryKey: matchingKeys.candidateDetail(candidateId!),
+    queryFn: () => getCandidateDetail(candidateId!),
+    enabled: !!candidateId,
+  });
+
+  const { data: places } = useQuery({
+    queryKey: communityKeys.places(communityId!),
+    queryFn: () => listPlaces(communityId!),
+    enabled: !!communityId && step === "place",
+  });
+
+  const placeForm = useForm<PlaceFormValues>({
+    resolver: zodResolver(placeSchema),
+    defaultValues: { name: "", address: "", note: "" },
+  });
+
+  const createPlaceMutation = useMutation({
+    mutationFn: (values: PlaceFormValues) => createPlace(communityId!, values),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.places(communityId!) });
+      setSelectedPlaceId(created.placeId);
+      setShowNewPlaceForm(false);
+      toast.success("会場を登録しました");
+    },
+    onError: handleApiError,
+  });
+
+  const createEventMutation = useMutation({
+    mutationFn: () =>
+      createEvent({
+        candidateId: candidateId!,
+        locationId: selectedPlaceId ?? undefined,
+        locationNote: locationNote || undefined,
+      }),
+    onSuccess: (created) => {
+      toast.success("イベントを作成しました");
+      navigate(paths.eventDetail(created.eventId), { replace: true });
+    },
+    onError: handleApiError,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
+
+  if (!candidate) {
+    return <EmptyState message="候補が見つかりません" />;
+  }
+
+  if (step === "review") {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Card>
+          <CardContent className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-lg font-semibold">{candidate.score}点</span>
+              {candidate.startTime && (
+                <span className="text-muted-foreground text-sm">
+                  {format(parseISO(candidate.startTime), "M月d日 HH:mm")} 〜
+                  {candidate.endTime && format(parseISO(candidate.endTime), "HH:mm")}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              {candidate.members.map((member) => (
+                <div key={member.userId} className="flex items-center justify-between text-sm">
+                  <span>{member.nickname}</span>
+                  <div className="flex gap-1">
+                    {member.conflictWarning && <Badge variant="destructive">重複の可能性</Badge>}
+                    {member.fairnessCount > 0 && (
+                      <Badge variant="outline">候補止まり{member.fairnessCount}回</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {candidate.reasons.map((reason) => (
+                <Badge key={reason} variant="secondary">
+                  {reason}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        {candidate.status === "PENDING" ? (
+          <Button onClick={() => setStep("place")}>この候補で作成する</Button>
+        ) : (
+          <p className="text-muted-foreground text-center text-sm">
+            この候補は既にイベント化されています
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (step === "place") {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <p className="text-sm font-medium">会場を選択してください</p>
+        <div className="flex flex-col gap-2">
+          {(places ?? []).map((place) => (
+            <Card
+              key={place.placeId}
+              className={selectedPlaceId === place.placeId ? "border-primary" : undefined}
+              onClick={() => setSelectedPlaceId(place.placeId)}
+            >
+              <CardContent>
+                <p className="text-sm font-medium">{place.name}</p>
+                {place.note && <p className="text-muted-foreground text-xs">{place.note}</p>}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {showNewPlaceForm ? (
+          <Form {...placeForm}>
+            <form
+              onSubmit={placeForm.handleSubmit((values) => createPlaceMutation.mutate(values))}
+              className="grid gap-3"
+            >
+              <FormField
+                control={placeForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>会場名</FormLabel>
+                    <FormControl>
+                      <Input placeholder="例：たかし宅" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={placeForm.control}
+                name="note"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>補足（任意）</FormLabel>
+                    <FormControl>
+                      <Input placeholder="例：全自動卓あり" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button type="submit" disabled={createPlaceMutation.isPending}>
+                会場を登録する
+              </Button>
+            </form>
+          </Form>
+        ) : (
+          <Button variant="outline" onClick={() => setShowNewPlaceForm(true)}>
+            ＋新しい会場を登録する
+          </Button>
+        )}
+
+        <div className="grid gap-2">
+          <label className="text-sm font-medium" htmlFor="location-note">
+            会場自由記述（任意）
+          </label>
+          <Input
+            id="location-note"
+            value={locationNote}
+            onChange={(e) => setLocationNote(e.target.value)}
+            placeholder="例：現地集合、駐車場は近隣コインパーキング"
+          />
+        </div>
+
+        <Button onClick={() => setStep("confirm")}>次へ</Button>
+      </div>
+    );
+  }
+
+  const selectedPlace = (places ?? []).find((p) => p.placeId === selectedPlaceId);
+
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      <Card>
+        <CardContent className="flex flex-col gap-2">
+          {candidate.startTime && (
+            <p className="text-sm">
+              日時：{format(parseISO(candidate.startTime), "M月d日 HH:mm")}
+            </p>
+          )}
+          <p className="text-sm">
+            会場：{selectedPlace?.name ?? (locationNote || "未定")}
+          </p>
+          <p className="text-sm">参加者：{candidate.members.map((m) => m.nickname).join("、")}</p>
+        </CardContent>
+      </Card>
+      <Button onClick={() => createEventMutation.mutate()} disabled={createEventMutation.isPending}>
+        このイベントを作成する
+      </Button>
+      <Button variant="outline" onClick={() => setStep("place")}>
+        戻る
+      </Button>
+    </div>
+  );
+}

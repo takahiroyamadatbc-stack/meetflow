@@ -60,12 +60,18 @@ export function CommunityDetailPage() {
           to={paths.availabilityRequestList(community.communityId)}
           label="空き予定提出リクエスト"
         />
+        <NavCard to={paths.eventList(community.communityId)} label="イベント一覧" />
         {isAdmin && (
           <>
             <NavCard to={paths.communityInvite(community.communityId)} label="メンバーを招待する" />
             <NavCard
               to={paths.communityJoinRequests(community.communityId)}
               label="参加リクエスト一覧"
+            />
+            <NavCard to={paths.eventTemplateList(community.communityId)} label="開催条件" />
+            <NavCard
+              to={paths.matchingCandidateList(community.communityId)}
+              label="マッチング候補"
             />
           </>
         )}

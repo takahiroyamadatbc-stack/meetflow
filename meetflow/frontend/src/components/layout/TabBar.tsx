@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { Bell, Calendar, Home, User, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { paths } from "@/routes/paths";
+import { useUnreadNotificationCount } from "@/features/notification/api";
 
 const TABS = [
   { to: paths.home, label: "ホーム", Icon: Home, end: true },
@@ -13,6 +14,8 @@ const TABS = [
 
 /** 画面下部固定のタブバー（画面設計書v1.3：ホーム/コミュニティ/予定/通知/マイページ） */
 export function TabBar() {
+  const unreadCount = useUnreadNotificationCount();
+
   return (
     <nav className="bg-background border-border sticky bottom-0 z-10 flex border-t">
       {TABS.map(({ to, label, Icon, end }) => (
@@ -22,12 +25,17 @@ export function TabBar() {
           end={end}
           className={({ isActive }) =>
             cn(
-              "text-muted-foreground flex flex-1 flex-col items-center gap-1 py-2 text-xs",
+              "text-muted-foreground relative flex flex-1 flex-col items-center gap-1 py-2 text-xs",
               isActive && "text-primary",
             )
           }
         >
-          <Icon className="size-5" />
+          <span className="relative">
+            <Icon className="size-5" />
+            {to === paths.notifications && unreadCount > 0 && (
+              <span className="bg-destructive absolute -top-1 -right-1 size-2 rounded-full" />
+            )}
+          </span>
           {label}
         </NavLink>
       ))}

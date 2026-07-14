@@ -6,6 +6,10 @@ import { configureAmplify } from '@/lib/amplify'
 
 configureAmplify()
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/service-worker.js')
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

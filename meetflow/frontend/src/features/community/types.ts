@@ -66,3 +66,17 @@ export type JoinRequest = {
   status: "PENDING" | "APPROVED" | "REJECTED";
   requestedAt: string;
 };
+
+/** places.py _to_api_place() のレスポンス実体 */
+export type Place = {
+  placeId: string;
+  name: string;
+  address: string;
+  note: string;
+};
+
+export type CreatePlaceInput = {
+  name: string;
+  address?: string;
+  note?: string;
+};

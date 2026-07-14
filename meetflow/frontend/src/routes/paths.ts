@@ -20,6 +20,24 @@ export const paths = {
   availabilityRequestNew: (communityId: string) =>
     `/communities/${communityId}/availability-requests/new`,
 
+  eventTemplateList: (communityId: string) => `/communities/${communityId}/event-templates`,
+  eventTemplateNew: (communityId: string) => `/communities/${communityId}/event-templates/new`,
+  eventTemplateEdit: (communityId: string, templateId: string) =>
+    `/communities/${communityId}/event-templates/${templateId}/edit`,
+  matchingCandidateList: (communityId: string) =>
+    `/communities/${communityId}/matching/candidates`,
+  matchingCandidateDetail: (communityId: string, candidateId: string) =>
+    `/communities/${communityId}/matching/candidates/${candidateId}`,
+
+  eventList: (communityId: string) => `/communities/${communityId}/events`,
+  eventDetail: (eventId: string) => `/events/${eventId}`,
+  eventCancelRequest: (eventId: string) => `/events/${eventId}/cancel-request`,
+  eventCancelRequestList: (eventId: string) => `/events/${eventId}/cancel-requests`,
+
+  resultSessionNew: (eventId: string) => `/events/${eventId}/sessions/new`,
+  resultSummary: (communityId: string, userId: string) =>
+    `/communities/${communityId}/results/${userId}`,
+
   notifications: "/notifications",
 
   myPage: "/mypage",

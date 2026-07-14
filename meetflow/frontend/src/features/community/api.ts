@@ -5,7 +5,9 @@ import type {
   CommunityMutationResult,
   CommunitySummary,
   CreateCommunityInput,
+  CreatePlaceInput,
   JoinRequest,
+  Place,
   UpdateMemberInput,
 } from "@/features/community/types";
 
@@ -14,6 +16,7 @@ export const communityKeys = {
   detail: (communityId: string) => ["communities", communityId] as const,
   members: (communityId: string) => ["communities", communityId, "members"] as const,
   joinRequests: (communityId: string) => ["communities", communityId, "joinRequests"] as const,
+  places: (communityId: string) => ["communities", communityId, "places"] as const,
 };
 
 /** GET /communities */
@@ -78,4 +81,16 @@ export function approveJoinRequest(communityId: string, requestId: string) {
 /** POST /communities/{communityId}/join-requests/{requestId}/reject */
 export function rejectJoinRequest(communityId: string, requestId: string) {
   return apiClient.post(`/communities/${communityId}/join-requests/${requestId}/reject`);
+}
+
+/** GET /communities/{communityId}/locations */
+export function listPlaces(communityId: string) {
+  return apiClient
+    .get<{ places: Place[] }>(`/communities/${communityId}/locations`)
+    .then((data) => data.places);
+}
+
+/** POST /communities/{communityId}/locations */
+export function createPlace(communityId: string, input: CreatePlaceInput) {
+  return apiClient.post<Place>(`/communities/${communityId}/locations`, input);
 }
