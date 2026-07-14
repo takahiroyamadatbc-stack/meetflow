@@ -53,6 +53,10 @@ export function CommunityDetailPage() {
       <div className="flex flex-col gap-3">
         <NavCard to={paths.communityMembers(community.communityId)} label="メンバー一覧" />
         <NavCard
+          to={paths.communityDisplayNameEdit(community.communityId)}
+          label="このコミュニティでの表示名を変更"
+        />
+        <NavCard
           to={paths.availabilityNew(community.communityId)}
           label="空き予定を登録する"
         />

@@ -25,6 +25,7 @@ const INLINE_CODES = new Set([
   "INVALID_PLAYER_RANGE",
   "RESULT_VALIDATION_ERROR",
   "PROFILE_VALIDATION_ERROR",
+  "DISPLAY_NAME_ALREADY_TAKEN",
 ]);
 
 /** モーダル（明示的な操作が必要）で表示するエラーコード（同§10表） */

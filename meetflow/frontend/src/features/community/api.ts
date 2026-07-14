@@ -66,6 +66,14 @@ export function updateMember(communityId: string, userId: string, input: UpdateM
   return apiClient.put(`/communities/${communityId}/members/${userId}`, input);
 }
 
+/** PUT /communities/{communityId}/members/me/display-name */
+export function updateMyDisplayName(communityId: string, displayName: string) {
+  return apiClient.put<{ communityId: string; userId: string; displayName: string | null }>(
+    `/communities/${communityId}/members/me/display-name`,
+    { displayName },
+  );
+}
+
 /** GET /communities/{communityId}/join-requests（statusフィルタはPENDING固定で扱う） */
 export function listJoinRequests(communityId: string) {
   return apiClient

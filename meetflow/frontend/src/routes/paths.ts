@@ -12,6 +12,7 @@ export const paths = {
   communityInvite: (communityId: string) => `/communities/${communityId}/invite`,
   communityJoinRequests: (communityId: string) => `/communities/${communityId}/join-requests`,
   communityMembers: (communityId: string) => `/communities/${communityId}/members`,
+  communityDisplayNameEdit: (communityId: string) => `/communities/${communityId}/display-name`,
 
   availabilityList: "/availability",
   availabilityNew: (communityId: string) => `/communities/${communityId}/availability/new`,

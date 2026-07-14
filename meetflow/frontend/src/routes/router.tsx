@@ -11,6 +11,7 @@ import { ProfileEditPage } from "@/features/user/ProfileEditPage";
 import { CommunityListPage } from "@/features/community/CommunityListPage";
 import { CommunityCreatePage } from "@/features/community/CommunityCreatePage";
 import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
+import { DisplayNameEditPage } from "@/features/community/DisplayNameEditPage";
 import { InvitePage } from "@/features/community/InvitePage";
 import { InviteAcceptPage } from "@/features/community/InviteAcceptPage";
 import { JoinRequestListPage } from "@/features/community/JoinRequestListPage";
@@ -89,6 +90,11 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/members",
         element: <MemberListPage />,
         handle: { title: "メンバー一覧" },
+      },
+      {
+        path: "/communities/:communityId/display-name",
+        element: <DisplayNameEditPage />,
+        handle: { title: "表示名を変更" },
       },
       {
         path: "/communities/:communityId/availability/new",
