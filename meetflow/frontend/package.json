@@ -11,7 +11,8 @@
     "typecheck": "tsc -b --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate-icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -48,6 +49,7 @@
     "jsdom": "^29.1.1",
     "oxlint": "^1.71.0",
     "prettier": "^3.9.5",
+    "sharp": "^0.35.3",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10"
