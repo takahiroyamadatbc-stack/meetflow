@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from handlers import events, participants
 
-from _factories import api_event, body_of, put_candidate, put_membership
+from _factories import api_event, body_of, put_candidate, put_membership, put_profile
 
 
 def _create_confirmed_event(table, community_id="community-1", member_ids=None):
@@ -27,6 +27,19 @@ def test_list_participants_success(table):
     assert response["statusCode"] == 200
     participant_ids = {p["userId"] for p in body_of(response)["data"]["participants"]}
     assert participant_ids == {"user-1", "user-2", "user-3", "user-4"}
+
+
+def test_list_participants_uses_display_name_when_set(table):
+    event_id = _create_confirmed_event(table)
+    put_membership(table, "community-1", "user-2", display_name="たか")
+    put_profile(table, "user-2", nickname="たかし")
+
+    response = participants.list_participants(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+
+    nicknames = {p["userId"]: p["nickname"] for p in body_of(response)["data"]["participants"]}
+    assert nicknames["user-2"] == "たか"
 
 
 def test_list_participants_event_not_found(table):
