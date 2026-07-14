@@ -50,6 +50,23 @@ def test_generate_candidates_success(table):
     assert member_ids == {"user-1", "user-2", "user-3", "user-4"}
 
 
+def test_generate_candidates_uses_display_name_when_set(table):
+    put_membership(table, "community-1", "user-1", role="OWNER", display_name="たか")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    candidates = body_of(response)["data"]["candidates"]
+    nicknames = {m["userId"]: m["nickname"] for m in candidates[0]["members"]}
+    assert nicknames["user-1"] == "たか"
+
+
 def test_generate_candidates_template_not_found(table):
     put_membership(table, "community-1", "user-1", role="OWNER")
 

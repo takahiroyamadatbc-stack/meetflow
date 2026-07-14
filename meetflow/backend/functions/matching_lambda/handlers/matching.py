@@ -6,6 +6,7 @@ from meetflow_common import (
     add_days_iso,
     error_response,
     generate_id,
+    get_display_name,
     get_table,
     now_iso_ms,
     parse_body,
@@ -222,14 +223,10 @@ def _to_api_candidate(table, community_id, item):
         if start_time is None:
             start_time = candidate_member.get("startTime")
             end_time = candidate_member.get("endTime")
-        profile = (
-            table.get_item(Key={"PK": f"USER#{user_id}", "SK": "PROFILE"}).get("Item")
-            or {}
-        )
         members.append(
             {
                 "userId": user_id,
-                "nickname": profile.get("nickname", ""),
+                "nickname": get_display_name(table, community_id, user_id),
                 # 参考情報のみ (要件定義書v1.2 §17): スコアリング・自動除外
                 # には使用しない。
                 "fairnessCount": _fairness_count(table, user_id),
