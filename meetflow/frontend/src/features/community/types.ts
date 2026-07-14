@@ -27,6 +27,11 @@ export type CommunityMutationResult = {
   memberApprovalRequired: boolean;
 };
 
+/** get_community() のレスポンス実体（一覧・作成/更新の両方のフィールドを含む） */
+export type CommunityDetail = CommunityMutationResult & {
+  role: MembershipRole;
+};
+
 export type CreateCommunityInput = {
   name: string;
   description?: string;

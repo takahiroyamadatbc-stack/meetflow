@@ -6,6 +6,7 @@ from handlers import communities, invites, join_requests, members, places
 _ROUTES = {
     ("POST", "/communities"): communities.create_community,
     ("GET", "/communities"): communities.list_communities,
+    ("GET", "/communities/{communityId}"): communities.get_community,
     ("PUT", "/communities/{communityId}"): communities.update_community,
     ("POST", "/communities/{communityId}/owner-transfer"): communities.transfer_owner,
     ("POST", "/communities/{communityId}/invite"): invites.create_invite,

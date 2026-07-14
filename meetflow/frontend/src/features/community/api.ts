@@ -1,5 +1,6 @@
 import { apiClient } from "@/api/client";
 import type {
+  CommunityDetail,
   CommunityMember,
   CommunityMutationResult,
   CommunitySummary,
@@ -10,6 +11,7 @@ import type {
 
 export const communityKeys = {
   all: ["communities"] as const,
+  detail: (communityId: string) => ["communities", communityId] as const,
   members: (communityId: string) => ["communities", communityId, "members"] as const,
   joinRequests: (communityId: string) => ["communities", communityId, "joinRequests"] as const,
 };
@@ -19,6 +21,11 @@ export function listCommunities() {
   return apiClient
     .get<{ communities: CommunitySummary[] }>("/communities")
     .then((data) => data.communities);
+}
+
+/** GET /communities/{communityId} */
+export function getCommunity(communityId: string) {
+  return apiClient.get<CommunityDetail>(`/communities/${communityId}`);
 }
 
 /** POST /communities */

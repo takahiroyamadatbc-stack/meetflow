@@ -1,23 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { RoleBadge } from "@/features/community/components/RoleBadge";
-import { communityKeys, listCommunities } from "@/features/community/api";
+import { communityKeys, getCommunity } from "@/features/community/api";
 import { paths } from "@/routes/paths";
 
-/**
- * S-05 コミュニティ詳細画面。
- * GET /communities/{communityId} が存在しないため（Phase1実装計画の食い違い#1）、
- * 一覧のTanStack Queryキャッシュから対象コミュニティを検索して表示する。
- */
+/** S-05 コミュニティ詳細画面 */
 export function CommunityDetailPage() {
   const { communityId } = useParams<{ communityId: string }>();
-  const { data: communities, isLoading } = useQuery({
-    queryKey: communityKeys.all,
-    queryFn: listCommunities,
+  const { data: community, isLoading } = useQuery({
+    queryKey: communityKeys.detail(communityId!),
+    queryFn: () => getCommunity(communityId!),
+    enabled: !!communityId,
   });
 
   if (isLoading) {
@@ -28,7 +26,6 @@ export function CommunityDetailPage() {
     );
   }
 
-  const community = communities?.find((c) => c.communityId === communityId);
   if (!community) {
     return <EmptyState message="コミュニティが見つかりません" />;
   }
@@ -45,6 +42,11 @@ export function CommunityDetailPage() {
           </div>
           {community.genre && <p className="text-muted-foreground text-xs">{community.genre}</p>}
           {community.description && <p className="text-sm">{community.description}</p>}
+          {community.memberApprovalRequired && (
+            <Badge variant="outline" className="mt-1 self-start">
+              参加に承認が必要
+            </Badge>
+          )}
         </CardContent>
       </Card>
 

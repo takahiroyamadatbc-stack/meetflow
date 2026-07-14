@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { communityKeys, listCommunities } from "@/features/community/api";
+import { communityKeys, getCommunity } from "@/features/community/api";
 import {
   availabilityKeys,
   listAvailabilityRequests,
@@ -19,11 +19,11 @@ import { paths } from "@/routes/paths";
 export function AvailabilityRequestListPage() {
   const { communityId } = useParams<{ communityId: string }>();
 
-  const { data: communities } = useQuery({
-    queryKey: communityKeys.all,
-    queryFn: listCommunities,
+  const { data: currentCommunity } = useQuery({
+    queryKey: communityKeys.detail(communityId!),
+    queryFn: () => getCommunity(communityId!),
+    enabled: !!communityId,
   });
-  const currentCommunity = communities?.find((c) => c.communityId === communityId);
   const isAdmin = currentCommunity?.role === "OWNER" || currentCommunity?.role === "ADMIN";
 
   const { data: requests, isLoading } = useQuery({
