@@ -1,3 +1,5 @@
+import re
+
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
@@ -13,6 +15,7 @@ from meetflow_common import (
 )
 
 _MAX_NAME_LENGTH = 50  # 設計書には明記されていない、MVP向け保守的な上限値
+_THEME_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 def create_community(user_id, event):
@@ -30,25 +33,32 @@ def create_community(user_id, event):
     genre = body.get("genre", "")
     member_approval_required = bool(body.get("memberApprovalRequired", False))
 
+    theme_color = body.get("themeColor")
+    if theme_color is not None:
+        validation_error = _validate_theme_color(theme_color)
+        if validation_error:
+            return validation_error
+
     community_id = generate_id()
     created_at = now_iso_ms()
     table = get_table()
 
-    table.put_item(
-        Item={
-            "PK": f"COMMUNITY#{community_id}",
-            "SK": "METADATA",
-            "name": name,
-            "description": description,
-            "genre": genre,
-            "memberApprovalRequired": member_approval_required,
-            # MVPでは常にPERSONALコミュニティを作成する（DynamoDB物理設計書
-            # v1.3 §3.2）。STORE/OFFICIALはPhase3で扱う。
-            "communityType": "PERSONAL",
-            "ownerId": user_id,
-            "createdAt": created_at,
-        }
-    )
+    community_item = {
+        "PK": f"COMMUNITY#{community_id}",
+        "SK": "METADATA",
+        "name": name,
+        "description": description,
+        "genre": genre,
+        "memberApprovalRequired": member_approval_required,
+        # MVPでは常にPERSONALコミュニティを作成する（DynamoDB物理設計書
+        # v1.3 §3.2）。STORE/OFFICIALはPhase3で扱う。
+        "communityType": "PERSONAL",
+        "ownerId": user_id,
+        "createdAt": created_at,
+    }
+    if theme_color:
+        community_item["themeColor"] = theme_color
+    table.put_item(Item=community_item)
     table.put_item(
         Item={
             "PK": f"COMMUNITY#{community_id}",
@@ -74,6 +84,7 @@ def create_community(user_id, event):
             "description": description,
             "genre": genre,
             "memberApprovalRequired": member_approval_required,
+            "themeColor": theme_color,
         },
         status_code=201,
     )
@@ -105,6 +116,7 @@ def get_community(user_id, event):
             "description": community.get("description", ""),
             "genre": community.get("genre", ""),
             "memberApprovalRequired": community.get("memberApprovalRequired", False),
+            "themeColor": community.get("themeColor"),
             "role": membership.get("role"),
         }
     )
@@ -274,6 +286,58 @@ def transfer_owner(user_id, event):
     return success_response({"communityId": community_id, "ownerId": new_owner_id})
 
 
+def update_theme_color(user_id, event):
+    """PUT /communities/{communityId}/theme-color（API設計書v1.9 §4.2c）。
+
+    OWNER/ADMINがコミュニティのテーマカラーを設定・変更する。空文字列/null
+    送信は解除（アプリの既定色へのフォールバック表示に戻す）を意味する
+    -- F-108の表示名解除（update_my_display_name）と同じパターン。名称・
+    説明文等の編集APIがまだ無い中でこの1属性だけ専用エンドポイントに
+    切り出しているのは、汎用的な`PUT /communities/{communityId}`
+    （update_community）とは別に4.5bと同様の単機能エンドポイントとして
+    設計されているため（API設計書同節の解説を参照）。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    body = parse_body(event)
+    raw = body.get("themeColor")
+    if raw is not None and not isinstance(raw, str):
+        return error_response("INVALID_PARAMETER", "themeColorが不正です")
+
+    theme_color = (raw or "").strip()
+    if theme_color:
+        validation_error = _validate_theme_color(theme_color)
+        if validation_error:
+            return validation_error
+
+    key = {"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
+    if theme_color:
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET themeColor = :v",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":v": theme_color},
+        )
+    else:
+        table.update_item(
+            Key=key,
+            UpdateExpression="REMOVE themeColor",
+            ConditionExpression="attribute_exists(PK)",
+        )
+
+    write_operation_log(
+        action="UPDATE_THEME_COLOR",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Community",
+        target_id=community_id,
+        after={"themeColor": theme_color or None},
+    )
+    return success_response({"communityId": community_id, "themeColor": theme_color or None})
+
+
 def delete_community(user_id, event):
     """DELETE /communities/{communityId}（Issue #2）。
 
@@ -320,6 +384,14 @@ def delete_community(user_id, event):
 
 def _invalid_name():
     return error_response("INVALID_PARAMETER", "コミュニティ名が不正です")
+
+
+def _validate_theme_color(value):
+    if not isinstance(value, str) or not _THEME_COLOR_PATTERN.match(value):
+        return error_response(
+            "INVALID_PARAMETER", "themeColorは#RRGGBB形式で指定してください"
+        )
+    return None
 
 
 def _no_fields_to_update():

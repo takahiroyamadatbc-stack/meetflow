@@ -18,6 +18,8 @@ export type CommunitySummary = {
  * create_community() / update_community() のレスポンス実体。
  * 一覧と違いmemberApprovalRequiredを含むが、roleは含まない
  * （作成者が暗黙にOWNERであるため返却されない）。
+ * themeColorはcreate_community()のみが返す（update_community()は汎用の
+ * 名称/説明編集用で、テーマカラーは専用のupdateThemeColor()が扱う）。
  */
 export type CommunityMutationResult = {
   communityId: string;
@@ -25,10 +27,12 @@ export type CommunityMutationResult = {
   description: string;
   genre: string;
   memberApprovalRequired: boolean;
+  themeColor?: string | null;
 };
 
 /** get_community() のレスポンス実体（一覧・作成/更新の両方のフィールドを含む） */
 export type CommunityDetail = CommunityMutationResult & {
+  themeColor: string | null;
   role: MembershipRole;
 };
 
@@ -37,6 +41,7 @@ export type CreateCommunityInput = {
   description?: string;
   genre?: string;
   memberApprovalRequired?: boolean;
+  themeColor?: string;
 };
 
 /** members.py list_members() のレスポンス実体 */

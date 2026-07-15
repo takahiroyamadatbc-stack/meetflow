@@ -61,6 +61,7 @@ def test_get_community_success(table):
         "description": "",
         "genre": "麻雀",
         "memberApprovalRequired": True,
+        "themeColor": None,
         "role": "OWNER",
     }
 
@@ -186,6 +187,98 @@ def test_transfer_owner_to_self_is_invalid(table):
 
     assert response["statusCode"] == 400
     assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_create_community_with_theme_color(table):
+    event = api_event(body={"name": "火曜麻雀会", "themeColor": "#6366F1"})
+
+    response = communities.create_community("user-1", event)
+
+    assert response["statusCode"] == 201
+    data = body_of(response)["data"]
+    assert data["themeColor"] == "#6366F1"
+    community = table.get_item(
+        Key={"PK": f"COMMUNITY#{data['communityId']}", "SK": "METADATA"}
+    )["Item"]
+    assert community["themeColor"] == "#6366F1"
+
+
+@pytest.mark.parametrize("theme_color", ["red", "#FFF", "#GGGGGG", "6366F1"])
+def test_create_community_invalid_theme_color(table, theme_color):
+    event = api_event(body={"name": "火曜麻雀会", "themeColor": theme_color})
+
+    response = communities.create_community("user-1", event)
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_theme_color_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_theme_color(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"themeColor": "#22C55E"}
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"] == {
+        "communityId": "community-1",
+        "themeColor": "#22C55E",
+    }
+    community = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "METADATA"}
+    )["Item"]
+    assert community["themeColor"] == "#22C55E"
+
+
+def test_update_theme_color_clear(table):
+    put_community(table, "community-1", owner_id="user-1", theme_color="#22C55E")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_theme_color(
+        "user-1",
+        api_event(path_params={"communityId": "community-1"}, body={"themeColor": ""}),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"] == {"communityId": "community-1", "themeColor": None}
+    community = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "METADATA"}
+    )["Item"]
+    assert "themeColor" not in community
+
+
+def test_update_theme_color_invalid_format(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_theme_color(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"themeColor": "not-a-color"}
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_theme_color_forbidden_for_plain_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    with pytest.raises(AuthError) as exc_info:
+        communities.update_theme_color(
+            "user-2",
+            api_event(
+                path_params={"communityId": "community-1"}, body={"themeColor": "#22C55E"}
+            ),
+        )
+    assert exc_info.value.code == "FORBIDDEN"
 
 
 def test_delete_community_success(table):

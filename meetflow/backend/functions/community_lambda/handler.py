@@ -9,6 +9,7 @@ _ROUTES = {
     ("GET", "/communities/{communityId}"): communities.get_community,
     ("PUT", "/communities/{communityId}"): communities.update_community,
     ("DELETE", "/communities/{communityId}"): communities.delete_community,
+    ("PUT", "/communities/{communityId}/theme-color"): communities.update_theme_color,
     ("POST", "/communities/{communityId}/owner-transfer"): communities.transfer_owner,
     ("POST", "/communities/{communityId}/invite"): invites.create_invite,
     ("POST", "/invites/{token}/join"): invites.join_via_invite,
