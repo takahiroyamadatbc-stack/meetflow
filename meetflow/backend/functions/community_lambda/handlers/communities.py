@@ -79,6 +79,37 @@ def create_community(user_id, event):
     )
 
 
+def get_community(user_id, event):
+    """GET /communities/{communityId}（API設計書には未記載だが、フロント
+    エンド実装時にコミュニティ詳細画面(S-05)が単体取得手段を持たないことが
+    判明したため追加。DynamoDB物理設計書のキー設計(PK/SK)からは逸脱せず、
+    METADATA項目への単純なGetItemのみで完結する。呼び出し元自身の
+    Membership（require_membershipの戻り値）からroleを取得できるため、
+    一覧(list_communities)には無いroleとmemberApprovalRequiredの両方を
+    レスポンスに含められる。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    membership = require_membership(table, community_id, user_id)
+
+    community = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
+    ).get("Item")
+    if community is None:
+        return error_response("COMMUNITY_NOT_FOUND", "コミュニティが見つかりません")
+
+    return success_response(
+        {
+            "communityId": community_id,
+            "name": community.get("name"),
+            "description": community.get("description", ""),
+            "genre": community.get("genre", ""),
+            "memberApprovalRequired": community.get("memberApprovalRequired", False),
+            "role": membership.get("role"),
+        }
+    )
+
+
 def list_communities(user_id, event):
     """GET /communities（API設計書v1.4 §4.2）: 呼び出し元が所属する
     コミュニティ一覧を、GSI1（`USER#{userId}` / `COMMUNITY#`）経由で取得する。

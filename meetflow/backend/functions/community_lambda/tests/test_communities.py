@@ -44,6 +44,38 @@ def test_create_community_invalid_name(table, name):
     assert error["code"] == "INVALID_PARAMETER"
 
 
+def test_get_community_success(table):
+    put_community(
+        table, "community-1", owner_id="user-1", name="コミュニティA", member_approval_required=True
+    )
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.get_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"] == {
+        "communityId": "community-1",
+        "name": "コミュニティA",
+        "description": "",
+        "genre": "麻雀",
+        "memberApprovalRequired": True,
+        "role": "OWNER",
+    }
+
+
+def test_get_community_forbidden_for_non_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    with pytest.raises(AuthError) as exc_info:
+        communities.get_community(
+            "user-2", api_event(path_params={"communityId": "community-1"})
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
 def test_list_communities_success(table):
     put_community(table, "community-1", owner_id="user-1", name="コミュニティA")
     put_membership(table, "community-1", "user-1", role="OWNER")

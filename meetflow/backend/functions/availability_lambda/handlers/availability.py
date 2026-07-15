@@ -103,23 +103,28 @@ def create_availability_batch(user_id, event):
 
 def list_availability(user_id, event):
     """GET /communities/{communityId}/availability（F-204: 「自身の登録済み
-    予定」）。このコミュニティ（パスパラメータ）と呼び出し元の両方に
-    スコープされている -- コミュニティ全体・ユーザー横断の可視性は
-    MatchingLambdaの内部アクセスパターン（DynamoDB物理設計書v1.3 §4の
-    row 6）であり、メンバー向けAPIではない。
+    予定」）。GSI1（`GSI1PK=USER#{user_id}`）で呼び出し元自身にスコープした
+    上でクエリする -- コミュニティ全体・ユーザー横断の生データ取得は
+    MatchingLambdaの内部アクセスパターン（DynamoDB物理設計書v1.5 §4の
+    row 6）専用であり、メンバー向けAPIでは使わない（row 7が本APIの対応
+    パターン）。この順序が重要で、コミュニティPKでクエリしてから
+    Python側で自分の分だけに絞り込む実装にすると、他メンバーの生の
+    空き予定が一度Lambdaのメモリ上に載ってしまい、相互非公開型マッチング
+    （要件定義書v1.4 §29）の原則を壊しかねないフラジャイルな実装になる。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
     require_membership(table, community_id, user_id)
 
     resp = table.query(
-        KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
-        & Key("SK").begins_with("AVAIL#"),
+        IndexName="GSI1",
+        KeyConditionExpression=Key("GSI1PK").eq(f"USER#{user_id}")
+        & Key("GSI1SK").begins_with("AVAIL#"),
     )
     availabilities = [
         _to_api_availability(item, item["SK"].split("#", 2)[2])
         for item in resp.get("Items", [])
-        if item.get("userId") == user_id
+        if item["PK"] == f"COMMUNITY#{community_id}"
     ]
     return success_response({"availabilities": availabilities})
 

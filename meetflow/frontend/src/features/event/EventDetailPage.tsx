@@ -1,0 +1,199 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams } from "react-router-dom";
+import { format, parseISO } from "date-fns";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { EmptyState } from "@/components/feedback/EmptyState";
+import { communityKeys, getCommunity } from "@/features/community/api";
+import {
+  cancelEvent,
+  confirmEvent,
+  eventKeys,
+  getEvent,
+  listCancelRequests,
+  listParticipants,
+} from "@/features/event/api";
+import { EVENT_STATUS_LABELS } from "@/features/event/types";
+import { useAuthUser } from "@/features/auth/useAuthUser";
+import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
+import { paths } from "@/routes/paths";
+
+/** S-16 イベント詳細画面 */
+export function EventDetailPage() {
+  const { eventId } = useParams<{ eventId: string }>();
+  const queryClient = useQueryClient();
+  const handleApiError = useApiErrorToast();
+  const { userId } = useAuthUser();
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  const { data: event, isLoading } = useQuery({
+    queryKey: eventKeys.detail(eventId!),
+    queryFn: () => getEvent(eventId!),
+    enabled: !!eventId,
+  });
+
+  const { data: community } = useQuery({
+    queryKey: communityKeys.detail(event?.communityId ?? ""),
+    queryFn: () => getCommunity(event!.communityId),
+    enabled: !!event?.communityId,
+  });
+
+  const { data: participants } = useQuery({
+    queryKey: eventKeys.participants(eventId!),
+    queryFn: () => listParticipants(eventId!),
+    enabled: !!eventId,
+  });
+
+  const { data: cancelRequests } = useQuery({
+    queryKey: eventKeys.cancelRequests(eventId!),
+    queryFn: () => listCancelRequests(eventId!),
+    enabled: !!eventId && (community?.role === "OWNER" || community?.role === "ADMIN"),
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: () => confirmEvent(eventId!),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(eventKeys.detail(eventId!), updated);
+      toast.success("イベントを承認しました");
+    },
+    onError: handleApiError,
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelEvent(eventId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId!) });
+      toast.success("イベントを中止しました");
+    },
+    onError: handleApiError,
+    onSettled: () => setShowCancelConfirm(false),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
+
+  if (!event) {
+    return <EmptyState message="イベントが見つかりません" />;
+  }
+
+  const isAdmin = community?.role === "OWNER" || community?.role === "ADMIN";
+  const myParticipant = participants?.find((p) => p.userId === userId);
+  const pendingCancelCount = (cancelRequests ?? []).filter((r) => r.status === "PENDING").length;
+
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      <Card>
+        <CardContent className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <p className="text-base font-semibold">
+              {format(parseISO(event.startTime), "M月d日 HH:mm")} 〜
+              {format(parseISO(event.endTime), "HH:mm")}
+            </p>
+            <Badge variant="outline">{EVENT_STATUS_LABELS[event.status]}</Badge>
+          </div>
+          {event.location && <p className="text-sm">会場：{event.location.name}</p>}
+          {event.locationNote && (
+            <p className="text-muted-foreground text-sm">{event.locationNote}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="flex flex-col gap-2">
+          <p className="text-sm font-medium">参加者</p>
+          {(participants ?? []).map((participant) => (
+            <div key={participant.userId} className="flex items-center justify-between text-sm">
+              {event.status === "COMPLETED" ? (
+                <Link
+                  to={paths.resultSummary(event.communityId, participant.userId)}
+                  className="underline"
+                >
+                  {participant.nickname}
+                </Link>
+              ) : (
+                <span>{participant.nickname}</span>
+              )}
+              {participant.status !== "CONFIRMED" && (
+                <Badge variant="outline">
+                  {participant.status === "CANCEL_REQUESTED" ? "離脱申請中" : "離脱済み"}
+                </Badge>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {event.status === "PENDING_APPROVAL" && isAdmin && (
+        <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
+          このイベントを承認する
+        </Button>
+      )}
+
+      {event.status === "CONFIRMED" && myParticipant?.status === "CONFIRMED" && (
+        <Link to={paths.eventCancelRequest(event.eventId)}>
+          <Button variant="outline" className="w-full">
+            参加をキャンセル申請する
+          </Button>
+        </Link>
+      )}
+
+      {event.status === "CONFIRMED" && isAdmin && (
+        <>
+          <Link to={paths.eventCancelRequestList(event.eventId)}>
+            <Button variant="outline" className="w-full">
+              キャンセル申請一覧
+              {pendingCancelCount > 0 && (
+                <Badge variant="destructive" className="ml-2">
+                  {pendingCancelCount}
+                </Badge>
+              )}
+            </Button>
+          </Link>
+          <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
+            イベントを中止する
+          </Button>
+        </>
+      )}
+
+      {event.status === "COMPLETED" && isAdmin && (
+        <Link to={paths.resultSessionNew(event.eventId)}>
+          <Button className="w-full">成績を登録する</Button>
+        </Link>
+      )}
+
+      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>このイベントを中止しますか？</AlertDialogTitle>
+          </AlertDialogHeader>
+          <p className="text-muted-foreground px-4 text-sm">
+            中止すると元に戻せません。参加者全員に通知されます。
+          </p>
+          <div className="flex justify-end gap-2 px-4 pb-4">
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => cancelMutation.mutate()}>
+              中止する
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
