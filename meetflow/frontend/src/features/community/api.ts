@@ -41,6 +41,16 @@ export function updateCommunity(communityId: string, input: Partial<CreateCommun
   return apiClient.put<CommunityMutationResult>(`/communities/${communityId}`, input);
 }
 
+/**
+ * DELETE /communities/{communityId}（Issue #2）。
+ * 自分以外のメンバーが在籍している場合は409 COMMUNITY_NOT_EMPTYが返る。
+ */
+export function deleteCommunity(communityId: string) {
+  return apiClient.delete<{ communityId: string; deleted: boolean }>(
+    `/communities/${communityId}`,
+  );
+}
+
 /** POST /communities/{communityId}/invite */
 export function createInvite(communityId: string) {
   return apiClient.post<{ url: string }>(`/communities/${communityId}/invite`);
