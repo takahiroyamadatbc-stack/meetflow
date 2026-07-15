@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { communityKeys, createCommunity } from "@/features/community/api";
+import { ThemeColorPicker } from "@/features/community/components/ThemeColorPicker";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { getErrorDisplay, ApiError } from "@/api/errors";
 import { paths } from "@/routes/paths";
@@ -27,6 +28,7 @@ const createCommunitySchema = z.object({
   description: z.string().max(300, "300文字以内で入力してください"),
   genre: z.string().max(30, "30文字以内で入力してください"),
   memberApprovalRequired: z.boolean(),
+  themeColor: z.string().nullable(),
 });
 
 type CreateCommunityFormValues = z.infer<typeof createCommunitySchema>;
@@ -39,11 +41,18 @@ export function CommunityCreatePage() {
 
   const form = useForm<CreateCommunityFormValues>({
     resolver: zodResolver(createCommunitySchema),
-    defaultValues: { name: "", description: "", genre: "", memberApprovalRequired: false },
+    defaultValues: {
+      name: "",
+      description: "",
+      genre: "",
+      memberApprovalRequired: false,
+      themeColor: null,
+    },
   });
 
   const mutation = useMutation({
-    mutationFn: createCommunity,
+    mutationFn: (values: CreateCommunityFormValues) =>
+      createCommunity({ ...values, themeColor: values.themeColor ?? undefined }),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: communityKeys.all });
       toast.success("コミュニティを作成しました");
@@ -100,6 +109,22 @@ export function CommunityCreatePage() {
                 <FormLabel>説明</FormLabel>
                 <FormControl>
                   <Textarea rows={4} {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="themeColor"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>テーマカラー</FormLabel>
+                <FormDescription>
+                  未選択の場合はアプリの既定色になります。作成後も変更できます
+                </FormDescription>
+                <FormControl>
+                  <ThemeColorPicker value={field.value} onChange={field.onChange} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

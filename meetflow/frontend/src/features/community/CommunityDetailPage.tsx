@@ -67,6 +67,12 @@ export function CommunityDetailPage() {
     <div className="flex flex-col gap-4 p-4">
       <Card>
         <CardContent className="flex flex-col gap-1">
+          {community.themeColor && (
+            <div
+              className="mb-1 h-1.5 w-10 rounded-full"
+              style={{ backgroundColor: community.themeColor }}
+            />
+          )}
           <div className="flex items-center justify-between">
             <p className="text-base font-semibold">{community.name}</p>
             <RoleBadge role={community.role} />
@@ -80,6 +86,13 @@ export function CommunityDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {isAdmin && (
+        <NavCard
+          to={paths.communityThemeColorEdit(community.communityId)}
+          label="テーマカラーを変更"
+        />
+      )}
 
       <Accordion className="flex flex-col gap-2">
         <AccordionItem value="member">

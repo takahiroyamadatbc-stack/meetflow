@@ -23,20 +23,22 @@ def put_community(
     owner_id,
     name="テストコミュニティ",
     member_approval_required=False,
+    theme_color=None,
 ):
-    table.put_item(
-        Item={
-            "PK": f"COMMUNITY#{community_id}",
-            "SK": "METADATA",
-            "name": name,
-            "description": "",
-            "genre": "麻雀",
-            "memberApprovalRequired": member_approval_required,
-            "communityType": "PERSONAL",
-            "ownerId": owner_id,
-            "createdAt": now_iso_ms(),
-        }
-    )
+    item = {
+        "PK": f"COMMUNITY#{community_id}",
+        "SK": "METADATA",
+        "name": name,
+        "description": "",
+        "genre": "麻雀",
+        "memberApprovalRequired": member_approval_required,
+        "communityType": "PERSONAL",
+        "ownerId": owner_id,
+        "createdAt": now_iso_ms(),
+    }
+    if theme_color:
+        item["themeColor"] = theme_color
+    table.put_item(Item=item)
 
 
 def put_membership(

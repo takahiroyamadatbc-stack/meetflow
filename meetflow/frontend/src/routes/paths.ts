@@ -13,6 +13,7 @@ export const paths = {
   communityJoinRequests: (communityId: string) => `/communities/${communityId}/join-requests`,
   communityMembers: (communityId: string) => `/communities/${communityId}/members`,
   communityDisplayNameEdit: (communityId: string) => `/communities/${communityId}/display-name`,
+  communityThemeColorEdit: (communityId: string) => `/communities/${communityId}/theme-color`,
 
   availabilityList: "/availability",
   availabilityNew: (communityId: string) => `/communities/${communityId}/availability/new`,

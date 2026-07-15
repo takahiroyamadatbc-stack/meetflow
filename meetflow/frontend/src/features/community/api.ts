@@ -42,6 +42,17 @@ export function updateCommunity(communityId: string, input: Partial<CreateCommun
 }
 
 /**
+ * PUT /communities/{communityId}/theme-color（Issue #5）。
+ * 空文字を送るとテーマカラー設定を解除する。
+ */
+export function updateThemeColor(communityId: string, themeColor: string) {
+  return apiClient.put<{ communityId: string; themeColor: string | null }>(
+    `/communities/${communityId}/theme-color`,
+    { themeColor },
+  );
+}
+
+/**
  * DELETE /communities/{communityId}（Issue #2）。
  * 自分以外のメンバーが在籍している場合は409 COMMUNITY_NOT_EMPTYが返る。
  */
