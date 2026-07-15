@@ -11,18 +11,21 @@ def api_event(*, path_params=None, body=None, query=None):
     }
 
 
-def put_membership(table, community_id, user_id, *, role="MEMBER", status="ACTIVE"):
-    table.put_item(
-        Item={
-            "PK": f"COMMUNITY#{community_id}",
-            "SK": f"MEMBER#{user_id}",
-            "GSI1PK": f"USER#{user_id}",
-            "GSI1SK": f"COMMUNITY#{community_id}",
-            "role": role,
-            "status": status,
-            "joinedAt": now_iso_ms(),
-        }
-    )
+def put_membership(
+    table, community_id, user_id, *, role="MEMBER", status="ACTIVE", display_name=None
+):
+    item = {
+        "PK": f"COMMUNITY#{community_id}",
+        "SK": f"MEMBER#{user_id}",
+        "GSI1PK": f"USER#{user_id}",
+        "GSI1SK": f"COMMUNITY#{community_id}",
+        "role": role,
+        "status": status,
+        "joinedAt": now_iso_ms(),
+    }
+    if display_name:
+        item["displayName"] = display_name
+    table.put_item(Item=item)
 
 
 def put_profile(table, user_id, *, nickname="ぷれいやー"):

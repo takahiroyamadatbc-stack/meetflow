@@ -3,6 +3,7 @@ from boto3.dynamodb.conditions import Key
 from meetflow_common import (
     CANCEL_APPROVED,
     error_response,
+    get_display_name,
     get_table,
     now_iso_ms,
     parse_body,
@@ -32,13 +33,10 @@ def list_participants(user_id, event):
     participants = []
     for item in resp.get("Items", []):
         uid = item["SK"].split("#", 1)[1]
-        profile = table.get_item(Key={"PK": f"USER#{uid}", "SK": "PROFILE"}).get(
-            "Item"
-        ) or {}
         participants.append(
             {
                 "userId": uid,
-                "nickname": profile.get("nickname", ""),
+                "nickname": get_display_name(table, community_id, uid),
                 "status": item.get("status"),
             }
         )
