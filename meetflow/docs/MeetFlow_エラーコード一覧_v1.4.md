@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.3
+# MeetFlow エラーコード一覧 v1.4
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -40,8 +40,8 @@
 
 | コード | HTTPステータス | 内容 | 発生API |
 |---|---|---|---|
-| `INVITE_NOT_FOUND` | 404 | 招待URLのトークンが存在しない | `POST /invites/{token}/join` |
-| `INVITE_REVOKED` | 410 | 招待URLが無効化済み | 同上 |
+| `INVITE_NOT_FOUND` | 404 | 招待URLのトークンが存在しない | `POST /invites/{token}/join`, **`POST /invites/{token}/revoke`（[v1.4追加]）** |
+| `INVITE_REVOKED` | 410 | 招待URLが無効化済み | `POST /invites/{token}/join` |
 | `INVITE_EXPIRED` | 410 | 招待URLの有効期限切れ（将来の有効期限付きURL対応時） | 同上 |
 | `ALREADY_MEMBER` | 409 | 既にコミュニティのメンバーである（重複参加） | `POST /invites/{token}/join` |
 | `JOIN_REQUEST_ALREADY_PENDING` | 409 | 既に参加リクエスト submitted 済み（二重申請） | `POST /invites/{token}/join`（承認制の場合） |
@@ -177,3 +177,11 @@
 | 1 | Communityドメインに`DISPLAY_NAME_ALREADY_TAKEN`（409）を追加 | 機能要件書v1.5 F-108：コミュニティごとの表示名の重複チェック |
 | 2 | `PROFILE_VALIDATION_ERROR`の発生APIにコミュニティ表示名設定エンドポイントを追加（バリデーションを流用） | 上記と同一の決定事項 |
 | 3 | フロントエンド表示方針表のインライン欄に`DISPLAY_NAME_ALREADY_TAKEN`を追加 | 上記と同一の決定事項 |
+
+---
+
+## v1.3 → v1.4 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | `INVITE_NOT_FOUND`の発生APIに`POST /invites/{token}/revoke`を追加（新規エラーコードなし、既存コードを流用） | API設計書v1.8 §4.3b：招待URL無効化。既に無効化済みの招待への再実行は冪等に成功として扱うため専用コードは不要 |

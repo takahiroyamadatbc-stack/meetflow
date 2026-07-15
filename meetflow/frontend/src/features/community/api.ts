@@ -54,6 +54,13 @@ export function joinViaInvite(token: string, message?: string) {
   );
 }
 
+/** POST /invites/{token}/revoke */
+export function revokeInvite(token: string) {
+  return apiClient.post<{ token: string; communityId: string; revoked: boolean }>(
+    `/invites/${token}/revoke`,
+  );
+}
+
 /** GET /communities/{communityId}/members */
 export function listMembers(communityId: string) {
   return apiClient
