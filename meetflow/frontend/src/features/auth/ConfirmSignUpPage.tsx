@@ -14,7 +14,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { confirmSignUpCode } from "@/features/auth/api";
+import { completeAutoSignIn, confirmSignUpCode } from "@/features/auth/api";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -28,7 +28,9 @@ type ConfirmFormValues = z.infer<typeof confirmSchema>;
 export function ConfirmSignUpPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const email = (location.state as { email?: string } | null)?.email ?? "";
+  const state = location.state as { email?: string; nickname?: string } | null;
+  const email = state?.email ?? "";
+  const nickname = state?.nickname;
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<ConfirmFormValues>({
@@ -43,8 +45,16 @@ export function ConfirmSignUpPage() {
       return;
     }
     try {
-      await confirmSignUpCode(email, values.code);
-      // 確認後は自動ログインせず、明示的に再度ログインさせる
+      const result = await confirmSignUpCode(email, values.code, nickname);
+      if (result.nextStep.signUpStep === "COMPLETE_AUTO_SIGN_IN") {
+        try {
+          await completeAutoSignIn();
+          navigate(paths.home, { replace: true });
+          return;
+        } catch {
+          // 自動ログインに失敗した場合は、手動ログインにフォールバックする
+        }
+      }
       navigate(paths.login);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "確認コードの検証に失敗しました");
