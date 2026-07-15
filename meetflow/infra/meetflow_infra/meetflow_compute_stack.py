@@ -13,7 +13,9 @@ from aws_cdk import (
     aws_events_targets as events_targets,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_logs as logs,
     aws_secretsmanager as secretsmanager,
+    aws_sqs as sqs,
 )
 from constructs import Construct
 
@@ -102,6 +104,16 @@ class MeetFlowComputeStack(Stack):
         """
         environment = {"TABLE_NAME": self.table.table_name}
         environment.update(extra_environment or {})
+        # ロググループを明示的に作成し保持期間を設定する: 何も指定しないと
+        # Lambdaが自動生成するロググループは無期限保持になり、地味にログが
+        # 溜まり続ける(`log_retention`propは非推奨のためlog_groupを使う)。
+        log_group = logs.LogGroup(
+            self,
+            f"{construct_id}LogGroup",
+            log_group_name=f"/aws/lambda/{function_name}",
+            retention=logs.RetentionDays.ONE_MONTH,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
         return lambda_.Function(
             self,
             construct_id,
@@ -113,6 +125,7 @@ class MeetFlowComputeStack(Stack):
             timeout=timeout or Duration.seconds(10),
             memory_size=memory_size,
             environment=environment,
+            log_group=log_group,
         )
 
     def _build_user_lambda(self) -> lambda_.Function:
@@ -267,6 +280,16 @@ class MeetFlowComputeStack(Stack):
         # 一致していなければならない -- CDK(このファイル)とLambdaの
         # ランタイムコードは別のPython環境なので、このモジュールを直接
         # importすることはできない。
+        # 処理が失敗し続けた場合にEventBridgeの既定リトライ(最大24時間)後
+        # イベントがサイレントに消えるのを防ぐため、DLQに退避させる。この
+        # ルールが担う事後的なダブルブッキング検知が黙って機能しなくなる
+        # 事態を避けるための保険。
+        matching_event_confirmed_dlq = sqs.Queue(
+            self,
+            "MatchingEventConfirmedDLQ",
+            queue_name=f"{self.env_name}-meetflow-matching-event-confirmed-dlq",
+            retention_period=Duration.days(14),
+        )
         events.Rule(
             self,
             "MatchingEventConfirmedRule",
@@ -274,7 +297,11 @@ class MeetFlowComputeStack(Stack):
             event_pattern=events.EventPattern(
                 source=["meetflow.events"], detail_type=["EventConfirmed"]
             ),
-            targets=[events_targets.LambdaFunction(fn)],
+            targets=[
+                events_targets.LambdaFunction(
+                    fn, dead_letter_queue=matching_event_confirmed_dlq
+                )
+            ],
         )
 
         CfnOutput(
@@ -416,6 +443,14 @@ class MeetFlowComputeStack(Stack):
         # §9.1: 通知にファンアウトする全てのドメインイベントを購読する。
         # source/detail-type文字列はbackend/layers/common/python/
         # meetflow_common/events_bus.pyと一致していなければならない。
+        # 同上の理由。こちらは通知そのものが飛ばなくなるため特に見過ごされ
+        # やすい失敗モード -- DLQに退避させて可視化する。
+        notification_domain_events_dlq = sqs.Queue(
+            self,
+            "NotificationDomainEventsDLQ",
+            queue_name=f"{self.env_name}-meetflow-notification-domain-events-dlq",
+            retention_period=Duration.days(14),
+        )
         events.Rule(
             self,
             "NotificationDomainEventsRule",
@@ -430,7 +465,11 @@ class MeetFlowComputeStack(Stack):
                     "AvailabilityRequestCreated",
                 ],
             ),
-            targets=[events_targets.LambdaFunction(fn)],
+            targets=[
+                events_targets.LambdaFunction(
+                    fn, dead_letter_queue=notification_domain_events_dlq
+                )
+            ],
         )
 
         # Lambda設計書v1.2 §9.3b/9.4, 未決事項7: Web PushのVAPID鍵ペア置き場。
