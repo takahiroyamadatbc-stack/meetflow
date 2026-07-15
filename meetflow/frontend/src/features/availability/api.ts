@@ -31,6 +31,11 @@ export function createAvailabilityBatch(communityId: string, entries: Availabili
     .then((data) => data.availabilities);
 }
 
+/** PUT /availability/{availabilityId} */
+export function updateAvailability(availabilityId: string, input: AvailabilityInput) {
+  return apiClient.put<Availability>(`/availability/${availabilityId}`, input);
+}
+
 /** DELETE /availability/{availabilityId} */
 export function deleteAvailability(availabilityId: string) {
   return apiClient.delete(`/availability/${availabilityId}`);

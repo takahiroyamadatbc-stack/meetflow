@@ -20,7 +20,13 @@ import {
   availabilityKeys,
   deleteAvailability,
   listAvailability,
+  updateAvailability,
 } from "@/features/availability/api";
+import {
+  TimeSlotSheet,
+  type TimeSlotValue,
+} from "@/features/availability/components/TimeSlotSheet";
+import type { Availability } from "@/features/availability/types";
 import { GAME_TYPE_LABELS } from "@/features/user/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { paths } from "@/routes/paths";
@@ -36,6 +42,7 @@ export function AvailabilityListPage() {
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<Availability | null>(null);
 
   const { data: communities, isLoading: isLoadingCommunities } = useQuery({
     queryKey: communityKeys.all,
@@ -58,6 +65,24 @@ export function AvailabilityListPage() {
     },
     onError: handleApiError,
     onSettled: () => setDeleteTarget(null),
+  });
+
+  const editMutation = useMutation({
+    mutationFn: (value: TimeSlotValue) => {
+      const dateStr = format(parseISO(editTarget!.startTime), "yyyy-MM-dd");
+      return updateAvailability(editTarget!.availabilityId, {
+        startTime: `${dateStr}T${value.startHour}:00`,
+        endTime: `${dateStr}T${value.endHour}:00`,
+        gameTypes: value.gameTypes,
+        comment: value.comment,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["availability"] });
+      toast.success("空き予定を変更しました");
+      setEditTarget(null);
+    },
+    onError: handleApiError,
   });
 
   const isLoading = isLoadingCommunities || availabilityQueries.some((q) => q.isLoading);
@@ -114,17 +139,39 @@ export function AvailabilityListPage() {
             {availability.comment && (
               <p className="text-muted-foreground text-sm">{availability.comment}</p>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2 self-start"
-              onClick={() => setDeleteTarget(availability.availabilityId)}
-            >
-              削除する
-            </Button>
+            <div className="mt-2 flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditTarget(availability)}>
+                編集する
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteTarget(availability.availabilityId)}
+              >
+                削除する
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ))}
+
+      <TimeSlotSheet
+        open={editTarget !== null}
+        onOpenChange={(open) => !open && setEditTarget(null)}
+        selectedDateCount={1}
+        submitting={editMutation.isPending}
+        onSubmit={(value) => editMutation.mutate(value)}
+        initialValue={
+          editTarget
+            ? {
+                startHour: format(parseISO(editTarget.startTime), "HH:mm"),
+                endHour: format(parseISO(editTarget.endTime), "HH:mm"),
+                gameTypes: editTarget.gameTypes,
+                comment: editTarget.comment,
+              }
+            : undefined
+        }
+      />
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
