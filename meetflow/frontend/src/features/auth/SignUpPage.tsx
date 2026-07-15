@@ -52,7 +52,7 @@ export function SignUpPage() {
     setSubmitError(null);
     try {
       await signUpUser(values.email, values.password, values.nickname);
-      navigate(paths.signupConfirm, { state: { email: values.email } });
+      navigate(paths.signupConfirm, { state: { email: values.email, nickname: values.nickname } });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "登録に失敗しました");
     }
