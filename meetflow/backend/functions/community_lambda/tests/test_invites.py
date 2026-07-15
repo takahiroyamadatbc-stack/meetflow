@@ -1,3 +1,6 @@
+import pytest
+from meetflow_common import AuthError
+
 from handlers import invites
 
 from _factories import (
@@ -115,3 +118,55 @@ def test_join_via_invite_join_request_already_pending(table):
 
     assert response["statusCode"] == 409
     assert body_of(response)["error"]["code"] == "JOIN_REQUEST_ALREADY_PENDING"
+
+
+def test_revoke_invite_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.revoke_invite(
+        "user-1", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"] == {
+        "token": "tok123",
+        "communityId": "community-1",
+        "revoked": True,
+    }
+    invite = table.get_item(Key={"PK": "INVITE#tok123", "SK": "METADATA"})["Item"]
+    assert invite["revoked"] is True
+
+
+def test_revoke_invite_idempotent_when_already_revoked(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1", revoked=True)
+
+    response = invites.revoke_invite(
+        "user-1", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["revoked"] is True
+
+
+def test_revoke_invite_not_found(table):
+    response = invites.revoke_invite(
+        "user-1", api_event(path_params={"token": "does-not-exist"})
+    )
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "INVITE_NOT_FOUND"
+
+
+def test_revoke_invite_forbidden_for_non_admin(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    with pytest.raises(AuthError) as exc_info:
+        invites.revoke_invite("user-2", api_event(path_params={"token": "tok123"}))
+    assert exc_info.value.code == "FORBIDDEN"

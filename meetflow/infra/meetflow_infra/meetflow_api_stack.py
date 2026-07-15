@@ -37,10 +37,12 @@ from constructs import Construct
 #   backend/functions/notification_lambda/handler.py
 #
 # `GET /communities/{communityId}/logs`と`GET /users/{userId}/logs`
-# （API設計書v1.5 §12、OperationLog）はドキュメントには記載されているが、
-# どのドメインの`_ROUTES`にもまだハンドラーが無いため、ここでは意図的に
-# 除外している -- 404を返すだけのLambdaにルーティングしても意味が無い
-# ため。
+# （API設計書v1.7 §12、OperationLog）はどちらもCommunityLambda
+# （`community_lambda/handlers/logs.py`）が担当する。後者はURLパスこそ
+# `/users/`始まりだが、権限判定（本人 or 同一コミュニティのOWNER/ADMIN）が
+# Membership/roleに依存するため、それらを扱うCommunityLambda側に置いている
+# （`GET /users/{userId}/results`がResultLambda担当なのと同様、URLプレフィックス
+# と担当Lambdaが必ずしも一致しない例）。
 _ROUTES: list[tuple[str, str, str]] = [
     # UserLambda
     ("GET", "/users/me", "user"),
@@ -53,6 +55,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("POST", "/communities/{communityId}/owner-transfer", "community"),
     ("POST", "/communities/{communityId}/invite", "community"),
     ("POST", "/invites/{token}/join", "community"),
+    ("POST", "/invites/{token}/revoke", "community"),
     ("GET", "/communities/{communityId}/members", "community"),
     ("PUT", "/communities/{communityId}/members/{userId}", "community"),
     ("PUT", "/communities/{communityId}/members/me/display-name", "community"),
@@ -69,6 +72,8 @@ _ROUTES: list[tuple[str, str, str]] = [
     ),
     ("GET", "/communities/{communityId}/locations", "community"),
     ("POST", "/communities/{communityId}/locations", "community"),
+    ("GET", "/communities/{communityId}/logs", "community"),
+    ("GET", "/users/{userId}/logs", "community"),
     # AvailabilityLambda
     ("POST", "/communities/{communityId}/availability", "availability"),
     ("POST", "/communities/{communityId}/availability/batch", "availability"),

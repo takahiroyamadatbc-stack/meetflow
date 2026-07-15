@@ -45,6 +45,40 @@ def create_invite(user_id, event):
     return success_response({"url": f"{base_url}/{token}"}, status_code=201)
 
 
+def revoke_invite(user_id, event):
+    """POST /invites/{token}/revoke（API設計書v1.8 §4.3b、新規）: OWNER/ADMINが
+    発行済み招待URLを無効化する。招待発行と同じくコミュニティ単位の権限
+    （require_membership）で判定するため、tokenからInvite.communityIdを
+    引いた上でチェックする。
+
+    NotificationLambdaのプッシュ購読解除（Lambda設計書v1.2 §9.2）と同様、
+    既に無効化済みの招待に対する再実行はエラーにせず冪等に成功として扱う。
+    """
+    token = event["pathParameters"]["token"]
+    table = get_table()
+    invite = table.get_item(Key={"PK": f"INVITE#{token}", "SK": "METADATA"}).get("Item")
+    if invite is None:
+        return error_response("INVITE_NOT_FOUND", "招待URLが存在しません", status_code=404)
+
+    community_id = invite["communityId"]
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    if not invite.get("revoked"):
+        table.update_item(
+            Key={"PK": f"INVITE#{token}", "SK": "METADATA"},
+            UpdateExpression="SET revoked = :true",
+            ExpressionAttributeValues={":true": True},
+        )
+        write_operation_log(
+            action="REVOKE_INVITE",
+            user_id=user_id,
+            community_id=community_id,
+            target_type="Invite",
+            target_id=token,
+        )
+    return success_response({"token": token, "communityId": community_id, "revoked": True})
+
+
 def join_via_invite(user_id, event):
     """F-103（API設計書v1.4 §4.4）: コミュニティの`memberApprovalRequired`
     フラグ（要件定義書v1.2 §10.1）によって、即時のMembership作成とPENDING

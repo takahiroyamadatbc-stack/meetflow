@@ -5,21 +5,29 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { createInvite } from "@/features/community/api";
+import { createInvite, revokeInvite } from "@/features/community/api";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 
 /**
- * S-06 招待URL発行画面。
- * invite失効（revoke）APIは未実装のため、Phase1では発行とコピーのみ提供する
- * （Phase1実装計画の食い違い#4）。
+ * S-06 招待URL発行画面（画面設計書v1.4 S-06: URL発行・コピー・無効化）。
  */
 export function InvitePage() {
   const { communityId } = useParams<{ communityId: string }>();
   const handleApiError = useApiErrorToast();
   const [copied, setCopied] = useState(false);
 
-  const mutation = useMutation({
+  const createMutation = useMutation({
     mutationFn: () => createInvite(communityId!),
+    onError: handleApiError,
+  });
+
+  // 招待URLは`.../invite/{token}`形式（api.tsのcreateInvite参照）なので、
+  // 無効化APIが必要とするtokenは発行済みURLの末尾セグメントから取り出せる
+  // （一覧・取得APIを別途持たなくても、直前に発行したURLの無効化だけなら
+  // これで完結する）。
+  const revokeMutation = useMutation({
+    mutationFn: (url: string) => revokeInvite(url.split("/").pop()!),
+    onSuccess: () => createMutation.reset(),
     onError: handleApiError,
   });
 
@@ -36,22 +44,31 @@ export function InvitePage() {
           <p className="text-muted-foreground text-sm">
             発行した招待URLを、招待したいメンバーに共有してください。
           </p>
-          {!mutation.data ? (
-            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          {!createMutation.data ? (
+            <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
               招待URLを発行する
             </Button>
           ) : (
-            <div className="flex gap-2">
-              <Input readOnly value={mutation.data.url} />
+            <>
+              <div className="flex gap-2">
+                <Input readOnly value={createMutation.data.url} />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleCopy(createMutation.data!.url)}
+                  aria-label="URLをコピー"
+                >
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                </Button>
+              </div>
               <Button
-                variant="outline"
-                size="icon"
-                onClick={() => handleCopy(mutation.data!.url)}
-                aria-label="URLをコピー"
+                variant="destructive"
+                onClick={() => revokeMutation.mutate(createMutation.data!.url)}
+                disabled={revokeMutation.isPending}
               >
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                このURLを無効化する
               </Button>
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
