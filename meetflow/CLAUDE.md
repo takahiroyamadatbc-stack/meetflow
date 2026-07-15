@@ -37,6 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - git pushは明示的に指示されるまで実行しない
 - developブランチへの直接pushはしない。作業用ブランチ(feature/xxx)を切ってそこにpushする
 - **[MVP期間中の暫定運用]** mainへの反映はPR経由が基本だが、MVP開発期間中はレビュー負荷を下げるため、featureブランチをPRを介さずローカルでmainに直接マージ・pushしてよい（指示があった場合のみ、上記のpush規約は変わらない）。プロダクトが安定しチーム開発体制になったらPRベースの運用に戻す。
+- **バグ修正・機能追加はGitHub Issueで管理する**：着手前に`gh issue create`でIssueを作成してから作業を始め、修正が完了したら`gh issue close`でそのIssueを解決済みにする。1つのユーザー報告が複数の独立した修正・追加に分かれる場合は、それぞれ別Issueにする。
 
 ## プロジェクトの状態
 
