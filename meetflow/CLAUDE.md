@@ -36,6 +36,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - commitメッセージは Conventional Commits形式(feat:, fix:, docs: 等)で書く
 - git pushは明示的に指示されるまで実行しない
 - developブランチへの直接pushはしない。作業用ブランチ(feature/xxx)を切ってそこにpushする
+- **[MVP期間中の暫定運用]** mainへの反映はPR経由が基本だが、MVP開発期間中はレビュー負荷を下げるため、featureブランチをPRを介さずローカルでmainに直接マージ・pushしてよい（指示があった場合のみ、上記のpush規約は変わらない）。プロダクトが安定しチーム開発体制になったらPRベースの運用に戻す。
 
 ## プロジェクトの状態
 
