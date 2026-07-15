@@ -85,10 +85,18 @@ def error_response(code: str, message: str, *, status_code: int = None) -> dict:
     上書きする必要がある場合にのみ明示的に渡せばよい（例：
     NO_CANDIDATES_FOUNDはこの関数を通さず、通常の空リストレスポンスとして
     扱われる -- MatchingLambda参照）。
+
+    `Access-Control-Allow-Origin`はAPI Gateway側の`default_cors_preflight_options`
+    ではカバーされない（OPTIONSプリフライト用のモック統合にしか効かず、実際の
+    GET/POST/PUT/DELETEのLambdaプロキシ統合レスポンスには影響しない）ため、
+    ここで明示的に付与する。
     """
     return {
         "statusCode": status_code or _STATUS_BY_CODE.get(code, 400),
-        "headers": {"Content-Type": "application/json"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
         "body": json.dumps(
             {"success": False, "error": {"code": code, "message": message}},
             ensure_ascii=False,
@@ -101,7 +109,10 @@ def success_response(data, *, status_code: int = 200) -> dict:
     """API Gateway（Lambdaプロキシ統合）向けの成功レスポンスを組み立てる。"""
     return {
         "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
         "body": json.dumps(
             {"success": True, "data": data}, ensure_ascii=False, default=_json_default
         ),
