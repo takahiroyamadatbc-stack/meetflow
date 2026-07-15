@@ -258,6 +258,12 @@ def _days_since_last_participation(table, user_id):
         return None
     _, last_start_time, _ = items[0]["GSI1SK"].split("#", 2)
     last_dt = datetime.fromisoformat(last_start_time.replace("Z", "+00:00"))
+    # startTimeはユーザー入力をそのまま保存しており（Availability登録API参照）、
+    # タイムゾーン表記を伴わないことが多い。その場合fromisoformatはoffset-naive
+    # なdatetimeを返し、offset-awareなdatetime.now(timezone.utc)との減算で
+    # TypeErrorになる（実際にdev環境で確認済み）ため、UTCとして扱う。
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=timezone.utc)
     return max((datetime.now(timezone.utc) - last_dt).days, 0)
 
 

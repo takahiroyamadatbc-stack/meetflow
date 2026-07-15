@@ -113,5 +113,22 @@ def put_candidate_member(
     )
 
 
+def put_participant(
+    table, event_id, user_id, *, start_time, end_time, status="CONFIRMED"
+):
+    table.put_item(
+        Item={
+            "PK": f"EVENT#{event_id}",
+            "SK": f"PARTICIPANT#{user_id}",
+            "GSI1PK": f"USER#{user_id}",
+            "GSI1SK": f"PARTICIPANT#{start_time}#{event_id}",
+            "status": status,
+            "startTime": start_time,
+            "endTime": end_time,
+            "joinedAt": now_iso_ms(),
+        }
+    )
+
+
 def body_of(response):
     return json.loads(response["body"])
