@@ -274,6 +274,50 @@ def transfer_owner(user_id, event):
     return success_response({"communityId": community_id, "ownerId": new_owner_id})
 
 
+def delete_community(user_id, event):
+    """DELETE /communities/{communityId}（Issue #2）。
+
+    API設計書には未記載のMVP追加API。コミュニティ作成時のフロント表示だけが
+    失敗しバックエンドでは実際に作成されていた等の理由で残った、実質空の
+    コミュニティを片付ける手段としてUIから削除できるようにする。
+    自分以外のメンバーが1人でも所属している場合は削除を拒否する
+    （他メンバーの空き予定・成績等のデータを巻き込む削除は、相互非公開型
+    マッチングの原則（要件定義書v1.4 §29）やデータ整合性の観点から行わない）。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER",))
+
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
+        & Key("SK").begins_with("MEMBER#")
+    )
+    members = resp.get("Items", [])
+    if any(member["SK"] != f"MEMBER#{user_id}" for member in members):
+        return error_response(
+            "COMMUNITY_NOT_EMPTY", "他のメンバーが在籍しているコミュニティは削除できません"
+        )
+
+    transact_write(
+        [
+            {"Delete": {"Key": {"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}}},
+            {
+                "Delete": {
+                    "Key": {"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"}
+                }
+            },
+        ]
+    )
+    write_operation_log(
+        action="DELETE_COMMUNITY",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Community",
+        target_id=community_id,
+    )
+    return success_response({"communityId": community_id, "deleted": True})
+
+
 def _invalid_name():
     return error_response("INVALID_PARAMETER", "コミュニティ名が不正です")
 

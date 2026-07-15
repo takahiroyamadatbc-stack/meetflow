@@ -1,22 +1,52 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { RoleBadge } from "@/features/community/components/RoleBadge";
-import { communityKeys, getCommunity } from "@/features/community/api";
+import { communityKeys, deleteCommunity, getCommunity } from "@/features/community/api";
+import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { paths } from "@/routes/paths";
 
 /** S-05 コミュニティ詳細画面 */
 export function CommunityDetailPage() {
   const { communityId } = useParams<{ communityId: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const handleApiError = useApiErrorToast();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
   const { data: community, isLoading } = useQuery({
     queryKey: communityKeys.detail(communityId!),
     queryFn: () => getCommunity(communityId!),
     enabled: !!communityId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCommunity(communityId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.all });
+      toast.success("コミュニティを削除しました");
+      navigate(paths.communityList, { replace: true });
+    },
+    onError: handleApiError,
+    onSettled: () => setDeleteDialogOpen(false),
   });
 
   if (isLoading) {
@@ -112,6 +142,39 @@ export function CommunityDetailPage() {
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      {community.role === "OWNER" && (
+        <>
+          <Separator className="my-2" />
+          <Button
+            variant="destructive"
+            className="self-start"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            コミュニティを削除する
+          </Button>
+        </>
+      )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>このコミュニティを削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              自分以外のメンバーが在籍している場合は削除できません。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex justify-end gap-2 px-4 pb-4">
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate()}
+            >
+              削除する
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

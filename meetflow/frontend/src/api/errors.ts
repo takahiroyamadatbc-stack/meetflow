@@ -42,6 +42,7 @@ const TOAST_CODES = new Set([
   "CANDIDATE_ALREADY_USED",
   "EVENT_ALREADY_CONFIRMED",
   "EVENT_ALREADY_CANCELLED",
+  "COMMUNITY_NOT_EMPTY",
 ]);
 
 /** 空状態画面で表示するエラーコード（`*_NOT_FOUND`系は接尾辞で判定） */

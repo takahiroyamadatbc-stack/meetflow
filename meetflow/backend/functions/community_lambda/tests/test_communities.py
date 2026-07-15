@@ -188,6 +188,58 @@ def test_transfer_owner_to_self_is_invalid(table):
     assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
 
 
+def test_delete_community_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.delete_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"] == {"communityId": "community-1", "deleted": True}
+    assert (
+        table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "METADATA"}).get("Item")
+        is None
+    )
+    assert (
+        table.get_item(
+            Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-1"}
+        ).get("Item")
+        is None
+    )
+
+
+def test_delete_community_rejected_when_other_members_exist(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    response = communities.delete_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "COMMUNITY_NOT_EMPTY"
+    # 拒否された場合はコミュニティ・メンバーシップともに残ったまま。
+    assert (
+        table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "METADATA"}).get("Item")
+        is not None
+    )
+
+
+def test_delete_community_forbidden_for_plain_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    with pytest.raises(AuthError) as exc_info:
+        communities.delete_community(
+            "user-2", api_event(path_params={"communityId": "community-1"})
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
 def test_transfer_owner_target_not_active_member(table):
     put_community(table, "community-1", owner_id="user-1")
     put_membership(table, "community-1", "user-1", role="OWNER")
