@@ -77,6 +77,20 @@ aws cloudformation describe-stacks --stack-name dev-MeetFlowApiStack --profile p
 aws cloudformation describe-stacks --stack-name dev-MeetFlowFrontendStack --profile personal --query "Stacks[0].Outputs"
 ```
 
+## 4b. 招待URLをCloudFrontドメインに合わせて設定
+
+招待URL発行（`POST /communities/{communityId}/invite`）は、独自ドメイン未取得の間は`CommunityLambda`の`INVITE_BASE_URL`環境変数（未設定時はコード側のハードコードされたプレースホルダー`https://meetflow.jp/invite`にフォールバックする）に、手順4で控えた`CloudFrontDomainName`を設定することで動作確認できる。
+
+`FrontendStack`は他スタックへの参照を持たない設計（手順3参照）のため、CloudFrontドメインは手順3の`--all`デプロイ時点ではまだ分からない。フロントエンドの`.env.development`転記（手順6）と同様、手順4の出力を得た後の追加デプロイになる：
+
+```bash
+cd infra
+export PATH="$(pwd)/.venv/Scripts:$PATH"
+cdk deploy dev-MeetFlowComputeStack -c env=dev -c invite_base_url=<手順4のCloudFrontDomainName>/invite --profile personal
+```
+
+IAMロール変更を伴わない環境変数更新のみのため、手順3のような確認プロンプトは出ない見込み。独自ドメインを取得したら、`invite_base_url`にそのドメインを指定して再デプロイし直す想定。
+
 ## 5. VAPID鍵ペアの生成・投入
 
 `backend/.venv`には`pywebpush`の依存として`py-vapid`が入っており、そのCLI（`vapid`）で鍵ペアを生成できる。

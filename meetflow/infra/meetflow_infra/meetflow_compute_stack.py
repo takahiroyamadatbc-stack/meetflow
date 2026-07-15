@@ -41,6 +41,7 @@ class MeetFlowComputeStack(Stack):
         env_name: str,
         table: dynamodb.ITable,
         user_pool: cognito.IUserPool,
+        invite_base_url: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -60,6 +61,7 @@ class MeetFlowComputeStack(Stack):
 
         self.env_name = env_name
         self.table = table
+        self.invite_base_url = invite_base_url
 
         # Lambda設計書v1.1 §12.1: DynamoDBクライアント/クエリヘルパー、
         # メンバーシップ・権限チェック、OperationLogライター、共通エラー
@@ -165,10 +167,24 @@ class MeetFlowComputeStack(Stack):
         return fn
 
     def _build_community_lambda(self) -> lambda_.Function:
+        # 招待URL(招待発行ハンドラーが返す文字列)のベースURL。独自ドメイン
+        # (MVP時点では未取得)を前提にコード側でハードコードされている
+        # フォールバック値の代わりに、実際にデプロイ済みのCloudFront
+        # ドメイン(MeetFlowFrontendStackのCloudFrontDomainName出力)を
+        # 使えるようにする。FrontendStackとは意図的にクロススタック参照を
+        # 持たない設計(meetflow_frontend_stack.py参照)のため、値はCDK
+        # contextで受け渡す(DEPLOY.md手順4bでCloudFrontドメイン確定後に
+        # 再デプロイする運用)。未指定時はLambda側のハードコードされた
+        # デフォルトにフォールバックする(cdk synth --allが認証情報無しで
+        # 動くinfra-synth CIジョブの挙動は変えない)。
+        community_extra_environment = (
+            {"INVITE_BASE_URL": self.invite_base_url} if self.invite_base_url else None
+        )
         fn = self._build_function(
             "CommunityLambda",
             function_name=f"{self.env_name}-meetflow-community-lambda",
             code_subdir="community_lambda",
+            extra_environment=community_extra_environment,
         )
 
         # Lambda設計書v1.1 §4.3: Community, Membership, Invite, JoinRequest,

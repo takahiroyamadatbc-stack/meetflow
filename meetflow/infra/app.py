@@ -16,6 +16,12 @@ app = cdk.App()
 # 上書きできる。
 env_name = app.node.try_get_context("env") or "dev"
 
+# 招待URLのベースURL(CommunityLambdaのINVITE_BASE_URL環境変数に渡す)。
+# `cdk deploy -c invite_base_url=https://xxxx.cloudfront.net/invite`で
+# 指定する(DEPLOY.md手順4b参照)。未指定時はNoneのままcompute_stackに渡り、
+# Lambda側のハードコードされたデフォルトにフォールバックする。
+invite_base_url = app.node.try_get_context("invite_base_url")
+
 env = cdk.Environment(
     account=os.getenv("CDK_DEFAULT_ACCOUNT"),
     region=os.getenv("CDK_DEFAULT_REGION"),
@@ -43,6 +49,7 @@ compute_stack = MeetFlowComputeStack(
     env_name=env_name,
     table=data_stack.table,
     user_pool=auth_stack.user_pool,
+    invite_base_url=invite_base_url,
     env=env,
     description="MeetFlow domain Lambda stack: shared Layer + UserLambda (Lambda設計書v1.1)",
 )
