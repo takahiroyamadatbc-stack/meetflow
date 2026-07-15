@@ -1,9 +1,11 @@
 from aws_cdk import (
     CfnOutput,
+    RemovalPolicy,
     Stack,
     aws_apigateway as apigateway,
     aws_cognito as cognito,
     aws_lambda as lambda_,
+    aws_logs as logs,
 )
 from constructs import Construct
 
@@ -153,6 +155,19 @@ class MeetFlowApiStack(Stack):
             "notification": notification_lambda,
         }
 
+        # アクセスログの書き込みには、アカウント/リージョンごとに一度だけ
+        # 必要なCloudWatch書き込み用IAMロール(`AWS::ApiGateway::Account`)が
+        # 要る。`RestApi`の`cloud_watch_role`はデフォルトTrueで、これを
+        # 自動的に作成・管理してくれるため、ここでは明示的に触っていない
+        # (手動で作ると`AWS::ApiGateway::Account`が重複して衝突する)。
+        access_log_group = logs.LogGroup(
+            self,
+            "ApiAccessLogGroup",
+            log_group_name=f"/aws/apigateway/{env_name}-meetflow-api-access",
+            retention=logs.RetentionDays.ONE_MONTH,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
         # REGIONAL, not EDGE: AWSシステム構成設計書v1.3のアーキテクチャ図
         # (`User → CloudFront → API Gateway → Lambda`) はCloudFrontを前段に
         # 置く前提なので、API Gateway自体をエッジ最適化して二重CDNにしない。
@@ -167,6 +182,23 @@ class MeetFlowApiStack(Stack):
                 # る妥当な既定値。
                 throttling_rate_limit=50,
                 throttling_burst_limit=100,
+                # 障害時にAPI Gateway側(どのリクエストがどう失敗したか)を
+                # 追えるようにするアクセスログ。X-Rayトレーシングは規模と
+                # 複雑さの割に旨味が薄いため見送り。
+                access_log_destination=apigateway.LogGroupLogDestination(
+                    access_log_group
+                ),
+                access_log_format=apigateway.AccessLogFormat.json_with_standard_fields(
+                    caller=False,
+                    http_method=True,
+                    ip=True,
+                    protocol=True,
+                    request_time=True,
+                    resource_path=True,
+                    response_length=True,
+                    status=True,
+                    user=False,
+                ),
             ),
             default_cors_preflight_options=apigateway.CorsOptions(
                 # フロントエンドは未実装でオリジンも未確定のため暫定で全許可

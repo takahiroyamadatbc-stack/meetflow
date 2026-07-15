@@ -2,6 +2,7 @@ from aws_cdk import (
     CfnOutput,
     RemovalPolicy,
     Stack,
+    aws_budgets as budgets,
     aws_dynamodb as dynamodb,
     aws_kms as kms,
 )
@@ -166,4 +167,41 @@ class MeetFlowDataStack(Stack):
             "TableKeyArn",
             value=self.table_key.key_arn,
             description="KMS key ARN used for MeetFlowTable encryption",
+        )
+
+        # AWS Budgetsによる課金アラート(アカウント単位、月次)。誤操作や
+        # バグ由来の課金急増(例: EventBridgeの無限リトライ等)に気づく
+        # 仕組みがそれまで無かったための保険。予算自体はスタック固有の
+        # 概念ではなくアカウント全体の実費用を見るものだが、他に専用の
+        # 置き場が無いため一番手前にデプロイされるこのスタックに置く。
+        # 複数環境(dev/staging/prod)を同一アカウントに同時デプロイする
+        # 場合、それぞれが同名でない限り重複した予算が並立するだけで
+        # 衝突はしない(`budget_name`をenv_nameで一意にしているため)。
+        budgets.CfnBudget(
+            self,
+            "AccountCostBudget",
+            budget=budgets.CfnBudget.BudgetDataProperty(
+                budget_name=f"{env_name}-meetflow-monthly-cost-budget",
+                budget_type="COST",
+                time_unit="MONTHLY",
+                budget_limit=budgets.CfnBudget.SpendProperty(
+                    amount=10, unit="USD"
+                ),
+            ),
+            notifications_with_subscribers=[
+                budgets.CfnBudget.NotificationWithSubscribersProperty(
+                    notification=budgets.CfnBudget.NotificationProperty(
+                        notification_type="ACTUAL",
+                        comparison_operator="GREATER_THAN",
+                        threshold=100,
+                        threshold_type="PERCENTAGE",
+                    ),
+                    subscribers=[
+                        budgets.CfnBudget.SubscriberProperty(
+                            subscription_type="EMAIL",
+                            address="takahiro.yamada1221@gmail.com",
+                        )
+                    ],
+                )
+            ],
         )
