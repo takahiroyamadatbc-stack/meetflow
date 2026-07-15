@@ -7,6 +7,7 @@ from meetflow_infra.meetflow_api_stack import MeetFlowApiStack
 from meetflow_infra.meetflow_auth_stack import MeetFlowAuthStack
 from meetflow_infra.meetflow_compute_stack import MeetFlowComputeStack
 from meetflow_infra.meetflow_data_stack import MeetFlowDataStack
+from meetflow_infra.meetflow_frontend_stack import MeetFlowFrontendStack
 
 app = cdk.App()
 
@@ -66,6 +67,16 @@ api_stack = MeetFlowApiStack(
     notification_lambda=compute_stack.notification_lambda,
     env=env,
     description="MeetFlow REST API stack: API Gateway + Cognito Authorizer (API設計書v1.5)",
+)
+
+# 他スタックへの参照を持たないため、依存順という意味ではどのタイミングで
+# デプロイしても良い。ビルド成果物のアップロードは別途手動(DEPLOY.md)。
+frontend_stack = MeetFlowFrontendStack(
+    app,
+    f"{env_name}-MeetFlowFrontendStack",
+    env_name=env_name,
+    env=env,
+    description="MeetFlow frontend delivery stack: S3 + CloudFront (AWSシステム構成設計書v1.3 §3-4)",
 )
 
 app.synth()
