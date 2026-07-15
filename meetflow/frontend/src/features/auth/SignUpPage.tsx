@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
@@ -18,16 +19,22 @@ import { signUpUser } from "@/features/auth/api";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
-const signUpSchema = z.object({
-  nickname: z.string().min(1, "ニックネームを入力してください").max(30, "30文字以内で入力してください"),
-  email: z.string().min(1, "メールアドレスを入力してください").email("メールアドレスの形式が正しくありません"),
-  password: z
-    .string()
-    .min(8, "8文字以上で入力してください")
-    .regex(/[a-z]/, "小文字を含めてください")
-    .regex(/[A-Z]/, "大文字を含めてください")
-    .regex(/[0-9]/, "数字を含めてください"),
-});
+const signUpSchema = z
+  .object({
+    nickname: z.string().min(1, "ニックネームを入力してください").max(30, "30文字以内で入力してください"),
+    email: z.string().min(1, "メールアドレスを入力してください").email("メールアドレスの形式が正しくありません"),
+    password: z
+      .string()
+      .min(8, "8文字以上で入力してください")
+      .regex(/[a-z]/, "小文字を含めてください")
+      .regex(/[A-Z]/, "大文字を含めてください")
+      .regex(/[0-9]/, "数字を含めてください"),
+    confirmPassword: z.string().min(1, "確認用パスワードを入力してください"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "パスワードが一致しません",
+    path: ["confirmPassword"],
+  });
 
 type SignUpFormValues = z.infer<typeof signUpSchema>;
 
@@ -38,7 +45,7 @@ export function SignUpPage() {
 
   const form = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
-    defaultValues: { nickname: "", email: "", password: "" },
+    defaultValues: { nickname: "", email: "", password: "", confirmPassword: "" },
   });
 
   async function onSubmit(values: SignUpFormValues) {
@@ -94,7 +101,20 @@ export function SignUpPage() {
                   <FormItem>
                     <FormLabel>パスワード</FormLabel>
                     <FormControl>
-                      <Input type="password" autoComplete="new-password" {...field} />
+                      <PasswordInput autoComplete="new-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>パスワード（確認用）</FormLabel>
+                    <FormControl>
+                      <PasswordInput autoComplete="new-password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
