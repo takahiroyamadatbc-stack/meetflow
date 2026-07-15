@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,11 +27,14 @@ type TimeSlotSheetProps = {
   selectedDateCount: number;
   onSubmit: (value: TimeSlotValue) => void;
   submitting?: boolean;
+  /** 編集モード時の初期値。未指定なら新規登録モード（既定値で開始）。 */
+  initialValue?: TimeSlotValue;
 };
 
 /**
  * S-09 空き予定登録画面の時間帯選択パネル。
  * カレンダーで選択した全ての日付に、ここで指定した同一の時間帯・条件を適用する。
+ * `initialValue`を渡すと既存の1件を編集するモードになる（空き予定一覧画面から使用）。
  */
 export function TimeSlotSheet({
   open,
@@ -39,18 +42,32 @@ export function TimeSlotSheet({
   selectedDateCount,
   onSubmit,
   submitting,
+  initialValue,
 }: TimeSlotSheetProps) {
-  const [startHour, setStartHour] = useState("19:00");
-  const [endHour, setEndHour] = useState("22:00");
-  const [gameTypes, setGameTypes] = useState<GameType[]>([]);
-  const [comment, setComment] = useState("");
+  const isEditMode = initialValue !== undefined;
+  const [startHour, setStartHour] = useState(initialValue?.startHour ?? "19:00");
+  const [endHour, setEndHour] = useState(initialValue?.endHour ?? "22:00");
+  const [gameTypes, setGameTypes] = useState<GameType[]>(initialValue?.gameTypes ?? []);
+  const [comment, setComment] = useState(initialValue?.comment ?? "");
+
+  useEffect(() => {
+    if (!open) return;
+    setStartHour(initialValue?.startHour ?? "19:00");
+    setEndHour(initialValue?.endHour ?? "22:00");
+    setGameTypes(initialValue?.gameTypes ?? []);
+    setComment(initialValue?.comment ?? "");
+  }, [open, initialValue]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom">
         <SheetHeader>
-          <SheetTitle>時間帯を選択</SheetTitle>
-          <SheetDescription>選択した{selectedDateCount}日すべてに同じ時間帯を登録します</SheetDescription>
+          <SheetTitle>{isEditMode ? "空き予定を編集" : "時間帯を選択"}</SheetTitle>
+          <SheetDescription>
+            {isEditMode
+              ? "時間帯・ゲーム種別・コメントを変更できます"
+              : `選択した${selectedDateCount}日すべてに同じ時間帯を登録します`}
+          </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-4 px-4">
           <div className="flex items-center gap-2">
@@ -89,7 +106,7 @@ export function TimeSlotSheet({
             disabled={submitting}
             onClick={() => onSubmit({ startHour, endHour, gameTypes, comment })}
           >
-            登録する
+            {isEditMode ? "変更を保存する" : "登録する"}
           </Button>
         </SheetFooter>
       </SheetContent>
