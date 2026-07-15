@@ -52,7 +52,7 @@ MeetFlowは設計フェーズを終え、バックエンドの実装に着手し
   - **APIクライアント**：`src/api/client.ts`が薄いfetchラッパーで、`aws-amplify/auth`の`fetchAuthSession()`から取得したIDトークンを`Authorization`ヘッダーに付与する。データフェッチ/キャッシュ管理にはTanStack Queryを採用。エラー表示はエラーコード一覧v1.2 §10の4分類（インライン/トースト/モーダル/空状態）に沿って`src/api/errors.ts`の`getErrorDisplay()`が振り分ける。
   - **画面設計書・API設計書と実装の食い違い**：実装時に以下が判明し、いずれもフロント側の回避策で対応済み（詳細はコード中のコメント参照）。(1) ~~`GET /communities/{communityId}`（単体取得）が未実装~~：**解消済み**。`community_lambda/handlers/communities.py`の`get_community()`として追加し、API設計書v1.6 §4.2bにも正式反映済み。`GET /communities`一覧キャッシュから検索する回避策（`CommunityDetailPage`・`AvailabilityRequestListPage`）は廃止した。(2) `GET /communities`のレスポンスに`memberApprovalRequired`・メンバー数・`communityType`が含まれない（一覧はそのままで、詳細取得は(1)のAPIで解決可能）。(3) ~~招待URLの無効化（revoke）APIが未実装のため、招待画面は発行・コピーのみ対応~~：**解消済み**。`POST /invites/{token}/revoke`を追加し（API設計書v1.8 §4.3b新規）、`InvitePage`に無効化ボタンを実装した（画面設計書v1.4 S-06が元々定義していた「URL無効化ボタン」要素に対応）。
   - ディレクトリ構成はfeature-based（`src/features/{auth,user,community,availability,home}/`）。過剰な抽象化（状態管理ライブラリ、API生成パイプライン等）は導入していない。lintはESLintではなく、Viteテンプレートに同梱の`oxlint`をそのまま使用（`npm run lint`）。
-- `.github/workflows/`：未着手
+- `.github/workflows/`：CI検証ワークフロー（`ci.yml`）を実装済み。PRおよびmainへのpush時に3ジョブを並列実行する：`backend-test`（pytest、Lambdaランタイムに合わせてPython 3.13）、`frontend-ci`（oxlint→tsc typecheck→vitest→vite build、Node 24。フロントはPhase1時点でテストファイルが未整備のため`vitest`に`--passWithNoTests`を付与しており、テストが追加され次第自動的に実行対象になる）、`infra-synth`（`cdk synth --all`。`app.py`がaccount/region未指定の環境非依存スタックとして定義されているため、AWS認証情報無しで実行可能なことをローカルで確認済み）。デプロイ（CD）は未実装（詳細は本ファイル末尾の「CI/CD」節を参照）。
 
 この開発環境にはPython 3.14（miniconda3）、Node.js v24、AWS CDK CLI 2.xがグローバルに導入済みで、Claude側でもコード実行・テスト実行ができる。プロジェクト依存関係は用途ごとに分離したvenvにインストールしてある：
 
@@ -116,6 +116,9 @@ User → CloudFront → S3 (React SPA) / API Gateway (Cognito Authorizer) → 7 
 - 人数条件は常に**範囲判定**（最低〜最大）であり、厳密一致では決してない。これは以前のバージョンからの意図的な修正なので、厳密一致に「単純化」して戻さないこと。
 - フロントエンドはモバイルファースト（幅375〜430px）のReact SPAで、Tailwind CSS + shadcn/ui、画面下部のタブバーナビゲーション（ホーム / コミュニティ / 予定 / 通知 / マイページ）を採用する（`docs/MeetFlow_画面設計書_v1.3.md`参照）。PWA化（Service Worker + Webアプリマニフェスト）とWebプッシュ通知（VAPID鍵、Amazon SNS等は使わない）がMVPスコープに含まれる（要件定義書v1.3 27章）。
 
-## CI/CD（計画中）
+## CI/CD
 
-GitHub → GitHub Actions → `test → build → deploy`、ブランチと環境の対応は以下の通り：`develop` → Development、`staging` → Staging、`main` → Production（mainマージ時に自動デプロイ）。ワークフローファイルはまだ存在しない。
+GitHub → GitHub Actions → `test → build → deploy`、ブランチと環境の対応は以下の通り：`develop` → Development、`staging` → Staging、`main` → Production（mainマージ時に自動デプロイ）。
+
+- `test`（CI）：`.github/workflows/ci.yml`として実装済み（詳細は上記「プロジェクトの状態」の`.github/workflows/`項目を参照）。AWS認証情報を必要としない検証のみのワークフロー。
+- `build`/`deploy`（CD）：**計画中・未着手**。AWS側にGitHub Actions用のOIDC IAMロール、CDKブートストラップ済み環境（dev/staging/prod）が必要で、いずれも未準備。`develop`/`staging`ブランチ自体もまだ作成されていない（現状mainのみ運用）。
