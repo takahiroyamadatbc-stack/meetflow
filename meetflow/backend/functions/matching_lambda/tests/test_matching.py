@@ -3,7 +3,14 @@ from meetflow_common import AuthError, add_days_iso, now_iso_ms
 
 from handlers import matching
 
-from _factories import api_event, body_of, put_availability, put_membership, put_template
+from _factories import (
+    api_event,
+    body_of,
+    put_availability,
+    put_membership,
+    put_participant,
+    put_template,
+)
 
 _START = add_days_iso(now_iso_ms(), 5)
 _END = add_days_iso(now_iso_ms(), 5)  # 同日枠。厳密な値はグルーピングロジックで使用しない
@@ -48,6 +55,30 @@ def test_generate_candidates_success(table):
     assert candidates[0]["endTime"] == _END
     member_ids = {m["userId"] for m in candidates[0]["members"]}
     assert member_ids == {"user-1", "user-2", "user-3", "user-4"}
+
+
+def test_generate_candidates_with_timezone_naive_past_participation(table):
+    """dev環境で実際に発生した回帰テスト: ユーザーの空き予定startTimeは
+    タイムゾーン表記を伴わない文字列（例："2026-07-25T19:00"）がそのまま
+    Participant.GSI1SKに使われる。そのユーザーについて再度候補生成する際、
+    _days_since_last_participationがoffset-naive/offset-awareの減算で
+    TypeErrorになり、候補生成API全体が500になっていた。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+    put_participant(
+        table, "past-event-1", "user-1", start_time="2020-01-01T19:00", end_time="2020-01-01T23:00"
+    )
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    assert response["statusCode"] == 201
 
 
 def test_generate_candidates_uses_display_name_when_set(table):
