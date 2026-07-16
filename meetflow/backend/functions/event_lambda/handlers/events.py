@@ -421,3 +421,45 @@ def list_community_events(user_id, event):
             }
         )
     return success_response({"events": events_out})
+
+
+def list_my_events(user_id, event):
+    """GET /users/me/events（Issue #12。API設計書には無い新規エンドポイント
+    -- GET /communities/{communityId}と同様、フロント実装時の追加として扱う）。
+
+    予定タブのカレンダー表示で「確定した予定」をコミュニティ横断で表示する
+    ために、呼び出し元自身が参加者となっている確定イベントの一覧を返す。
+    ParticipantのGSI1（USER#{userId} / PARTICIPANT#{startTime}#{eventId}）
+    を使う。相互非公開型マッチング（要件定義書v1.4 29章）の対象は他メンバー
+    の生の空き予定であり、自分自身が参加する確定イベントの取得はこの原則に
+    抵触しない。
+    """
+    table = get_table()
+    resp = table.query(
+        IndexName="GSI1",
+        KeyConditionExpression=Key("GSI1PK").eq(f"USER#{user_id}")
+        & Key("GSI1SK").begins_with("PARTICIPANT#"),
+    )
+
+    events_out = []
+    for item in resp.get("Items", []):
+        if item.get("status") != "CONFIRMED":
+            continue
+        event_id = item["PK"].split("#", 1)[1]
+        event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+            "Item"
+        )
+        # イベント全体が中止（cancel_event）された場合、Participant行自体は
+        # 更新されないため、Event側のstatusも合わせて確認する必要がある。
+        if event_item is None or event_item.get("status") != "CONFIRMED":
+            continue
+        community_id = event_item["GSI1PK"].split("#", 1)[1]
+        events_out.append(
+            {
+                "eventId": event_id,
+                "communityId": community_id,
+                "startTime": item.get("startTime"),
+                "endTime": item.get("endTime"),
+            }
+        )
+    return success_response({"events": events_out})

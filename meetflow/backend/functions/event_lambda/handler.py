@@ -5,6 +5,7 @@ from handlers import events, participants
 # EventLambda (Lambda設計書v1.1 §7).
 _ROUTES = {
     ("POST", "/events"): events.create_event,
+    ("GET", "/users/me/events"): events.list_my_events,
     ("GET", "/events/{eventId}"): events.get_event,
     ("POST", "/events/{eventId}/confirm"): events.confirm_event,
     ("POST", "/events/{eventId}/cancel"): events.cancel_event,
