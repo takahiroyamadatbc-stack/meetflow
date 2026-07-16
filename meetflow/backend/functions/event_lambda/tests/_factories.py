@@ -105,6 +105,23 @@ def put_event_status(table, event_id, status):
     )
 
 
+def put_availability(
+    table, community_id, user_id, availability_id, *, start_time, end_time
+):
+    table.put_item(
+        Item={
+            "PK": f"COMMUNITY#{community_id}",
+            "SK": f"AVAIL#{start_time}#{availability_id}",
+            "GSI1PK": f"USER#{user_id}",
+            "GSI1SK": f"AVAIL#{start_time}",
+            "userId": user_id,
+            "endTime": end_time,
+            "comment": "",
+            "createdAt": now_iso_ms(),
+        }
+    )
+
+
 def put_confirmed_participant(table, user_id, *, start_time, end_time, event_id="other-event"):
     """Seeds a CONFIRMED Participant row for a *different* event, to trigger
     confirm_event's PARTICIPANT_SCHEDULE_CONFLICT hard check.

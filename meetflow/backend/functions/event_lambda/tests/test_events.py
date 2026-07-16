@@ -3,6 +3,7 @@ from handlers import events
 from _factories import (
     api_event,
     body_of,
+    put_availability,
     put_candidate,
     put_confirmed_participant,
     put_event_status,
@@ -136,6 +137,59 @@ def test_confirm_event_success(table):
             Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}
         )["Item"]
         assert participant["status"] == "CONFIRMED"
+
+
+def test_confirm_event_deletes_overlapping_availability(table):
+    """#14: イベント確定時、候補元となった参加者の空き予定のうち、確定した
+    イベント時間帯と重複するものが削除されること。マッチングは複数人の
+    交差区間をイベント時間として採用するため、本人の元の登録（例:
+    18:00-23:00）がイベント時間帯（19:00-23:00）より広いケースも扱う。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    start_time, end_time = put_candidate(
+        table, "community-1", "candidate-1", ["user-1", "user-2"]
+    )
+    put_availability(
+        table,
+        "community-1",
+        "user-1",
+        "avail-overlap",
+        start_time="2026-08-05T18:00:00.000Z",
+        end_time="2026-08-05T23:00:00.000Z",
+    )
+    put_availability(
+        table,
+        "community-1",
+        "user-2",
+        "avail-non-overlap",
+        start_time="2026-08-06T10:00:00.000Z",
+        end_time="2026-08-06T12:00:00.000Z",
+    )
+    create_response = events.create_event(
+        "user-1", api_event(body={"candidateId": "candidate-1"})
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+
+    response = events.confirm_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+
+    assert response["statusCode"] == 200
+    overlap_item = table.get_item(
+        Key={
+            "PK": "COMMUNITY#community-1",
+            "SK": "AVAIL#2026-08-05T18:00:00.000Z#avail-overlap",
+        }
+    ).get("Item")
+    assert overlap_item is None
+
+    non_overlap_item = table.get_item(
+        Key={
+            "PK": "COMMUNITY#community-1",
+            "SK": "AVAIL#2026-08-06T10:00:00.000Z#avail-non-overlap",
+        }
+    ).get("Item")
+    assert non_overlap_item is not None
 
 
 def test_confirm_event_already_confirmed(table):
