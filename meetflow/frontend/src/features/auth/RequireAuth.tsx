@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthUser } from "@/features/auth/useAuthUser";
+import { savePendingInvitePath } from "@/features/auth/pendingInvite";
 import { paths } from "@/routes/paths";
 import brandIcon from "@/assets/brand/meetflow-icon-v2.svg";
 
@@ -19,6 +20,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
 
   if (status === "unauthenticated") {
+    // 招待URLはログイン後だけでなく、間にサインアップ・確認コード入力を
+    // 挟んでも忘れずに戻れるよう、location.stateとは別にsessionStorageへ
+    // 保持しておく（サインアップ経由だとlocation.stateは引き継がれない）。
+    if (location.pathname.startsWith("/invite/")) {
+      savePendingInvitePath(`${location.pathname}${location.search}`);
+    }
     return <Navigate to={paths.login} state={{ from: location }} replace />;
   }
 
