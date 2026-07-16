@@ -26,6 +26,8 @@ import {
   listParticipants,
 } from "@/features/event/api";
 import { EVENT_STATUS_LABELS } from "@/features/event/types";
+import { listEventSessions, resultKeys } from "@/features/result/api";
+import { GAME_TYPE_LABELS } from "@/features/user/types";
 import { useAuthUser } from "@/features/auth/useAuthUser";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { paths } from "@/routes/paths";
@@ -60,6 +62,18 @@ export function EventDetailPage() {
     queryKey: eventKeys.cancelRequests(eventId!),
     queryFn: () => listCancelRequests(eventId!),
     enabled: !!eventId && (community?.role === "OWNER" || community?.role === "ADMIN"),
+  });
+
+  // COMPLETED/IN_PROGRESSへの状態遷移が未実装なため、実運用で唯一到達
+  // 可能なCONFIRMED状態を成績入力の解禁条件にしている（Issue #20）。
+  const canManageResults =
+    event?.status === "CONFIRMED" ||
+    event?.status === "IN_PROGRESS" ||
+    event?.status === "COMPLETED";
+  const { data: sessions } = useQuery({
+    queryKey: resultKeys.eventSessions(eventId!),
+    queryFn: () => listEventSessions(eventId!),
+    enabled: !!eventId && canManageResults,
   });
 
   const confirmMutation = useMutation({
@@ -120,7 +134,7 @@ export function EventDetailPage() {
           <p className="text-sm font-medium">参加者</p>
           {(participants ?? []).map((participant) => (
             <div key={participant.userId} className="flex items-center justify-between text-sm">
-              {event.status === "COMPLETED" ? (
+              {canManageResults ? (
                 <Link
                   to={paths.resultSummary(event.communityId, participant.userId)}
                   className="underline"
@@ -172,10 +186,38 @@ export function EventDetailPage() {
         </>
       )}
 
-      {event.status === "COMPLETED" && isAdmin && (
-        <Link to={paths.resultSessionNew(event.eventId)}>
-          <Button className="w-full">成績を登録する</Button>
-        </Link>
+      {canManageResults && (
+        <Card>
+          <CardContent className="flex flex-col gap-2">
+            <p className="text-sm font-medium">対局成績</p>
+            {(sessions ?? []).length === 0 && (
+              <p className="text-muted-foreground text-sm">まだ対局は登録されていません</p>
+            )}
+            {(sessions ?? []).map((session) => (
+              <div
+                key={session.sessionNo}
+                className="flex items-center justify-between text-sm"
+              >
+                <span>
+                  対局{Number(session.sessionNo)}（{GAME_TYPE_LABELS[session.gameType]}）
+                </span>
+                {isAdmin && (
+                  <Link
+                    to={paths.resultSessionEdit(event.eventId, session.sessionNo)}
+                    className="underline"
+                  >
+                    編集
+                  </Link>
+                )}
+              </div>
+            ))}
+            <Link to={paths.resultSessionNew(event.eventId)}>
+              <Button variant="outline" className="w-full">
+                成績を入力する
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       )}
 
       <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
