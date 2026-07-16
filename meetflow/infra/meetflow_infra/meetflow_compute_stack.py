@@ -343,12 +343,18 @@ class MeetFlowComputeStack(Stack):
         # 読み取り/更新アクセス、イベント詳細/一覧レスポンス用の
         # Place/Userへの読み取りアクセスも必要 -- 全て同一テーブルなので、
         # 他のドメインLambdaと同様、テーブルレベルのaction群としてまとめて
-        # grantしている。
+        # grantしている。DeleteItemは§7.4には無いが、イベント確定
+        # (confirm_event)のTransactWriteItemsに、参加者の重複する
+        # Availability削除操作が含まれるため必要 -- DynamoDBの
+        # TransactWriteItemsは`dynamodb:TransactWriteItems`に加え、
+        # トランザクション内の各操作種別に対応する個別actionも要求する
+        # (Delete操作にはdynamodb:DeleteItem)。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
             "dynamodb:PutItem",
             "dynamodb:UpdateItem",
+            "dynamodb:DeleteItem",
             "dynamodb:Query",
             "dynamodb:TransactWriteItems",
         )
