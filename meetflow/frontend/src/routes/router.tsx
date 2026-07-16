@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { TabLayout } from "@/components/layout/TabLayout";
 import { StackLayout } from "@/components/layout/StackLayout";
 import { RequireAuth } from "@/features/auth/RequireAuth";
+import { RedirectIfAuthenticated } from "@/features/auth/RedirectIfAuthenticated";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { SignUpPage } from "@/features/auth/SignUpPage";
 import { ConfirmSignUpPage } from "@/features/auth/ConfirmSignUpPage";
@@ -35,9 +36,30 @@ import { NotificationListPage } from "@/features/notification/NotificationListPa
 import { paths } from "@/routes/paths";
 
 export const router = createBrowserRouter([
-  { path: paths.login, element: <LoginPage /> },
-  { path: paths.signup, element: <SignUpPage /> },
-  { path: paths.signupConfirm, element: <ConfirmSignUpPage /> },
+  {
+    path: paths.login,
+    element: (
+      <RedirectIfAuthenticated>
+        <LoginPage />
+      </RedirectIfAuthenticated>
+    ),
+  },
+  {
+    path: paths.signup,
+    element: (
+      <RedirectIfAuthenticated>
+        <SignUpPage />
+      </RedirectIfAuthenticated>
+    ),
+  },
+  {
+    path: paths.signupConfirm,
+    element: (
+      <RedirectIfAuthenticated>
+        <ConfirmSignUpPage />
+      </RedirectIfAuthenticated>
+    ),
+  },
   {
     path: "/invite/:token",
     element: (

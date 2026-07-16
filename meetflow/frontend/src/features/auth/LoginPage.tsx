@@ -26,22 +26,29 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+type LoginLocationState = {
+  from?: Location;
+  email?: string;
+  infoMessage?: string;
+};
+
 /** S-01 ログイン画面 */
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const locationState = location.state as LoginLocationState | null;
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: locationState?.email ?? "", password: "" },
   });
 
   async function onSubmit(values: LoginFormValues) {
     setSubmitError(null);
     try {
       await signInUser(values.email, values.password);
-      const from = (location.state as { from?: Location } | null)?.from;
+      const from = locationState?.from;
       navigate(from ? `${from.pathname}${from.search}` : paths.home, { replace: true });
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
@@ -65,6 +72,9 @@ export function LoginPage() {
           <CardTitle>ログイン</CardTitle>
         </CardHeader>
         <CardContent>
+          {locationState?.infoMessage && (
+            <p className="text-muted-foreground mb-4 text-sm">{locationState.infoMessage}</p>
+          )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
               <FormField
