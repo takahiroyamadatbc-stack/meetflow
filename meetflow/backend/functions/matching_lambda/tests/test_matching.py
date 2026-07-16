@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pytest
 from meetflow_common import AuthError, add_days_iso, now_iso_ms
 
@@ -12,8 +14,14 @@ from _factories import (
     put_template,
 )
 
+
+def _add_hours_iso(base_iso, hours):
+    dt = datetime.fromisoformat(base_iso.replace("Z", "+00:00")) + timedelta(hours=hours)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
 _START = add_days_iso(now_iso_ms(), 5)
-_END = add_days_iso(now_iso_ms(), 5)  # 同日枠。厳密な値はグルーピングロジックで使用しない
+_END = _add_hours_iso(_START, 4)  # #9: 交差区間計算が意味を持つよう、開始より後の時刻にする
 
 
 def _seed_matching_group(table, community_id, user_ids, *, game_type="MAHJONG4"):
@@ -55,6 +63,84 @@ def test_generate_candidates_success(table):
     assert candidates[0]["endTime"] == _END
     member_ids = {m["userId"] for m in candidates[0]["members"]}
     assert member_ids == {"user-1", "user-2", "user-3", "user-4"}
+
+
+def test_generate_candidates_with_overlapping_but_not_identical_times(table):
+    """#9: 全員の空き予定が寸分違わず一致しなくても、共通する時間帯が
+    存在すれば候補が成立すること（例：Aは11:00〜13:00、Bは12:00〜14:00
+    なら12:00〜13:00が共通区間として候補になる）。
+    """
+    day = _START[:10]
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=2, max_players=2)
+    put_availability(
+        table,
+        "community-1",
+        "user-1",
+        start_time=f"{day}T11:00:00.000Z",
+        end_time=f"{day}T13:00:00.000Z",
+        game_types=["MAHJONG4"],
+        availability_id="avail-user-1",
+    )
+    put_availability(
+        table,
+        "community-1",
+        "user-2",
+        start_time=f"{day}T12:00:00.000Z",
+        end_time=f"{day}T14:00:00.000Z",
+        game_types=["MAHJONG4"],
+        availability_id="avail-user-2",
+    )
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    candidates = body_of(response)["data"]["candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["startTime"] == f"{day}T12:00:00.000Z"
+    assert candidates[0]["endTime"] == f"{day}T13:00:00.000Z"
+    member_ids = {m["userId"] for m in candidates[0]["members"]}
+    assert member_ids == {"user-1", "user-2"}
+
+
+def test_generate_candidates_no_overlap_no_candidate(table):
+    """空き予定同士に共通区間が全く無ければ候補は生成されない。"""
+    day = _START[:10]
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=2, max_players=2)
+    put_availability(
+        table,
+        "community-1",
+        "user-1",
+        start_time=f"{day}T11:00:00.000Z",
+        end_time=f"{day}T12:00:00.000Z",
+        game_types=["MAHJONG4"],
+        availability_id="avail-user-1",
+    )
+    put_availability(
+        table,
+        "community-1",
+        "user-2",
+        start_time=f"{day}T12:00:00.000Z",
+        end_time=f"{day}T13:00:00.000Z",
+        game_types=["MAHJONG4"],
+        availability_id="avail-user-2",
+    )
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    assert body_of(response)["data"]["candidates"] == []
 
 
 def test_generate_candidates_with_timezone_naive_past_participation(table):

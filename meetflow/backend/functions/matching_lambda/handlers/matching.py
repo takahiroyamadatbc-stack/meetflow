@@ -97,8 +97,11 @@ def _run_matching(table, community_id, template_id, template):
     条件マッチング（F-402） -> スコアリング（F-403） -> MatchCandidate +
     CandidateMemberの永続化。
 
-    グルーピングはF-402の「日時一致」要件に従い、(startTime, endTime)の
-    完全一致で行う（重複/区間計算ではなく厳密な一致）。
+    F-402の「日時一致」は、全員の空き予定が寸分違わず一致することではなく、
+    共通して空いている時間帯が存在することを指す（例：Aは11:00〜13:00、
+    Bは12:00〜14:00なら12:00〜13:00が共通区間）。そのため(startTime, endTime)
+    の完全一致ではなく、_overlapping_member_windowsで全員の区間の交差
+    （重複区間）を求める。
     """
     from_time = now_iso_ms()
     to_time = add_days_iso(from_time, _MATCHING_WINDOW_DAYS)
@@ -110,13 +113,11 @@ def _run_matching(table, community_id, template_id, template):
     availability_items = resp.get("Items", [])
 
     game_type = template.get("gameType")
-    groups = {}
-    for item in availability_items:
-        supported_games = item.get("gameTypes")
-        if supported_games and game_type not in supported_games:
-            continue
-        _, start_time, _availability_id = item["SK"].split("#", 2)
-        groups.setdefault((start_time, item.get("endTime")), []).append(item)
+    filtered_items = [
+        item
+        for item in availability_items
+        if not item.get("gameTypes") or game_type in item["gameTypes"]
+    ]
 
     min_players = template.get("minPlayers", 1)
     max_players = template.get("maxPlayers", min_players)
@@ -125,8 +126,7 @@ def _run_matching(table, community_id, template_id, template):
     )
 
     created_candidates = []
-    for (start_time, end_time), entries in groups.items():
-        member_ids = sorted({entry["userId"] for entry in entries})
+    for start_time, end_time, member_ids in _overlapping_member_windows(filtered_items):
         if required_members and not required_members.issubset(member_ids):
             continue
         if len(member_ids) < min_players:
@@ -145,6 +145,51 @@ def _run_matching(table, community_id, template_id, template):
         created_candidates.append(candidate_item)
 
     return created_candidates
+
+
+def _overlapping_member_windows(availability_items):
+    """空き予定区間群から、参加者集合が変化しない極大区間を時系列に列挙する
+    （スイープライン法）。各区間は[startTime, endTime)の半開区間として扱う
+    ため、同時刻に終了と開始が重なる場合は終了を先に処理し、隙間なく連続
+    するだけの区間（例：11:00-12:00と12:00-13:00）を誤って重複扱いしない
+    ようにする。
+
+    戻り値は(startTime, endTime, memberIds)のリスト。同じメンバー集合が
+    隣接する区間はマージ済み。
+    """
+    events = []
+    for item in availability_items:
+        _, start_time, _availability_id = item["SK"].split("#", 2)
+        end_time = item.get("endTime")
+        if not end_time or end_time <= start_time:
+            continue
+        events.append((start_time, 1, item["userId"]))  # 1: 開始
+        events.append((end_time, 0, item["userId"]))  # 0: 終了（同時刻なら開始より先に処理）
+
+    events.sort(key=lambda e: (e[0], e[1]))
+
+    active_counts = {}
+    windows = []
+    prev_time = None
+    for time, kind, user_id in events:
+        if prev_time is not None and time > prev_time and active_counts:
+            windows.append((prev_time, time, sorted(active_counts.keys())))
+        if kind == 1:
+            active_counts[user_id] = active_counts.get(user_id, 0) + 1
+        else:
+            active_counts[user_id] -= 1
+            if active_counts[user_id] <= 0:
+                del active_counts[user_id]
+        prev_time = time
+
+    merged = []
+    for start_time, end_time, member_ids in windows:
+        if merged and merged[-1][1] == start_time and merged[-1][2] == member_ids:
+            merged[-1] = (merged[-1][0], end_time, member_ids)
+        else:
+            merged.append((start_time, end_time, member_ids))
+
+    return merged
 
 
 def _create_candidate(
