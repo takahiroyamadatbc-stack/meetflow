@@ -192,6 +192,45 @@ def test_cancel_event_success(table):
     assert body_of(response)["data"]["status"] == "CANCELLED"
 
 
+def test_cancel_event_reopens_candidate_for_reuse(table):
+    """#15: イベント全体を中止したら、元のMatchCandidateがPENDINGへ戻り、
+    同じ候補から再度イベントを作成できること（CANDIDATE_ALREADY_USEDで
+    永久にブロックされていた回帰バグの再発防止）。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_candidate(table, "community-1", "candidate-1", ["user-1", "user-2"])
+    create_response = events.create_event(
+        "user-1", api_event(body={"candidateId": "candidate-1"})
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+
+    response = events.cancel_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+    assert response["statusCode"] == 200
+
+    candidate = table.get_item(
+        Key={
+            "PK": "COMMUNITY#community-1",
+            "SK": "CANDIDATE#2026-08-05T19:00:00.000Z#candidate-1",
+        }
+    )["Item"]
+    assert candidate["status"] == "PENDING"
+    for uid in ("user-1", "user-2"):
+        candidate_member = table.get_item(
+            Key={
+                "PK": "COMMUNITY#community-1",
+                "SK": f"CANDIDATE#candidate-1#MEMBER#{uid}",
+            }
+        )["Item"]
+        assert candidate_member["status"] == "PENDING"
+
+    retry_response = events.create_event(
+        "user-1", api_event(body={"candidateId": "candidate-1"})
+    )
+    assert retry_response["statusCode"] == 201
+
+
 def test_cancel_event_already_cancelled(table):
     event_id = _create_pending_event(table)
     events.cancel_event("user-1", api_event(path_params={"eventId": event_id}))

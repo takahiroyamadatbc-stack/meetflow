@@ -328,6 +328,7 @@ def cancel_event(user_id, event):
         ExpressionAttributeNames={"#status": "status"},
         ExpressionAttributeValues={":cancelled": "CANCELLED"},
     )
+    _reopen_candidate(table, community_id, event_item.get("candidateId"))
     write_status_history(table, event_id, status, "CANCELLED", user_id)
     write_operation_log(
         action="CANCEL_EVENT",
@@ -346,6 +347,43 @@ def cancel_event(user_id, event):
         },
     )
     return success_response({"eventId": event_id, "status": "CANCELLED"})
+
+
+def _reopen_candidate(table, community_id, candidate_id):
+    """イベント全体中止時に、confirm_event/create_eventがCONFIRMED
+    （＝使用済み）に転用していたMatchCandidate.statusをPENDINGへ戻し、
+    同じ候補から再度イベントを作成できるようにする。これを行わないと、
+    中止済みのイベントが残っているように見え、かつ同一候補は
+    CANDIDATE_ALREADY_USEDで永久に再利用できなくなってしまう。
+    """
+    if not candidate_id:
+        return
+    candidate_resp = table.query(
+        IndexName="GSI2",
+        KeyConditionExpression=Key("GSI2PK").eq(f"CANDIDATE#{candidate_id}"),
+        Limit=1,
+    )
+    candidate_items = candidate_resp.get("Items", [])
+    if not candidate_items:
+        return
+    candidate = candidate_items[0]
+
+    table.update_item(
+        Key={"PK": candidate["PK"], "SK": candidate["SK"]},
+        UpdateExpression="SET #status = :pending",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={":pending": "PENDING"},
+    )
+    for uid in candidate.get("members", []):
+        table.update_item(
+            Key={
+                "PK": f"COMMUNITY#{community_id}",
+                "SK": f"CANDIDATE#{candidate_id}#MEMBER#{uid}",
+            },
+            UpdateExpression="SET #status = :pending",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":pending": "PENDING"},
+        )
 
 
 def list_community_events(user_id, event):
