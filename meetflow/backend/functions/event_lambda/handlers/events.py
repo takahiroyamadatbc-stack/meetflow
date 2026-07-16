@@ -269,6 +269,11 @@ def confirm_event(user_id, event):
             }
         )
 
+    availability_delete_ops = _availability_delete_operations(
+        table, community_id, member_ids, start_time, end_time
+    )
+    operations.extend(availability_delete_ops)
+
     try:
         transact_write(operations)
     except table.meta.client.exceptions.TransactionCanceledException:
@@ -284,6 +289,14 @@ def confirm_event(user_id, event):
         target_type="Event",
         target_id=event_id,
     )
+    if availability_delete_ops:
+        write_operation_log(
+            action="DELETE_AVAILABILITY_ON_EVENT_CONFIRM",
+            user_id=user_id,
+            community_id=community_id,
+            target_type="Availability",
+            target_id=f"{len(availability_delete_ops)} items",
+        )
     put_event(
         EVENT_CONFIRMED,
         {
@@ -296,6 +309,36 @@ def confirm_event(user_id, event):
     )
 
     return success_response(to_api_event(table, {**event_item, "status": "CONFIRMED"}))
+
+
+def _availability_delete_operations(table, community_id, member_ids, start_time, end_time):
+    """イベント確定時、候補元となったメンバーの空き予定(Availability)を
+    削除するためのTransactWriteItems用Delete操作を組み立てる。
+
+    マッチング（matching_lambdaの_overlapping_member_windows）はメンバー
+    全員の空き予定の交差区間をイベント時間として採用するため、各メンバー
+    が元々登録していたAvailabilityはイベント時間帯より広いことがある
+    （例: 本人は10:00-18:00で登録していたが、他メンバーとの共通区間が
+    12:00-13:00だったためイベントは12:00-13:00で確定した場合）。そのため
+    完全一致ではなく、イベント時間帯[start_time, end_time)と重複する
+    Availabilityを削除対象とする。
+    """
+    operations = []
+    for uid in member_ids:
+        resp = table.query(
+            IndexName="GSI1",
+            KeyConditionExpression=Key("GSI1PK").eq(f"USER#{uid}")
+            & Key("GSI1SK").begins_with("AVAIL#"),
+        )
+        for item in resp.get("Items", []):
+            if item["PK"] != f"COMMUNITY#{community_id}":
+                continue
+            item_start = item["SK"].split("#", 2)[1]
+            item_end = item.get("endTime")
+            if not item_end or item_end <= start_time or item_start >= end_time:
+                continue
+            operations.append({"Delete": {"Key": {"PK": item["PK"], "SK": item["SK"]}}})
+    return operations
 
 
 def cancel_event(user_id, event):
