@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.4
+# MeetFlow エラーコード一覧 v1.5
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -32,7 +32,7 @@
 
 | コード | HTTPステータス | 内容 | 発生API |
 |---|---|---|---|
-| `PROFILE_VALIDATION_ERROR` | 400 | ニックネーム未入力・文字数超過等（コミュニティ表示名の文字数超過を含む **[v1.3修正]**） | `PUT /users/me`, `PUT /communities/{id}/members/me/display-name` |
+| `PROFILE_VALIDATION_ERROR` | 400 | ニックネーム未入力・文字数超過等（コミュニティ表示名の文字数超過を含む **[v1.3修正]**。参加頻度上限の`frequencyLimitCount`/`frequencyLimitPeriod`の片方のみ指定等の不正も含む **[v1.5修正]**） | `PUT /users/me`, `PUT /communities/{id}/members/me/display-name` |
 
 ---
 
@@ -51,8 +51,11 @@
 | `MEMBER_SUSPENDED` | 403 | 一時停止中のメンバーによる操作 | 全メンバー操作系API |
 | `LOCATION_NOT_FOUND` | 404 | 指定した会場（Place）が存在しない | `POST /events`（locationId指定時）, `GET/POST /communities/{id}/locations` |
 | `DISPLAY_NAME_ALREADY_TAKEN` **[v1.3新規]** | 409 | 同一コミュニティ内で実効表示名（設定済みdisplayName、または未設定メンバーのUser.nickname）が重複している | `PUT /communities/{id}/members/me/display-name` |
+| `FREQUENCY_LIMIT_VALIDATION_ERROR` **[v1.5新規]** | 400 | 参加頻度上限のコミュニティ単位上書き設定で、`frequencyLimitCount`/`frequencyLimitPeriod`の片方のみを指定した等の不正 | `PUT /communities/{id}/members/me/frequency-limit` |
 
 > **[v1.3新規]** コミュニティごとの表示名（F-108）の文字数超過等の基本バリデーションは、専用コードを新設せず既存の`PROFILE_VALIDATION_ERROR`（Userドメイン、400）を流用する。
+>
+> **[v1.5新規]** 参加頻度上限のコミュニティ単位上書き（F-109）は、プロフィール側（`PROFILE_VALIDATION_ERROR`を流用）とは別に`FREQUENCY_LIMIT_VALIDATION_ERROR`を新設した。Communityドメインのエンドポイント（`/communities/{id}/members/...`配下）であり、`DISPLAY_NAME_ALREADY_TAKEN`と同様にCommunityLambda側で発生するエラーのため、Userドメインのコードを使い回さずドメインを揃えた。
 
 ---
 
@@ -135,7 +138,7 @@
 
 | 表示形式 | 該当するエラーコードの傾向 |
 |---|---|
-| インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR`, `DISPLAY_NAME_ALREADY_TAKEN`（**[v1.3追加]**） |
+| インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR`, `DISPLAY_NAME_ALREADY_TAKEN`（**[v1.3追加]**）, `FREQUENCY_LIMIT_VALIDATION_ERROR`（**[v1.5追加]**） |
 | トースト（一時的なエラー） | `INTERNAL_ERROR`, `AVAILABILITY_OVERLAP`, `ALREADY_MEMBER`, `JOIN_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PROCESSED`, `CANDIDATE_ALREADY_USED`, `EVENT_ALREADY_CONFIRMED`, `EVENT_ALREADY_CANCELLED` |
 | モーダル（明示的な操作が必要） | `UNAUTHORIZED`（再ログイン誘導）, `FORBIDDEN`（権限不足の説明）, **`PARTICIPANT_SCHEDULE_CONFLICT`（承認をブロックした理由の明示、[v1.1追加]）** |
 | 空状態画面 | `NO_CANDIDATES_FOUND`, 各種`*_NOT_FOUND`（削除済みリソースへのアクセス） |
@@ -185,3 +188,13 @@
 | No | 変更内容 | 対応する決定事項 |
 |---|---|---|
 | 1 | `INVITE_NOT_FOUND`の発生APIに`POST /invites/{token}/revoke`を追加（新規エラーコードなし、既存コードを流用） | API設計書v1.8 §4.3b：招待URL無効化。既に無効化済みの招待への再実行は冪等に成功として扱うため専用コードは不要 |
+
+---
+
+## v1.4 → v1.5 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | Communityドメインに`FREQUENCY_LIMIT_VALIDATION_ERROR`（400）を新規追加 | 要件定義書v1.6 30章：参加頻度上限。機能要件書v1.7 F-109（コミュニティ単位の上書き）のバリデーションエラー |
+| 2 | `PROFILE_VALIDATION_ERROR`の内容に、参加頻度上限（プロフィール側、F-003）のバリデーション不正を含める旨を追記（新規コードなし、既存コードを流用） | 上記と同一の決定事項。ユーザー全体デフォルト側はUserドメインの既存コードで対応 |
+| 3 | フロントエンド表示方針表のインライン欄に`FREQUENCY_LIMIT_VALIDATION_ERROR`を追加 | 上記と同一の決定事項 |

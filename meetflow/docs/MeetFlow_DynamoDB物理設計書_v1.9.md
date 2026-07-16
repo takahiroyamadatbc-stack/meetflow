@@ -45,9 +45,13 @@ SK:   PROFILE
 | bio | S | 自己紹介 |
 | gameTypes | SS(String Set) | 対応可能ゲーム |
 | beginnerOk | BOOL | 初心者対応可否 |
+| **frequencyLimitCount** | **N** | **（任意）ゲームジャンル単位の参加頻度上限回数。`frequencyLimitPeriod`とセットで設定・解除する [v1.9追加]** |
+| **frequencyLimitPeriod** | **S** | **（任意）上限回数の集計期間。`WEEK` / `MONTH` [v1.9追加]** |
 | createdAt | S | ISO8601 |
 
 > F-001/F-002/F-003 に対応。Cognito自体にはメール・パスワードのみ持たせ、プロフィールはDynamoDB側で管理する。
+>
+> **[v1.9追加]** `frequencyLimitCount`/`frequencyLimitPeriod`は要件定義書v1.6 30章「参加頻度上限」に対応する全体デフォルト設定。3.3 Membershipの同名属性（コミュニティ単位の任意上書き）が優先され、未設定の場合にこちらへフォールバックする（`displayName`と同じ解決順）。Phase3予約属性の`desiredFrequency`（3.3参照）とは別物で、あちらは複数コミュニティ横断の優先度比較・ランキング表示専用（マッチングのスコア計算には使わない）なのに対し、こちらは実際にF-403のスコアリングに反映される。
 
 ---
 
@@ -97,20 +101,25 @@ GSI1SK:  COMMUNITY#{communityId}
 | **desiredFrequency** | **N** | **（Phase3予約属性・未使用）月あたりの希望参加頻度 [v1.3追加]** |
 | **displayName** | **S** | **（任意）コミュニティごとの表示名。未設定時はUser.nicknameにフォールバックして表示する [v1.6追加]** |
 | **sortOrder** | **N** | **（任意）コミュニティ一覧の表示順。ユーザーごとに並び替えAPIが0始まりの連番で書き込む。未設定（新規参加直後等）は一覧取得時に末尾へ回す [v1.8追加]** |
+| **frequencyLimitCount** | **N** | **（任意）このコミュニティにおける参加頻度上限回数。未設定時はUser側の全体デフォルトにフォールバック。`frequencyLimitPeriod`とセットで設定・解除する [v1.9追加]** |
+| **frequencyLimitPeriod** | **S** | **（任意）上限回数の集計期間。`WEEK` / `MONTH` [v1.9追加]** |
 
 **アクセスパターン**
 - コミュニティのメンバー一覧：`PK=COMMUNITY#{id}, SK begins_with MEMBER#`
 - ユーザーの所属コミュニティ一覧：`GSI1PK=USER#{userId}, GSI1SK begins_with COMMUNITY#`
 - **[v1.6追加]** 表示名重複チェック：コミュニティのメンバー一覧を取得し（上記と同じクエリ）、各メンバーの実効表示名（`displayName`が未設定のメンバーはUser.nicknameを都度`GetItem`）をアプリケーション側で突き合わせる。コミュニティ規模（10〜30人程度）では軽い処理のため、専用GSIは追加しない。
 - **[v1.8追加]** コミュニティ一覧の表示順並び替え：上記のユーザーの所属コミュニティ一覧クエリで取得した各Membership行に対し、`sortOrder`を書き込む（`GetItem`/`UpdateItem`の組み合わせ。専用GSIは追加しない）。
+- **[v1.9追加]** 実効参加頻度上限の解決：`GetItem`でMembership行（`frequencyLimitCount`/`frequencyLimitPeriod`）とUser行（同名の全体デフォルト）を取得し、Membership側の値があれば優先、なければUser側にフォールバックする（`displayName`の解決と同じ形）。専用GSIは追加しない。
 
-> F-104, F-105, F-106（OWNER変更時は該当Membershipのroleを書き換え。元OWNERはrole=MEMBERに更新 [v1.1]）、F-108（コミュニティごとの表示名 [v1.6追加]）に対応。
+> F-104, F-105, F-106（OWNER変更時は該当Membershipのroleを書き換え。元OWNERはrole=MEMBERに更新 [v1.1]）、F-108（コミュニティごとの表示名 [v1.6追加]）、F-109（参加頻度上限のコミュニティ単位の上書き [v1.9追加]）に対応。
 >
 > **[v1.3追加]** `priorityWeight`/`desiredFrequency`はPhase3（複数コミュニティ横断の優先度・満足度比較機能）向けの予約属性。今は値を使わないが、後からの一括マイグレーションを避けるため属性だけ先に確保しておく。
 >
 > **[v1.6追加]** `displayName`はコミュニティ単位のMembershipエンティティへの属性追加のみで、PK/SK/GSI1の構造には一切手を加えていない。表示側の解決ロジック（`displayName`優先、無ければUser.nicknameにフォールバック）はLambda層（`meetflow_common.display_name`）に集約し、DynamoDB設計はシンプルな任意属性として持つのみに留める。
 >
 > **[v1.8追加]** `sortOrder`も`displayName`と同様、PK/SK/GSI1の構造を変えない任意属性として追加した。並び替えAPI（API設計書v1.10 §4.2d）がユーザーの所属コミュニティ一覧クエリの結果に対し、渡された順序どおり0,1,2...を書き込む。専用GSIを持たないため、並び替え自体のクエリコストは所属コミュニティ数（10〜数十件程度を想定）に比例するのみで軽微。
+>
+> **[v1.9追加]** `frequencyLimitCount`/`frequencyLimitPeriod`も`displayName`と同じ「Membership優先・User側フォールバック」のパターンを踏襲する任意属性で、PK/SK/GSI1の構造には影響しない。解決ロジックはLambda層（`meetflow_common.frequency_limit`）に集約する。3.1 Userの同名属性の注記も参照。
 
 ---
 
@@ -310,16 +319,20 @@ GSI1SK:  PARTICIPANT#{startTime}#{eventId}
 | status | S | CONFIRMED / CANCEL_REQUESTED / CANCELLED |
 | startTime / endTime | S | ISO8601（Eventの日時をコピー。ダブルブッキング検知の時間範囲クエリ用） |
 | joinedAt | S | ISO8601 |
+| **communityGenre** | **S** | **確定時点のCommunity.genreを非正規化してコピーしたもの（3.2参照）[v1.9追加]** |
 
 **アクセスパターン**
 - ユーザーの確定済み参加イベントを時間帯で横断検索（ダブルブッキング検知用）：`GSI1PK=USER#{userId}, GSI1SK between PARTICIPANT#{from} and PARTICIPANT#{to}`
 - **[v1.8追加]** ユーザー自身が参加する確定イベントのコミュニティ横断一覧（予定タブのカレンダー表示用）：`GSI1PK=USER#{userId}, GSI1SK begins_with PARTICIPANT#`（`status=CONFIRMED`の行のみ抽出し、各行のEventも取得してEvent側の`status`もCONFIRMEDであることを確認する。イベント全体中止時はParticipant行自体は更新されないため）
+- **[v1.9追加]** 参加頻度上限のコミュニティ横断カウント（マッチング処理F-401内部専用）：`GSI1PK=USER#{userId}, GSI1SK between PARTICIPANT#{periodStart} and PARTICIPANT#{periodEnd}`（集計対象期間はF-109/F-003で設定した週/月）で取得した行のうち、`communityGenre`が候補生成対象コミュニティの`genre`と一致するものだけを件数カウントする。ダブルブッキング検知（1つ目のパターン）と同一インデックスの応用で、新規GSIは追加しない。
 
 > F-502（承認時に一括作成）、9.1に対応。
 >
 > **[v1.3修正]** GSI1SKを`PARTICIPANT#{eventId}`から`PARTICIPANT#{startTime}#{eventId}`に変更。イベント確定処理（EventLambda）で、確定予定の参加者が既に別の確定済みイベントと時間が重複していないかを、GSI1のレンジクエリ1発でチェックできるようにするため（ダブルブッキング防止、Lambda設計書v1.1 7.2参照）。
 >
 > **[v1.8追加]** 上記のGSI1レンジクエリは元々ダブルブッキング検知専用だったが、同じインデックスがユーザー横断の確定イベント一覧取得（API設計書v1.10 §8.7b）にもそのまま流用できるため、新規GSIは追加していない。この横断取得は自分自身の確定予定のみを対象とし、他メンバーの空き予定を公開するものではないため、相互非公開型マッチング（要件定義書v1.5 29章）の原則には抵触しない。
+>
+> **[v1.9追加]** `communityGenre`はイベント確定処理（F-502、EventLambda）でCommunity METADATA（3.2）の`genre`を`GetItem`で取得しParticipant作成時にコピーする。これにより参加頻度上限のジャンル横断カウント（要件定義書v1.6 30.4）がGSI1のレンジクエリ1発＋アプリ側フィルタで完結し、確定イベントごとにEventTemplateへ`GetItem`するN+1呼び出しを避けられる。
 
 ---
 
@@ -558,6 +571,7 @@ SK:   AVAILREQ#{requestId}
 | 28 | コミュニティ表示名の重複チェック（実効表示名の突き合わせ。アクセスパターン2の応用） [v1.6] | PK=COMMUNITY#{id}, SK begins_with MEMBER# |
 | 29 | コミュニティ一覧の表示順並び替え（アクセスパターン3の応用。各Membership行にsortOrderを書き込む） [v1.8] | PK=COMMUNITY#{id}, SK=MEMBER#{userId} |
 | 30 | ユーザー自身が参加する確定イベントのコミュニティ横断一覧（予定タブのカレンダー表示用。アクセスパターン15の応用） [v1.8] | GSI1PK=USER#{id}, SK begins_with PARTICIPANT# |
+| 31 | 参加頻度上限のジャンル横断カウント（マッチング処理F-401内部専用。アクセスパターン15の応用＋communityGenre絞り込み） [v1.9] | GSI1PK=USER#{id}, SK between PARTICIPANT#{periodStart}~{periodEnd} |
 
 ---
 
@@ -697,3 +711,15 @@ SK:   AVAILREQ#{requestId}
 | 2 | 3.8 MatchCandidateに、イベント全体中止時は`status`を`CONFIRMED`から`PENDING`へ戻す旨を追記 | キャンセル後に同一候補が`CANDIDATE_ALREADY_USED`で永久に再利用できなくなっていた不具合の修正 |
 | 3 | 3.11 Participantのアクセスパターンに、ユーザー横断の確定イベント一覧取得（既存GSI1の応用、新規GSI追加なし）を追記 | 予定タブのカレンダー表示（確定イベントの表示）に必要なため |
 | 4 | 4章アクセスパターン一覧にNo.29, 30を追加 | 上記No.1・No.3のアクセスパターンを総括表にも反映 |
+
+---
+
+## 17. v1.8 → v1.9 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.1 Userに`frequencyLimitCount`(N)/`frequencyLimitPeriod`(S)属性を追加 | 体力・満足度等の理由による個人ごとの参加頻度上限（要件定義書v1.6 30章）の全体デフォルト設定 |
+| 2 | 3.3 Membershipに同名属性を任意の上書きとして追加（F-109新規） | `displayName`と同じ「コミュニティ単位で上書き、未設定ならUser側にフォールバック」構造を踏襲 |
+| 3 | 3.11 Participantに`communityGenre`(S)属性を追加。イベント確定時にCommunity.genreを非正規化してコピーする | 参加頻度上限のコミュニティ横断・ジャンル単位カウントを、既存GSI1のレンジクエリ1発＋アプリ側フィルタで実現し、EventTemplateへのN+1 GetItemを避けるため |
+| 4 | 3.11のアクセスパターンに参加頻度上限のカウントクエリを追記 | ダブルブッキング検知と同一インデックスの応用であることを明記 |
+| 5 | 4章アクセスパターン一覧にNo.31を追加 | 上記No.3・No.4のアクセスパターンを総括表にも反映 |

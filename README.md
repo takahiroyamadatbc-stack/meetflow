@@ -89,7 +89,7 @@ User → CloudFront → S3 (React SPA)
 
 ## ローカルでの動かし方
 
-デプロイ手順は [DEPLOY.md](./DEPLOY.md) を参照してください。
+デプロイ手順は [meetflow/DEPLOY.md](./meetflow/DEPLOY.md) を参照してください。
 
 ## ライセンス
 
