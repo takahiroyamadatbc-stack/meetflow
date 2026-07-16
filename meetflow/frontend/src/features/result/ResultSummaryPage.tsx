@@ -33,6 +33,9 @@ export function ResultSummaryPage() {
     { label: "1位率", value: `${Math.round(summary.firstPlaceRate * 100)}%` },
     { label: "ラス率", value: `${Math.round(summary.lastPlaceRate * 100)}%` },
     { label: "累計ポイント", value: `${summary.totalPoints}pt` },
+    // チップは点数・ウマオカの集計とは別枠で保持する仕様のため、totalPoints
+    // には含めず単独の統計カードとして表示する。
+    { label: "累計チップ", value: `${summary.totalChips}枚` },
   ];
 
   return (
