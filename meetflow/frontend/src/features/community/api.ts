@@ -26,6 +26,14 @@ export function listCommunities() {
     .then((data) => data.communities);
 }
 
+/**
+ * PUT /communities/order（Issue #16。API設計書には無い新規エンドポイント）。
+ * 渡した順にコミュニティ一覧の表示順を並び替える。
+ */
+export function reorderCommunities(communityIds: string[]) {
+  return apiClient.put<{ communityIds: string[] }>("/communities/order", { communityIds });
+}
+
 /** GET /communities/{communityId} */
 export function getCommunity(communityId: string) {
   return apiClient.get<CommunityDetail>(`/communities/${communityId}`);

@@ -5,6 +5,9 @@ import type { GameType } from "@/features/user/types";
  * backend/functions/community_lambda/handlers/communities.py の list_communities()
  * レスポンス実体。memberApprovalRequired・メンバー数・communityTypeは
  * 一覧には含まれない（Phase1実装計画の食い違い#2/#3を参照）。
+ * themeColor（Issue #17）・表示順（Membership.sortOrder、Issue #16。
+ * reorderCommunities()で更新するのみでレスポンスには含まれない）は
+ * 一覧取得時にサーバー側でソート済みの状態で返る。
  */
 export type CommunitySummary = {
   communityId: string;
@@ -12,6 +15,7 @@ export type CommunitySummary = {
   description: string;
   genre: string;
   role: MembershipRole;
+  themeColor: string | null;
 };
 
 /**
