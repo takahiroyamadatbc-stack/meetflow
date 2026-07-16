@@ -52,10 +52,18 @@ export function ConfirmSignUpPage() {
           navigate(paths.home, { replace: true });
           return;
         } catch {
-          // 自動ログインに失敗した場合は、手動ログインにフォールバックする
+          // 自動ログインに失敗した場合は、手動ログインにフォールバックする。
+          // メールアドレスと案内メッセージを引き継ぎ、ユーザーが再度メールアドレスから
+          // 入力し直す必要をなくす（フォールバック自体をログイン画面での停滞と誤認させないため）。
         }
       }
-      navigate(paths.login);
+      navigate(paths.login, {
+        replace: true,
+        state: {
+          email,
+          infoMessage: "アカウントを確認しました。パスワードを入力してログインしてください",
+        },
+      });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "確認コードの検証に失敗しました");
     }
