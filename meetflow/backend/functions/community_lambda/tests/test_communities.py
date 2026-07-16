@@ -78,7 +78,7 @@ def test_get_community_forbidden_for_non_member(table):
 
 
 def test_list_communities_success(table):
-    put_community(table, "community-1", owner_id="user-1", name="コミュニティA")
+    put_community(table, "community-1", owner_id="user-1", name="コミュニティA", theme_color="#6366F1")
     put_membership(table, "community-1", "user-1", role="OWNER")
 
     response = communities.list_communities("user-1", api_event())
@@ -92,8 +92,58 @@ def test_list_communities_success(table):
             "description": "",
             "genre": "麻雀",
             "role": "OWNER",
+            "themeColor": "#6366F1",
         }
     ]
+
+
+def test_list_communities_sorted_by_sort_order(table):
+    """#16: sortOrderが設定されていれば昇順に並び、未設定のものは末尾に回る。"""
+    put_community(table, "community-1", owner_id="user-1", name="コミュニティA")
+    put_community(table, "community-2", owner_id="user-1", name="コミュニティB")
+    put_community(table, "community-3", owner_id="user-1", name="コミュニティC")
+    put_membership(table, "community-1", "user-1", role="OWNER", sort_order=1)
+    put_membership(table, "community-2", "user-1", role="OWNER", sort_order=0)
+    put_membership(table, "community-3", "user-1", role="OWNER")  # sortOrder未設定
+
+    response = communities.list_communities("user-1", api_event())
+
+    ids = [c["communityId"] for c in body_of(response)["data"]["communities"]]
+    assert ids == ["community-2", "community-1", "community-3"]
+
+
+def test_reorder_communities_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_community(table, "community-2", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-2", "user-1", role="OWNER")
+
+    response = communities.reorder_communities(
+        "user-1", api_event(body={"communityIds": ["community-2", "community-1"]})
+    )
+
+    assert response["statusCode"] == 200
+    list_response = communities.list_communities("user-1", api_event())
+    ids = [c["communityId"] for c in body_of(list_response)["data"]["communities"]]
+    assert ids == ["community-2", "community-1"]
+
+
+def test_reorder_communities_forbidden_for_non_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    with pytest.raises(AuthError) as exc_info:
+        communities.reorder_communities(
+            "user-2", api_event(body={"communityIds": ["community-1"]})
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_reorder_communities_invalid_parameter(table):
+    response = communities.reorder_communities("user-1", api_event(body={"communityIds": []}))
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
 
 
 def test_update_community_success(table):

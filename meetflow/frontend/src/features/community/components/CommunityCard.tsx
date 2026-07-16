@@ -7,7 +7,10 @@ import { paths } from "@/routes/paths";
 export function CommunityCard({ community }: { community: CommunitySummary }) {
   return (
     <Link to={paths.communityDetail(community.communityId)}>
-      <Card>
+      <Card
+        className="border-l-4"
+        style={community.themeColor ? { borderLeftColor: community.themeColor } : undefined}
+      >
         <CardContent className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">{community.name}</p>

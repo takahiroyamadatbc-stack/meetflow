@@ -42,7 +42,14 @@ def put_community(
 
 
 def put_membership(
-    table, community_id, user_id, *, role="MEMBER", status="ACTIVE", display_name=None
+    table,
+    community_id,
+    user_id,
+    *,
+    role="MEMBER",
+    status="ACTIVE",
+    display_name=None,
+    sort_order=None,
 ):
     item = {
         "PK": f"COMMUNITY#{community_id}",
@@ -55,6 +62,8 @@ def put_membership(
     }
     if display_name:
         item["displayName"] = display_name
+    if sort_order is not None:
+        item["sortOrder"] = sort_order
     table.put_item(Item=item)
 
 

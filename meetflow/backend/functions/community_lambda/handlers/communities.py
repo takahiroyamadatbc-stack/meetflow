@@ -128,6 +128,10 @@ def list_communities(user_id, event):
     このプロジェクトの規模（コミュニティあたり10〜30メンバー）では
     ユーザーあたりのコミュニティ数は少ないため、ここではバッチ処理より
     コミュニティごとにGetItemする方がシンプルである。
+
+    表示順（Issue #16）はMembership.sortOrder（ユーザーごとの並び替えAPI
+    reorder_communitiesが書き込む）昇順。未設定（新規参加直後等）は末尾に
+    回す。
     """
     table = get_table()
     resp = table.query(
@@ -151,9 +155,47 @@ def list_communities(user_id, event):
                 "description": community.get("description", ""),
                 "genre": community.get("genre", ""),
                 "role": membership.get("role"),
+                "themeColor": community.get("themeColor"),
+                "_sortOrder": membership.get("sortOrder"),
             }
         )
+    communities.sort(
+        key=lambda c: (c["_sortOrder"] is None, c["_sortOrder"], c["communityId"])
+    )
+    for community in communities:
+        del community["_sortOrder"]
     return success_response({"communities": communities})
+
+
+def reorder_communities(user_id, event):
+    """PUT /communities/order（Issue #16。API設計書には無い新規エンドポイント
+    -- GET /communities/{communityId}と同様、フロント実装時の追加として扱う）。
+
+    bodyのcommunityIds配列の並び順どおりに、呼び出し元のMembership.sortOrder
+    を0,1,2...と書き換える。他人のMembershipは操作できないよう、各IDに
+    ついてrequire_membershipで所属確認する。
+    """
+    body = parse_body(event)
+    community_ids = body.get("communityIds")
+    if (
+        not isinstance(community_ids, list)
+        or not community_ids
+        or not all(isinstance(c, str) for c in community_ids)
+    ):
+        return error_response("INVALID_PARAMETER", "communityIdsが不正です")
+
+    table = get_table()
+    for community_id in community_ids:
+        require_membership(table, community_id, user_id)
+
+    for index, community_id in enumerate(community_ids):
+        table.update_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"},
+            UpdateExpression="SET sortOrder = :order",
+            ExpressionAttributeValues={":order": index},
+        )
+
+    return success_response({"communityIds": community_ids})
 
 
 def update_community(user_id, event):
