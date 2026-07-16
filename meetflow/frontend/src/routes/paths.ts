@@ -17,6 +17,7 @@ export const paths = {
 
   availabilityList: "/availability",
   availabilityNew: (communityId: string) => `/communities/${communityId}/availability/new`,
+  availabilityCalendar: (communityId: string) => `/communities/${communityId}/availability`,
   availabilityRequestList: (communityId: string) =>
     `/communities/${communityId}/availability-requests`,
   availabilityRequestNew: (communityId: string) =>
