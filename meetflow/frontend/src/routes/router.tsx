@@ -201,6 +201,11 @@ export const router = createBrowserRouter([
         handle: { title: "成績登録" },
       },
       {
+        path: "/events/:eventId/sessions/:sessionNo/edit",
+        element: <ResultSessionCreatePage />,
+        handle: { title: "成績編集" },
+      },
+      {
         path: "/communities/:communityId/results/:userId",
         element: <ResultSummaryPage />,
         handle: { title: "成績" },

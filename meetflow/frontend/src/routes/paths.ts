@@ -38,6 +38,8 @@ export const paths = {
   eventCancelRequestList: (eventId: string) => `/events/${eventId}/cancel-requests`,
 
   resultSessionNew: (eventId: string) => `/events/${eventId}/sessions/new`,
+  resultSessionEdit: (eventId: string, sessionNo: string) =>
+    `/events/${eventId}/sessions/${sessionNo}/edit`,
   resultSummary: (communityId: string, userId: string) =>
     `/communities/${communityId}/results/${userId}`,
 
