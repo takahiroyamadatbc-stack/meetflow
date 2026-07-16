@@ -4,6 +4,7 @@ import type {
   CreateEventInput,
   EventDetail,
   EventSummary,
+  MyEvent,
   Participant,
 } from "@/features/event/types";
 
@@ -13,7 +14,13 @@ export const eventKeys = {
   detail: (eventId: string) => ["events", eventId] as const,
   participants: (eventId: string) => ["events", eventId, "participants"] as const,
   cancelRequests: (eventId: string) => ["events", eventId, "cancelRequests"] as const,
+  myEvents: ["events", "me"] as const,
 };
+
+/** GET /users/me/events（Issue #12） */
+export function listMyEvents() {
+  return apiClient.get<{ events: MyEvent[] }>("/users/me/events").then((data) => data.events);
+}
 
 /** POST /events */
 export function createEvent(input: CreateEventInput) {

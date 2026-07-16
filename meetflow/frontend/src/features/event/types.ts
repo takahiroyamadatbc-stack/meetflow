@@ -42,6 +42,17 @@ export type EventSummary = {
   status: EventStatus;
 };
 
+/**
+ * events.py list_my_events() のレスポンス実体（Issue #12。自分が参加する
+ * 確定イベントのみを返す。API設計書には無い新規エンドポイント）。
+ */
+export type MyEvent = {
+  eventId: string;
+  communityId: string;
+  startTime: string;
+  endTime: string;
+};
+
 /** participants.py list_participants() のレスポンス実体 */
 export type Participant = {
   userId: string;

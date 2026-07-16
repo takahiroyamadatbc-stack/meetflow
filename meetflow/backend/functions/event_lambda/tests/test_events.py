@@ -256,6 +256,41 @@ def test_cancel_event_completed_cannot_be_cancelled(table):
     assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
 
 
+def test_list_my_events_success(table):
+    """#12: 予定タブのカレンダー表示用に、自分が参加者の確定イベントを
+    コミュニティ横断で取得できること。"""
+    event_id = _create_pending_event(table)
+    events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    response = events.list_my_events("user-1", api_event())
+
+    assert response["statusCode"] == 200
+    my_events = body_of(response)["data"]["events"]
+    assert len(my_events) == 1
+    assert my_events[0]["eventId"] == event_id
+    assert my_events[0]["communityId"] == "community-1"
+
+
+def test_list_my_events_excludes_pending_approval(table):
+    event_id = _create_pending_event(table)
+
+    response = events.list_my_events("user-1", api_event(path_params={"eventId": event_id}))
+
+    assert body_of(response)["data"]["events"] == []
+
+
+def test_list_my_events_excludes_cancelled_event(table):
+    """#15と関連: イベント全体が中止された場合、Participant行自体は残る
+    ため、Event側のstatusも見て除外する必要がある。"""
+    event_id = _create_pending_event(table)
+    events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+    events.cancel_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    response = events.list_my_events("user-1", api_event())
+
+    assert body_of(response)["data"]["events"] == []
+
+
 def test_list_community_events_success(table):
     event_id = _create_pending_event(table)
 
