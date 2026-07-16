@@ -20,6 +20,7 @@ import { JoinRequestListPage } from "@/features/community/JoinRequestListPage";
 import { MemberListPage } from "@/features/community/MemberListPage";
 import { AvailabilityListPage } from "@/features/availability/AvailabilityListPage";
 import { AvailabilityCalendarPage } from "@/features/availability/AvailabilityCalendarPage";
+import { AvailabilityCalendarViewPage } from "@/features/availability/AvailabilityCalendarViewPage";
 import { AvailabilityRequestListPage } from "@/features/availability/AvailabilityRequestListPage";
 import { AvailabilityRequestCreatePage } from "@/features/availability/AvailabilityRequestCreatePage";
 import { EventTemplateListPage } from "@/features/matching/EventTemplateListPage";
@@ -128,6 +129,11 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/availability/new",
         element: <AvailabilityCalendarPage />,
         handle: { title: "空き予定登録" },
+      },
+      {
+        path: "/communities/:communityId/availability",
+        element: <AvailabilityCalendarViewPage />,
+        handle: { title: "空き予定" },
       },
       {
         path: "/communities/:communityId/availability-requests",

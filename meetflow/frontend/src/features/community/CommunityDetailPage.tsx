@@ -128,7 +128,10 @@ export function CommunityDetailPage() {
                 to={paths.availabilityNew(community.communityId)}
                 label="空き予定を登録する"
               />
-              <NavCard to={paths.availabilityList} label="登録済みの空き予定を確認・編集する" />
+              <NavCard
+                to={paths.availabilityCalendar(community.communityId)}
+                label="登録済みの空き予定を確認・編集する"
+              />
               <NavCard
                 to={paths.availabilityRequestList(community.communityId)}
                 label="空き予定提出リクエスト"
