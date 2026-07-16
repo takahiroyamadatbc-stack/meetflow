@@ -15,6 +15,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { completeAutoSignIn, confirmSignUpCode } from "@/features/auth/api";
+import { consumePendingInvitePath } from "@/features/auth/pendingInvite";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -49,7 +50,8 @@ export function ConfirmSignUpPage() {
       if (result.nextStep.signUpStep === "COMPLETE_AUTO_SIGN_IN") {
         try {
           await completeAutoSignIn();
-          navigate(paths.home, { replace: true });
+          const pendingInvitePath = consumePendingInvitePath();
+          navigate(pendingInvitePath ?? paths.home, { replace: true });
           return;
         } catch {
           // 自動ログインに失敗した場合は、手動ログインにフォールバックする。
