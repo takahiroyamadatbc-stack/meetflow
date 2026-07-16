@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { signInUser } from "@/features/auth/api";
+import { consumePendingInvitePath } from "@/features/auth/pendingInvite";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -48,8 +49,12 @@ export function LoginPage() {
     setSubmitError(null);
     try {
       await signInUser(values.email, values.password);
+      const pendingInvitePath = consumePendingInvitePath();
       const from = locationState?.from;
-      navigate(from ? `${from.pathname}${from.search}` : paths.home, { replace: true });
+      navigate(
+        pendingInvitePath ?? (from ? `${from.pathname}${from.search}` : paths.home),
+        { replace: true },
+      );
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
       if (name === "UserNotConfirmedException") {
