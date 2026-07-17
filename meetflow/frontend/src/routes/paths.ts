@@ -14,6 +14,7 @@ export const paths = {
   communityMembers: (communityId: string) => `/communities/${communityId}/members`,
   communityDisplayNameEdit: (communityId: string) => `/communities/${communityId}/display-name`,
   communityThemeColorEdit: (communityId: string) => `/communities/${communityId}/theme-color`,
+  communityAutoApproveEdit: (communityId: string) => `/communities/${communityId}/auto-approve`,
 
   availabilityList: "/availability",
   availabilityNew: (communityId: string) => `/communities/${communityId}/availability/new`,

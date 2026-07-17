@@ -104,6 +104,10 @@ export function CommunityDetailPage() {
                 to={paths.communityDisplayNameEdit(community.communityId)}
                 label="このコミュニティでの表示名を変更"
               />
+              <NavCard
+                to={paths.communityAutoApproveEdit(community.communityId)}
+                label="このコミュニティでの自動承認設定を変更"
+              />
               {isAdmin && (
                 <>
                   <NavCard

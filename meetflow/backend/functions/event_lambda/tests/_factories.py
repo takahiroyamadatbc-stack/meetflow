@@ -28,10 +28,11 @@ def put_membership(
     table.put_item(Item=item)
 
 
-def put_profile(table, user_id, *, nickname="ぷれいやー"):
-    table.put_item(
-        Item={"PK": f"USER#{user_id}", "SK": "PROFILE", "nickname": nickname, "bio": ""}
-    )
+def put_profile(table, user_id, *, nickname="ぷれいやー", auto_approve=None):
+    item = {"PK": f"USER#{user_id}", "SK": "PROFILE", "nickname": nickname, "bio": ""}
+    if auto_approve is not None:
+        item["autoApprove"] = auto_approve
+    table.put_item(Item=item)
 
 
 def put_place(table, community_id, place_id, *, name="雀荘A"):
@@ -122,9 +123,13 @@ def put_availability(
     )
 
 
-def put_confirmed_participant(table, user_id, *, start_time, end_time, event_id="other-event"):
-    """Seeds a CONFIRMED Participant row for a *different* event, to trigger
-    confirm_event's PARTICIPANT_SCHEDULE_CONFLICT hard check.
+def put_confirmed_participant(
+    table, user_id, *, start_time, end_time, event_id="other-event", status="CONFIRMED"
+):
+    """別イベント向けのParticipant行を投入し、confirm_eventの
+    PARTICIPANT_SCHEDULE_CONFLICTハードチェックを発火させる。statusを
+    AWAITING_APPROVALにすれば、仮確定＝承認待ち中のメンバーとの重複検知も
+    テストできる（Issue #10でRESERVED_PARTICIPANT_STATUSESに追加された対象）。
     """
     table.put_item(
         Item={
@@ -132,7 +137,7 @@ def put_confirmed_participant(table, user_id, *, start_time, end_time, event_id=
             "SK": f"PARTICIPANT#{user_id}",
             "GSI1PK": f"USER#{user_id}",
             "GSI1SK": f"PARTICIPANT#{start_time}#{event_id}",
-            "status": "CONFIRMED",
+            "status": status,
             "startTime": start_time,
             "endTime": end_time,
             "joinedAt": now_iso_ms(),

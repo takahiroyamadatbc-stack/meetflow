@@ -115,6 +115,8 @@ def _update_profile(user_id, event):
         _set("icon", body["icon"])
     if "beginnerOk" in body:
         _set("beginnerOk", bool(body["beginnerOk"]))
+    if "autoApprove" in body:
+        _set("autoApprove", bool(body["autoApprove"]))
     if "gameTypes" in body:
         game_types = body["gameTypes"] or []
         if game_types:
@@ -162,4 +164,5 @@ def _to_api_profile(item):
         "icon": item.get("icon", ""),
         "gameTypes": sorted(item["gameTypes"]) if item.get("gameTypes") else [],
         "beginnerOk": item.get("beginnerOk", False),
+        "autoApprove": item.get("autoApprove", False),
     }
