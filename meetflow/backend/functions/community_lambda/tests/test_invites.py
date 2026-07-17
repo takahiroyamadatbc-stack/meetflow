@@ -174,6 +174,74 @@ def test_join_via_invite_join_request_already_pending(table):
     assert body_of(response)["error"]["code"] == "JOIN_REQUEST_ALREADY_PENDING"
 
 
+def test_get_invite_preview_no_approval_required(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data == {
+        "communityId": "community-1",
+        "communityName": "テストコミュニティ",
+        "approvalRequired": False,
+    }
+
+
+def test_get_invite_preview_approval_required_due_to_community_setting(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=True)
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["approvalRequired"] is True
+
+
+def test_get_invite_preview_approval_required_due_to_member_issuer(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
+    put_invite(
+        table,
+        "tok123",
+        community_id="community-1",
+        created_by="user-2",
+        created_by_role="MEMBER",
+    )
+
+    response = invites.get_invite_preview(
+        "user-3", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["approvalRequired"] is True
+
+
+def test_get_invite_preview_not_found(table):
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "does-not-exist"})
+    )
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "INVITE_NOT_FOUND"
+
+
+def test_get_invite_preview_revoked(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1", revoked=True)
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 410
+    assert body_of(response)["error"]["code"] == "INVITE_REVOKED"
+
+
 def test_revoke_invite_success(table):
     put_community(table, "community-1", owner_id="user-1")
     put_membership(table, "community-1", "user-1", role="OWNER")
