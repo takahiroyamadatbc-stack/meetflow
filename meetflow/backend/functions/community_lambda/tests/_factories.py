@@ -51,6 +51,8 @@ def put_membership(
     display_name=None,
     sort_order=None,
     auto_approve=None,
+    frequency_limit_count=None,
+    frequency_limit_period=None,
 ):
     item = {
         "PK": f"COMMUNITY#{community_id}",
@@ -67,10 +69,21 @@ def put_membership(
         item["sortOrder"] = sort_order
     if auto_approve is not None:
         item["autoApprove"] = auto_approve
+    if frequency_limit_count is not None:
+        item["frequencyLimitCount"] = frequency_limit_count
+        item["frequencyLimitPeriod"] = frequency_limit_period
     table.put_item(Item=item)
 
 
-def put_profile(table, user_id, *, nickname="ぷれいやー", auto_approve=None):
+def put_profile(
+    table,
+    user_id,
+    *,
+    nickname="ぷれいやー",
+    auto_approve=None,
+    frequency_limit_count=None,
+    frequency_limit_period=None,
+):
     item = {
         "PK": f"USER#{user_id}",
         "SK": "PROFILE",
@@ -81,6 +94,9 @@ def put_profile(table, user_id, *, nickname="ぷれいやー", auto_approve=None
     }
     if auto_approve is not None:
         item["autoApprove"] = auto_approve
+    if frequency_limit_count is not None:
+        item["frequencyLimitCount"] = frequency_limit_count
+        item["frequencyLimitPeriod"] = frequency_limit_period
     table.put_item(
         Item=item
     )

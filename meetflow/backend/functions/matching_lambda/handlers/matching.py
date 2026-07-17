@@ -4,12 +4,15 @@ from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
     add_days_iso,
+    count_confirmed_events_in_period,
     error_response,
     generate_id,
     get_display_name,
+    get_frequency_limit,
     get_table,
     now_iso_ms,
     parse_body,
+    period_bounds,
     require_membership,
     success_response,
 )
@@ -106,6 +109,13 @@ def _run_matching(table, community_id, template_id, template):
     from_time = now_iso_ms()
     to_time = add_days_iso(from_time, _MATCHING_WINDOW_DAYS)
 
+    # 参加頻度上限のジャンル横断カウント（Issue #19）で使う。候補ごとに
+    # 変わらないためループの外で1回だけ取得する（N+1回避）。
+    community_item = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
+    ).get("Item") or {}
+    community_genre = community_item.get("genre", "")
+
     resp = table.query(
         KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
         & Key("SK").between(f"AVAIL#{from_time}", f"AVAIL#{to_time}")
@@ -140,7 +150,14 @@ def _run_matching(table, community_id, template_id, template):
             member_ids = sorted(required + optional[: max_players - len(required)])
 
         candidate_item = _create_candidate(
-            table, community_id, template_id, template, start_time, end_time, member_ids
+            table,
+            community_id,
+            template_id,
+            template,
+            start_time,
+            end_time,
+            member_ids,
+            community_genre,
         )
         created_candidates.append(candidate_item)
 
@@ -193,7 +210,14 @@ def _overlapping_member_windows(availability_items):
 
 
 def _create_candidate(
-    table, community_id, template_id, template, start_time, end_time, member_ids
+    table,
+    community_id,
+    template_id,
+    template,
+    start_time,
+    end_time,
+    member_ids,
+    community_genre,
 ):
     profiles = [
         table.get_item(Key={"PK": f"USER#{uid}", "SK": "PROFILE"}).get("Item") or {}
@@ -202,10 +226,15 @@ def _create_candidate(
     days_since_last_played = [
         _days_since_last_participation(table, uid) for uid in member_ids
     ]
+    frequency_status = [
+        _frequency_limit_status(table, community_id, uid, community_genre, start_time)
+        for uid in member_ids
+    ]
     score, reasons = calculate_score(
         template=template,
         members_profiles=profiles,
         members_days_since_last_played=days_since_last_played,
+        members_frequency_status=frequency_status,
     )
 
     candidate_id = generate_id()
@@ -310,6 +339,30 @@ def _days_since_last_participation(table, user_id):
     if last_dt.tzinfo is None:
         last_dt = last_dt.replace(tzinfo=timezone.utc)
     return max((datetime.now(timezone.utc) - last_dt).days, 0)
+
+
+def _frequency_limit_status(table, community_id, user_id, community_genre, reference_time):
+    """メンバー1人分の参加頻度上限の状態を判定する（Issue #19、要件定義書
+    v1.7 §30）。実効上限が未設定、または集計期間内のカウントが上限未満
+    なら None（減点対象外）。上限に達している場合のみ、成立理由の文言
+    組み立てに必要な情報をdictで返す。
+    """
+    limit = get_frequency_limit(table, community_id, user_id)
+    if limit is None:
+        return None
+    limit_count, limit_period = limit
+    period_start, period_end = period_bounds(reference_time, limit_period)
+    count = count_confirmed_events_in_period(
+        table, user_id, community_genre, period_start, period_end
+    )
+    if count < limit_count:
+        return None
+    return {
+        "name": get_display_name(table, community_id, user_id),
+        "period": limit_period,
+        "limit": limit_count,
+        "count": count,
+    }
 
 
 def _fairness_count(table, user_id):
