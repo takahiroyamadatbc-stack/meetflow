@@ -67,6 +67,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("POST", "/communities/{communityId}/members/me/leave", "community"),
     ("PUT", "/communities/{communityId}/members/me/display-name", "community"),
     ("PUT", "/communities/{communityId}/members/me/auto-approve", "community"),
+    ("PUT", "/communities/{communityId}/members/me/frequency-limit", "community"),
     ("GET", "/communities/{communityId}/join-requests", "community"),
     (
         "POST",
