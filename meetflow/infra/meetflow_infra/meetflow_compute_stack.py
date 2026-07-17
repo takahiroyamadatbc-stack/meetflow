@@ -14,6 +14,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_logs as logs,
+    aws_s3 as s3,
     aws_secretsmanager as secretsmanager,
     aws_sqs as sqs,
 )
@@ -28,9 +29,10 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
 class MeetFlowComputeStack(Stack):
     """MeetFlowのドメインLambda群のCDKスタック(Lambda設計書v1.1)。
 
-    7ドメインLambda全て: 共有Layer(§12.1) + UserLambda(§3) +
+    8ドメインLambda全て: 共有Layer(§12.1) + UserLambda(§3) +
     CommunityLambda(§4) + AvailabilityLambda(§5) + MatchingLambda(§6) +
-    EventLambda(§7) + ResultLambda(§8) + NotificationLambda(§9)。
+    EventLambda(§7) + ResultLambda(§8) + NotificationLambda(§9) +
+    FeedbackLambda(§9b、Lambda設計書v1.7新規)。
     """
 
     def __init__(
@@ -84,6 +86,7 @@ class MeetFlowComputeStack(Stack):
         self.event_lambda = self._build_event_lambda()
         self.result_lambda = self._build_result_lambda()
         self.notification_lambda = self._build_notification_lambda()
+        self.feedback_lambda = self._build_feedback_lambda()
 
     def _build_function(
         self,
@@ -494,6 +497,7 @@ class MeetFlowComputeStack(Stack):
                     "AvailabilityRequestCreated",
                     "EventAwaitingApproval",
                     "EventParticipantRejected",
+                    "FeedbackReplied",
                 ],
             ),
             targets=[
@@ -533,6 +537,70 @@ class MeetFlowComputeStack(Stack):
             "VapidKeysSecretName",
             value=vapid_keys_secret.secret_name,
             description="Web Push VAPID鍵ペアを投入するSecrets Managerシークレット名",
+        )
+        return fn
+
+    def _build_feedback_lambda(self) -> lambda_.Function:
+        is_prod = self.env_name == "prod"
+
+        # Lambda設計書v1.7 §9b.3: スクリーンショットはAPI Gateway/Lambda経由で
+        # バイナリを中継せず、フロントエンドが署名付きURLでS3へ直接PUTする。
+        # 非公開(CloudFront配信もしない) -- 運営者がフィードバック管理画面から
+        # 閲覧する際もFeedbackLambdaが都度署名付きGET URLを発行する想定。
+        attachments_bucket = s3.Bucket(
+            self,
+            "FeedbackAttachmentsBucket",
+            bucket_name=f"{self.env_name}-meetflow-feedback-attachments",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
+            auto_delete_objects=not is_prod,
+        )
+
+        fn = self._build_function(
+            "FeedbackLambda",
+            function_name=f"{self.env_name}-meetflow-feedback-lambda",
+            code_subdir="feedback_lambda",
+            extra_environment={
+                "FEEDBACK_ATTACHMENTS_BUCKET_NAME": attachments_bucket.bucket_name,
+            },
+        )
+
+        # Lambda設計書v1.7 §9b.5: Feedback, AnnouncementのPutItem/GetItem/
+        # UpdateItem/Query(GSI1/GSI2含む)。
+        self.table.grant(
+            fn,
+            "dynamodb:GetItem",
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem",
+            "dynamodb:Query",
+        )
+        if self.table.encryption_key:
+            self.table.encryption_key.grant_encrypt_decrypt(fn)
+
+        # §9b.5: 署名付きURL発行用。MeetFlowの他ドメインLambdaは現時点でS3への
+        # 直接アクセス権限を持たないため、本Lambdaが最初の例となる。
+        # `grant_put`/`grant_read`は`feedback/*`等のprefix限定にはできない
+        # (バケット全体への権限になる)が、このバケット自体がFeedbackLambda
+        # 専用でありfeedback/以外のプレフィックスを使うことは無いため実質的な
+        # 差は無い。
+        attachments_bucket.grant_put(fn)
+        attachments_bucket.grant_read(fn)
+
+        # §9b.6: フィードバック返信時の`FeedbackReplied`発行用。
+        events.EventBus.grant_all_put_events(fn)
+
+        CfnOutput(
+            self,
+            "FeedbackLambdaArn",
+            value=fn.function_arn,
+            description="FeedbackLambda function ARN",
+        )
+        CfnOutput(
+            self,
+            "FeedbackAttachmentsBucketName",
+            value=attachments_bucket.bucket_name,
+            description="Feedback screenshot attachments bucket name",
         )
         return fn
 
