@@ -29,6 +29,36 @@ def test_create_invite_success(table):
     assert invite["revoked"] is False
 
 
+def test_create_invite_records_created_by_role_owner(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = invites.create_invite(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    url = body_of(response)["data"]["url"]
+    token = url.rsplit("/", 1)[1]
+    invite = table.get_item(Key={"PK": f"INVITE#{token}", "SK": "METADATA"})["Item"]
+    assert invite["createdByRole"] == "OWNER"
+
+
+def test_create_invite_allowed_for_plain_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    response = invites.create_invite(
+        "user-2", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 201
+    url = body_of(response)["data"]["url"]
+    token = url.rsplit("/", 1)[1]
+    invite = table.get_item(Key={"PK": f"INVITE#{token}", "SK": "METADATA"})["Item"]
+    assert invite["createdByRole"] == "MEMBER"
+
+
 def test_join_via_invite_immediate_join_success(table):
     put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
     put_invite(table, "tok123", community_id="community-1", created_by="user-1")
@@ -107,6 +137,30 @@ def test_join_via_invite_already_member(table):
     assert body_of(response)["error"]["code"] == "ALREADY_MEMBER"
 
 
+def test_join_via_invite_requires_approval_when_invite_created_by_member(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_invite(
+        table,
+        "tok123",
+        community_id="community-1",
+        created_by="user-1",
+        created_by_role="MEMBER",
+    )
+
+    response = invites.join_via_invite(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 201
+    data = body_of(response)["data"]
+    assert data == {"communityId": "community-1", "status": "PENDING"}
+    join_request = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "JOINREQ#user-2"}
+    )["Item"]
+    assert join_request["status"] == "PENDING"
+
+
 def test_join_via_invite_join_request_already_pending(table):
     put_community(table, "community-1", owner_id="user-1", member_approval_required=True)
     put_invite(table, "tok123", community_id="community-1", created_by="user-1")
@@ -170,3 +224,24 @@ def test_revoke_invite_forbidden_for_non_admin(table):
     with pytest.raises(AuthError) as exc_info:
         invites.revoke_invite("user-2", api_event(path_params={"token": "tok123"}))
     assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_revoke_invite_allowed_for_creator_even_if_plain_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_invite(
+        table,
+        "tok123",
+        community_id="community-1",
+        created_by="user-2",
+        created_by_role="MEMBER",
+    )
+
+    response = invites.revoke_invite(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert response["statusCode"] == 200
+    invite = table.get_item(Key={"PK": "INVITE#tok123", "SK": "METADATA"})["Item"]
+    assert invite["revoked"] is True
