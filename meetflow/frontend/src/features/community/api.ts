@@ -117,6 +117,13 @@ export function transferOwner(communityId: string, newOwnerId: string) {
   );
 }
 
+/** POST /communities/{communityId}/members/me/leave（Issue #25 F-104d） */
+export function leaveCommunity(communityId: string) {
+  return apiClient.post<{ communityId: string; userId: string; left: boolean }>(
+    `/communities/${communityId}/members/me/leave`,
+  );
+}
+
 /** PUT /communities/{communityId}/members/me/display-name */
 export function updateMyDisplayName(communityId: string, displayName: string) {
   return apiClient.put<{ communityId: string; userId: string; displayName: string | null }>(

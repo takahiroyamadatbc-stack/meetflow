@@ -3,6 +3,7 @@ from boto3.dynamodb.conditions import Key
 from meetflow_common import (
     error_response,
     get_table,
+    has_upcoming_reserved_participation,
     is_display_name_taken,
     parse_body,
     require_membership,
@@ -81,6 +82,16 @@ def update_member(user_id, event):
         )
 
     if remove:
+        # Issue #26: 強制退会も自主退会（leave_community）と同じ未来の確定
+        # 参加チェックでハードブロックする。対象者を退会させた後もParticipant
+        # レコードだけが残り、非メンバーが確定参加者であり続ける不整合を防ぐ。
+        if has_upcoming_reserved_participation(table, target_user_id, community_id):
+            return error_response(
+                "MEMBER_HAS_UPCOMING_EVENTS",
+                "対象メンバーは未来の確定イベント参加が残っているため退会させられません。"
+                "先にイベント参加のキャンセル申請を案内してください",
+                status_code=409,
+            )
         table.delete_item(
             Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{target_user_id}"}
         )
@@ -139,6 +150,51 @@ def update_member(user_id, event):
             "status": new_status or target.get("status"),
         }
     )
+
+
+def leave_community(user_id, event):
+    """POST /communities/{communityId}/members/me/leave（Issue #25、
+    機能要件書v1.9 F-104d）。
+
+    メンバー自身の意思によるコミュニティ退会。`/members/me/display-name`等と
+    同じ「自分専用サブリソース」の命名パターンを踏襲する。唯一のOWNERは
+    既存の`LAST_OWNER_CANNOT_LEAVE`（先にオーナー移譲が必要）でブロックし、
+    未来の確定イベント参加（CONFIRMED/AWAITING_APPROVAL）を1件でも持つ場合は
+    `MEMBER_HAS_UPCOMING_EVENTS`でブロックする（ヒューマン・イン・ザ・ループ
+    原則に沿い、自動キャンセル等の副作用は起こさない。要件定義書v1.7 §17/§19）。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id)
+
+    membership = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"}
+    ).get("Item")
+
+    if membership.get("role") == "OWNER":
+        return error_response(
+            "LAST_OWNER_CANNOT_LEAVE",
+            "退会の前にオーナー移譲が必要です",
+            status_code=409,
+        )
+
+    if has_upcoming_reserved_participation(table, user_id, community_id):
+        return error_response(
+            "MEMBER_HAS_UPCOMING_EVENTS",
+            "未来の確定イベント参加が残っているため退会できません。"
+            "先にイベント参加のキャンセル申請をしてください",
+            status_code=409,
+        )
+
+    table.delete_item(Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"})
+    write_operation_log(
+        action="LEAVE_COMMUNITY",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Membership",
+        target_id=user_id,
+    )
+    return success_response({"communityId": community_id, "userId": user_id, "left": True})
 
 
 def update_my_display_name(user_id, event):
