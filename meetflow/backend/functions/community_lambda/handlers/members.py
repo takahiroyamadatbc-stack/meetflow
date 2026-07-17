@@ -206,3 +206,52 @@ def update_my_display_name(user_id, event):
             "displayName": display_name or None,
         }
     )
+
+
+def update_my_auto_approve(user_id, event):
+    """PUT /communities/{communityId}/members/me/auto-approve（Issue #10）。
+
+    自分自身のMembership.autoApproveを設定・解除する。コミュニティ単位で
+    自動承認をUser側の全体デフォルトから上書きしたい場合に使う。null送信は
+    上書きの解除（User.autoApproveへのフォールバックに戻す）を意味する。
+    解決ロジック自体はmeetflow_common.auto_approveに一元化している。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id)
+
+    body = parse_body(event)
+    if "autoApprove" not in body:
+        return error_response("INVALID_PARAMETER", "autoApproveが必要です")
+    raw = body["autoApprove"]
+    if raw is not None and not isinstance(raw, bool):
+        return error_response(
+            "INVALID_PARAMETER", "autoApproveはbooleanで指定してください"
+        )
+
+    key = {"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"}
+    if raw is None:
+        table.update_item(
+            Key=key,
+            UpdateExpression="REMOVE autoApprove",
+            ConditionExpression="attribute_exists(PK)",
+        )
+    else:
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET autoApprove = :v",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":v": raw},
+        )
+
+    write_operation_log(
+        action="UPDATE_AUTO_APPROVE",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Membership",
+        target_id=user_id,
+        after={"autoApprove": raw},
+    )
+    return success_response(
+        {"communityId": community_id, "userId": user_id, "autoApprove": raw}
+    )

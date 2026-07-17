@@ -255,3 +255,82 @@ def test_update_my_display_name_not_a_member(table):
             ),
         )
     assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_update_my_auto_approve_set(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_auto_approve(
+        "user-1",
+        api_event(path_params={"communityId": "community-1"}, body={"autoApprove": True}),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["autoApprove"] is True
+    membership = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-1"}
+    )["Item"]
+    assert membership["autoApprove"] is True
+
+
+def test_update_my_auto_approve_clear_reverts_to_fallback(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    members.update_my_auto_approve(
+        "user-1",
+        api_event(path_params={"communityId": "community-1"}, body={"autoApprove": True}),
+    )
+
+    response = members.update_my_auto_approve(
+        "user-1",
+        api_event(path_params={"communityId": "community-1"}, body={"autoApprove": None}),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["autoApprove"] is None
+    membership = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-1"}
+    )["Item"]
+    assert "autoApprove" not in membership
+
+
+def test_update_my_auto_approve_invalid_type(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_auto_approve(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"autoApprove": "yes"}
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_my_auto_approve_missing_field(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_auto_approve(
+        "user-1", api_event(path_params={"communityId": "community-1"}, body={})
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_my_auto_approve_not_a_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    with pytest.raises(AuthError) as exc_info:
+        members.update_my_auto_approve(
+            "user-2",
+            api_event(
+                path_params={"communityId": "community-1"}, body={"autoApprove": True}
+            ),
+        )
+    assert exc_info.value.code == "FORBIDDEN"

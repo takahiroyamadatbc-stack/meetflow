@@ -1,10 +1,15 @@
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
+    EVENT_AWAITING_APPROVAL,
     EVENT_CANCELLED,
     EVENT_CONFIRMED,
+    EVENT_STATUS_AWAITING_MEMBER_APPROVAL,
+    PARTICIPANT_STATUS_AWAITING_APPROVAL,
+    RESERVED_PARTICIPANT_STATUSES,
     error_response,
     generate_id,
+    get_auto_approve,
     get_table,
     now_iso_ms,
     parse_body,
@@ -173,15 +178,25 @@ def get_event(user_id, event):
 
 
 def confirm_event(user_id, event):
-    """F-502 (API設計書v1.4 §8.3, Lambda設計書v1.1 §7.2/§7.2b)。
+    """F-502 (API設計書v1.4 §8.3、Issue #10でF-502bへ拡張)。
 
-    イベントをCONFIRMEDに切り替えてParticipant行を作成するTransactWriteItems
-    の*前に*、ダブルブッキングのハードチェック（候補メンバーと既に
-    CONFIRMEDなParticipant行を、ParticipantのGSI1時間範囲クエリで突き
-    合わせる）を実行する -- これは二層のダブルブッキング防止設計
-    （要件定義書v1.2 §17）のうち、同期的な「実害防止」側にあたる。非同期
-    側（他コミュニティのPENDING候補への事後的なconflictWarning付与）は
-    MatchingLambdaのEventConfirmed購読側にある。
+    管理者(OWNER/ADMIN)による「イベント仮確定」操作。候補メンバー全員の
+    実効自動承認設定（meetflow_common.get_auto_approve -- Membership優先・
+    Userフォールバック）を解決し、全員が自動承認ONであればそのまま
+    CONFIRMED、1人でもOFFであればAWAITING_MEMBER_APPROVALへ遷移して
+    Participant.status=AWAITING_APPROVALのメンバー個別の承認を待つ
+    （本確定はparticipants.approve_participationが行う）。
+
+    イベントをAWAITING_MEMBER_APPROVAL/CONFIRMEDに切り替えてParticipant行を
+    作成するTransactWriteItemsの*前に*、ダブルブッキングのハードチェック
+    （候補メンバーと既に予約済み=CONFIRMED/AWAITING_APPROVALなParticipant行
+    を、ParticipantのGSI1時間範囲クエリで突き合わせる）を実行する -- これは
+    二層のダブルブッキング防止設計（要件定義書v1.2 §17）のうち、同期的な
+    「実害防止」側にあたる。判定対象を「確定済み」だけでなく「承認待ち」に
+    まで広げているのは、承認待ち中の参加者を別候補が同じ時間帯で仮確定
+    できてしまう抜け道を塞ぐため。非同期側（他コミュニティのPENDING候補
+    への事後的なconflictWarning付与）はMatchingLambdaのEventAwaitingApproval
+    /EventConfirmed購読側にある。
     """
     event_id = event["pathParameters"]["eventId"]
     table = get_table()
@@ -228,42 +243,61 @@ def confirm_event(user_id, event):
                 f"PARTICIPANT#{start_time}", f"PARTICIPANT#{end_time}"
             ),
         )
-        if any(p.get("status") == "CONFIRMED" for p in resp.get("Items", [])):
+        if any(
+            p.get("status") in RESERVED_PARTICIPANT_STATUSES
+            for p in resp.get("Items", [])
+        ):
             return error_response(
                 "PARTICIPANT_SCHEDULE_CONFLICT",
-                "参加者に、既に確定済みの別イベントと時間が重複するメンバーがいます",
+                "参加者に、既に確定済みまたは承認待ちの別イベントと時間が重複するメンバーがいます",
                 status_code=409,
             )
+
+    # 候補メンバーごとに実効自動承認設定を解決し、仮確定の目標状態を決める。
+    # 全員が自動承認ONの場合は、承認待ちを経由せず直接CONFIRMEDにする
+    # （不要な中間状態・中間通知を作らない）。
+    auto_approved_uids = {
+        uid for uid in member_ids if get_auto_approve(table, community_id, uid)
+    }
+    awaiting_uids = [uid for uid in member_ids if uid not in auto_approved_uids]
+    target_event_status = (
+        "CONFIRMED" if not awaiting_uids else EVENT_STATUS_AWAITING_MEMBER_APPROVAL
+    )
 
     created_at = now_iso_ms()
     operations = [
         {
             "Update": {
                 "Key": {"PK": f"EVENT#{event_id}", "SK": "METADATA"},
-                "UpdateExpression": "SET #status = :confirmed",
+                "UpdateExpression": "SET #status = :target",
                 "ConditionExpression": "#status = :pending_approval",
                 "ExpressionAttributeNames": {"#status": "status"},
                 "ExpressionAttributeValues": {
-                    ":confirmed": "CONFIRMED",
+                    ":target": target_event_status,
                     ":pending_approval": "PENDING_APPROVAL",
                 },
             }
         }
     ]
     for uid in member_ids:
+        is_auto = uid in auto_approved_uids
+        participant_item = {
+            "PK": f"EVENT#{event_id}",
+            "SK": f"PARTICIPANT#{uid}",
+            "GSI1PK": f"USER#{uid}",
+            "GSI1SK": f"PARTICIPANT#{start_time}#{event_id}",
+            "status": "CONFIRMED" if is_auto else PARTICIPANT_STATUS_AWAITING_APPROVAL,
+            "startTime": start_time,
+            "endTime": end_time,
+            "joinedAt": created_at,
+        }
+        if is_auto:
+            participant_item["autoApproved"] = True
+            participant_item["approvedAt"] = created_at
         operations.append(
             {
                 "Put": {
-                    "Item": {
-                        "PK": f"EVENT#{event_id}",
-                        "SK": f"PARTICIPANT#{uid}",
-                        "GSI1PK": f"USER#{uid}",
-                        "GSI1SK": f"PARTICIPANT#{start_time}#{event_id}",
-                        "status": "CONFIRMED",
-                        "startTime": start_time,
-                        "endTime": end_time,
-                        "joinedAt": created_at,
-                    },
+                    "Item": participant_item,
                     "ConditionExpression": "attribute_not_exists(PK)",
                 }
             }
@@ -281,7 +315,7 @@ def confirm_event(user_id, event):
             "EVENT_ALREADY_CONFIRMED", "既に承認済みのイベントです", status_code=409
         )
 
-    write_status_history(table, event_id, "PENDING_APPROVAL", "CONFIRMED", user_id)
+    write_status_history(table, event_id, "PENDING_APPROVAL", target_event_status, user_id)
     write_operation_log(
         action="CONFIRM_EVENT",
         user_id=user_id,
@@ -297,18 +331,34 @@ def confirm_event(user_id, event):
             target_type="Availability",
             target_id=f"{len(availability_delete_ops)} items",
         )
-    put_event(
-        EVENT_CONFIRMED,
-        {
-            "eventId": event_id,
-            "communityId": community_id,
-            "participantIds": member_ids,
-            "startTime": start_time,
-            "endTime": end_time,
-        },
-    )
 
-    return success_response(to_api_event(table, {**event_item, "status": "CONFIRMED"}))
+    if target_event_status == "CONFIRMED":
+        put_event(
+            EVENT_CONFIRMED,
+            {
+                "eventId": event_id,
+                "communityId": community_id,
+                "participantIds": member_ids,
+                "startTime": start_time,
+                "endTime": end_time,
+            },
+        )
+    else:
+        put_event(
+            EVENT_AWAITING_APPROVAL,
+            {
+                "eventId": event_id,
+                "communityId": community_id,
+                "participantIds": member_ids,
+                "awaitingUserIds": awaiting_uids,
+                "startTime": start_time,
+                "endTime": end_time,
+            },
+        )
+
+    return success_response(
+        to_api_event(table, {**event_item, "status": target_event_status})
+    )
 
 
 def _availability_delete_operations(table, community_id, member_ids, start_time, end_time):

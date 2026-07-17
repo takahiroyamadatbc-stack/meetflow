@@ -3,7 +3,12 @@ from unittest.mock import patch
 import pytest
 from boto3.dynamodb.conditions import Key
 
-from meetflow_common import AVAILABILITY_REQUEST_CREATED, EVENT_CONFIRMED
+from meetflow_common import (
+    AVAILABILITY_REQUEST_CREATED,
+    EVENT_AWAITING_APPROVAL,
+    EVENT_CONFIRMED,
+    EVENT_PARTICIPANT_REJECTED,
+)
 
 from handlers import event_subscriber
 
@@ -101,3 +106,53 @@ def test_event_confirmed_still_notifies_participants(table):
         notifications = _notifications_for(table, user_id)
         assert len(notifications) == 1
         assert notifications[0]["type"] == "CONFIRMED"
+
+
+def test_event_awaiting_approval_notifies_only_awaiting_users(table):
+    """Issue #10: EventAwaitingApprovalはawaitingUserIdsのみに通知される
+    こと(自動承認済みのメンバーは既にCONFIRMEDのため通知不要 --
+    participantIds全員ではなくawaitingUserIdsを使う点がEventConfirmedとの
+    違い)。
+    """
+    event_subscriber.handle_domain_event(
+        domain_event(
+            EVENT_AWAITING_APPROVAL,
+            {
+                "eventId": "event-1",
+                "communityId": "community-1",
+                "participantIds": ["user-1", "user-2", "user-3"],
+                "awaitingUserIds": ["user-2", "user-3"],
+                "startTime": "2026-08-01T19:00:00.000Z",
+                "endTime": "2026-08-01T23:00:00.000Z",
+            },
+        )
+    )
+
+    assert _notifications_for(table, "user-1") == []
+    for user_id in ("user-2", "user-3"):
+        notifications = _notifications_for(table, user_id)
+        assert len(notifications) == 1
+        assert notifications[0]["type"] == "AWAITING_APPROVAL"
+
+
+def test_event_participant_rejected_notifies_admins_only(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="ADMIN")
+    put_membership(table, "community-1", "user-3", role="MEMBER")
+
+    event_subscriber.handle_domain_event(
+        domain_event(
+            EVENT_PARTICIPANT_REJECTED,
+            {
+                "eventId": "event-1",
+                "communityId": "community-1",
+                "userId": "user-3",
+            },
+        )
+    )
+
+    for user_id in ("user-1", "user-2"):
+        notifications = _notifications_for(table, user_id)
+        assert len(notifications) == 1
+        assert notifications[0]["type"] == "PARTICIPANT_REJECTED"
+    assert _notifications_for(table, "user-3") == []

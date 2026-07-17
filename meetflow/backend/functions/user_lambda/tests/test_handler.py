@@ -46,6 +46,32 @@ def test_update_profile_success(table):
     assert data["gameTypes"] == ["MAHJONG3", "MAHJONG4"]
 
 
+def test_update_profile_auto_approve(table):
+    """Issue #10: 自動承認フラグ(全体デフォルト)をON/OFFできること。"""
+    put_profile(table, "user-1")
+
+    response = handler._update_profile(
+        "user-1", api_event(body={"autoApprove": True})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["autoApprove"] is True
+
+    response = handler._update_profile(
+        "user-1", api_event(body={"autoApprove": False})
+    )
+
+    assert body_of(response)["data"]["autoApprove"] is False
+
+
+def test_get_profile_auto_approve_defaults_false(table):
+    put_profile(table, "user-1")
+
+    response = handler._get_profile("user-1")
+
+    assert body_of(response)["data"]["autoApprove"] is False
+
+
 def test_update_profile_invalid_nickname_too_long(table):
     put_profile(table, "user-1")
 

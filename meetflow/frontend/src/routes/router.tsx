@@ -13,6 +13,7 @@ import { CommunityListPage } from "@/features/community/CommunityListPage";
 import { CommunityCreatePage } from "@/features/community/CommunityCreatePage";
 import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
 import { DisplayNameEditPage } from "@/features/community/DisplayNameEditPage";
+import { AutoApproveEditPage } from "@/features/community/AutoApproveEditPage";
 import { ThemeColorEditPage } from "@/features/community/ThemeColorEditPage";
 import { InvitePage } from "@/features/community/InvitePage";
 import { InviteAcceptPage } from "@/features/community/InviteAcceptPage";
@@ -124,6 +125,11 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/theme-color",
         element: <ThemeColorEditPage />,
         handle: { title: "テーマカラーを変更" },
+      },
+      {
+        path: "/communities/:communityId/auto-approve",
+        element: <AutoApproveEditPage />,
+        handle: { title: "自動承認設定を変更" },
       },
       {
         path: "/communities/:communityId/availability/new",

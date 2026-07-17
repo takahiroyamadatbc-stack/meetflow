@@ -50,6 +50,7 @@ def put_membership(
     status="ACTIVE",
     display_name=None,
     sort_order=None,
+    auto_approve=None,
 ):
     item = {
         "PK": f"COMMUNITY#{community_id}",
@@ -64,19 +65,24 @@ def put_membership(
         item["displayName"] = display_name
     if sort_order is not None:
         item["sortOrder"] = sort_order
+    if auto_approve is not None:
+        item["autoApprove"] = auto_approve
     table.put_item(Item=item)
 
 
-def put_profile(table, user_id, *, nickname="ぷれいやー"):
+def put_profile(table, user_id, *, nickname="ぷれいやー", auto_approve=None):
+    item = {
+        "PK": f"USER#{user_id}",
+        "SK": "PROFILE",
+        "nickname": nickname,
+        "bio": "",
+        "gameTypes": [],
+        "beginnerOk": False,
+    }
+    if auto_approve is not None:
+        item["autoApprove"] = auto_approve
     table.put_item(
-        Item={
-            "PK": f"USER#{user_id}",
-            "SK": "PROFILE",
-            "nickname": nickname,
-            "bio": "",
-            "gameTypes": [],
-            "beginnerOk": False,
-        }
+        Item=item
     )
 
 

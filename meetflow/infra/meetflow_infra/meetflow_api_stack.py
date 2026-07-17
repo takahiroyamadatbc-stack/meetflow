@@ -64,6 +64,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("GET", "/communities/{communityId}/members", "community"),
     ("PUT", "/communities/{communityId}/members/{userId}", "community"),
     ("PUT", "/communities/{communityId}/members/me/display-name", "community"),
+    ("PUT", "/communities/{communityId}/members/me/auto-approve", "community"),
     ("GET", "/communities/{communityId}/join-requests", "community"),
     (
         "POST",
@@ -111,6 +112,8 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("GET", "/events/{eventId}/cancel-requests", "event"),
     ("POST", "/events/{eventId}/cancel-request", "event"),
     ("POST", "/events/{eventId}/cancel-requests/{userId}/approve", "event"),
+    ("POST", "/events/{eventId}/participants/me/approve", "event"),
+    ("POST", "/events/{eventId}/participants/me/reject", "event"),
     # ResultLambda
     ("POST", "/events/{eventId}/sessions", "result"),
     ("GET", "/events/{eventId}/sessions", "result"),
