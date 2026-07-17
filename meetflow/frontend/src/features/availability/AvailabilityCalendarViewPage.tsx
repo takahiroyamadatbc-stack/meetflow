@@ -165,6 +165,7 @@ export function AvailabilityCalendarViewPage() {
         selectedDateCount={1}
         submitting={editMutation.isPending}
         onSubmit={(value) => editMutation.mutate(value)}
+        isEditMode={editTarget !== null}
         initialValue={
           editTarget
             ? {
