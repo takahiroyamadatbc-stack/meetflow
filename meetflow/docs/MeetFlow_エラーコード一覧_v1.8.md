@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.7
+# MeetFlow エラーコード一覧 v1.8
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。v1.5→v1.6はAPI設計書v1.12で追加された参加承認・辞退のエンドポイントを踏まえて更新。v1.6→v1.7はAPI設計書v1.13で招待URL発行・無効化の権限が変更されたこと（Issue #22）を踏まえて更新。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。v1.5→v1.6はAPI設計書v1.12で追加された参加承認・辞退のエンドポイントを踏まえて更新。v1.6→v1.7はAPI設計書v1.13で招待URL発行・無効化の権限が変更されたこと（Issue #22）を踏まえて更新。v1.7→v1.8はAPI設計書v1.16で追加されたメンバー自主退会のエンドポイントを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -52,12 +52,15 @@
 | `LOCATION_NOT_FOUND` | 404 | 指定した会場（Place）が存在しない | `POST /events`（locationId指定時）, `GET/POST /communities/{id}/locations` |
 | `DISPLAY_NAME_ALREADY_TAKEN` **[v1.3新規]** | 409 | 同一コミュニティ内で実効表示名（設定済みdisplayName、または未設定メンバーのUser.nickname）が重複している | `PUT /communities/{id}/members/me/display-name` |
 | `FREQUENCY_LIMIT_VALIDATION_ERROR` **[v1.5新規]** | 400 | 参加頻度上限のコミュニティ単位上書き設定で、`frequencyLimitCount`/`frequencyLimitPeriod`の片方のみを指定した等の不正 | `PUT /communities/{id}/members/me/frequency-limit` |
+| `MEMBER_HAS_UPCOMING_EVENTS` **[v1.8新規]** | 409 | 対象メンバーが、そのコミュニティ発のイベントで開催日時が未来のCONFIRMED（または仮確定＝AWAITING_APPROVAL）な参加を1件以上持っている | `POST /communities/{id}/members/me/leave`, `PUT /communities/{id}/members/{userId}`（remove指定時） |
 
 > **[v1.3新規]** コミュニティごとの表示名（F-108）の文字数超過等の基本バリデーションは、専用コードを新設せず既存の`PROFILE_VALIDATION_ERROR`（Userドメイン、400）を流用する。
 >
 > **[v1.5新規]** 参加頻度上限のコミュニティ単位上書き（F-109）は、プロフィール側（`PROFILE_VALIDATION_ERROR`を流用）とは別に`FREQUENCY_LIMIT_VALIDATION_ERROR`を新設した。Communityドメインのエンドポイント（`/communities/{id}/members/...`配下）であり、`DISPLAY_NAME_ALREADY_TAKEN`と同様にCommunityLambda側で発生するエラーのため、Userドメインのコードを使い回さずドメインを揃えた。
 >
 > **[v1.7修正]** 招待URL発行がOWNER/ADMIN限定からコミュニティの全メンバーに開放されたことに伴い（Issue #22）、`POST /invites/{token}/revoke`の権限はOWNER/ADMINまたは発行者本人に拡張された。それ以外のメンバーが無効化を試みた場合は、新規コードを追加せず既存の共通`FORBIDDEN`（1章）をそのまま流用する。
+>
+> **[v1.8新規]** `MEMBER_HAS_UPCOMING_EVENTS`はメンバー自主退会（Issue #25）・管理者による強制退会（Issue #26）の両方で共通のブロック判定に使う。ダブルブッキング防止（`PARTICIPANT_SCHEDULE_CONFLICT`）と同様、判定対象はCONFIRMEDだけでなくAWAITING_APPROVAL（仮確定時点で時間枠は事実上予約済み）も含める。
 
 ---
 
@@ -143,7 +146,7 @@
 |---|---|
 | インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR`, `DISPLAY_NAME_ALREADY_TAKEN`（**[v1.3追加]**）, `FREQUENCY_LIMIT_VALIDATION_ERROR`（**[v1.5追加]**） |
 | トースト（一時的なエラー） | `INTERNAL_ERROR`, `AVAILABILITY_OVERLAP`, `ALREADY_MEMBER`, `JOIN_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PROCESSED`, `CANDIDATE_ALREADY_USED`, `EVENT_ALREADY_CONFIRMED`, `EVENT_ALREADY_CANCELLED`, `PARTICIPANT_ALREADY_RESPONDED`（**[v1.6追加]**） |
-| モーダル（明示的な操作が必要） | `UNAUTHORIZED`（再ログイン誘導）, `FORBIDDEN`（権限不足の説明）, **`PARTICIPANT_SCHEDULE_CONFLICT`（承認をブロックした理由の明示、[v1.1追加]）** |
+| モーダル（明示的な操作が必要） | `UNAUTHORIZED`（再ログイン誘導）, `FORBIDDEN`（権限不足の説明）, **`PARTICIPANT_SCHEDULE_CONFLICT`（承認をブロックした理由の明示、[v1.1追加]）**, **`MEMBER_HAS_UPCOMING_EVENTS`（退会をブロックした理由の明示、[v1.8追加]）** |
 | 空状態画面 | `NO_CANDIDATES_FOUND`, 各種`*_NOT_FOUND`（削除済みリソースへのアクセス） |
 
 ---
@@ -220,3 +223,13 @@
 | No | 変更内容 | 対応する決定事項 |
 |---|---|---|
 | 1 | `POST /invites/{token}/revoke`のFORBIDDEN発生条件を「OWNER/ADMIN以外」から「OWNER/ADMINでも発行者本人でもない場合」に更新（新規コードなし、既存の共通`FORBIDDEN`を流用） | Issue #22：招待URL発行のメンバー開放に伴い、無効化権限も発行者本人に拡張されたため |
+
+---
+
+## v1.7 → v1.8 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | Communityドメインに`MEMBER_HAS_UPCOMING_EVENTS`（409）を新規追加 | Issue #25：メンバー自主退会機能の新設。未来の確定イベント参加が残っている場合のブロック判定 |
+| 2 | `MEMBER_HAS_UPCOMING_EVENTS`の発生APIに管理者による強制退会（`PUT .../members/{userId}`のremove指定）を追加（新規コードなし、自主退会と同じコードを流用） | Issue #26：強制退会が同チェックを欠いていた抜け穴の解消 |
+| 3 | フロントエンド表示方針表のモーダル欄に`MEMBER_HAS_UPCOMING_EVENTS`を追加 | 上記No.1と同一の決定事項 |

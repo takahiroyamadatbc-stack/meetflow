@@ -29,7 +29,12 @@ const INLINE_CODES = new Set([
 ]);
 
 /** モーダル（明示的な操作が必要）で表示するエラーコード（同§10表） */
-const MODAL_CODES = new Set(["UNAUTHORIZED", "FORBIDDEN", "PARTICIPANT_SCHEDULE_CONFLICT"]);
+const MODAL_CODES = new Set([
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "PARTICIPANT_SCHEDULE_CONFLICT",
+  "MEMBER_HAS_UPCOMING_EVENTS",
+]);
 
 /** トースト（一時的なエラー）で表示するエラーコード（同§10表） */
 const TOAST_CODES = new Set([

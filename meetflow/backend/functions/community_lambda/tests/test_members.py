@@ -1,9 +1,38 @@
 import pytest
-from meetflow_common import AuthError
+from meetflow_common import AuthError, add_days_iso, now_iso_ms
 
 from handlers import members
 
 from _factories import api_event, body_of, put_community, put_membership, put_profile
+
+
+def _put_event(table, event_id, *, community_id, start_time, end_time=None):
+    table.put_item(
+        Item={
+            "PK": f"EVENT#{event_id}",
+            "SK": "METADATA",
+            "GSI1PK": f"COMMUNITY#{community_id}",
+            "GSI1SK": f"EVENT#{start_time}#{event_id}",
+            "status": "CONFIRMED",
+            "startTime": start_time,
+            "endTime": end_time or start_time,
+            "createdAt": now_iso_ms(),
+        }
+    )
+
+
+def _put_participant(table, event_id, user_id, *, start_time, status="CONFIRMED"):
+    table.put_item(
+        Item={
+            "PK": f"EVENT#{event_id}",
+            "SK": f"PARTICIPANT#{user_id}",
+            "GSI1PK": f"USER#{user_id}",
+            "GSI1SK": f"PARTICIPANT#{start_time}#{event_id}",
+            "status": status,
+            "startTime": start_time,
+            "joinedAt": now_iso_ms(),
+        }
+    )
 
 
 def test_list_members_success(table):
@@ -447,6 +476,144 @@ def test_update_my_frequency_limit_invalid_period(table):
 
     assert response["statusCode"] == 400
     assert body_of(response)["error"]["code"] == "FREQUENCY_LIMIT_VALIDATION_ERROR"
+
+
+def test_leave_community_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    response = members.leave_community(
+        "user-2", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["left"] is True
+    assert (
+        table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-2"}).get(
+            "Item"
+        )
+        is None
+    )
+
+
+def test_leave_community_last_owner_cannot_leave(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.leave_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "LAST_OWNER_CANNOT_LEAVE"
+
+
+def test_leave_community_blocked_by_upcoming_confirmed_event(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    future = add_days_iso(now_iso_ms(), 7)
+    _put_event(table, "event-1", community_id="community-1", start_time=future)
+    _put_participant(table, "event-1", "user-2", start_time=future, status="CONFIRMED")
+
+    response = members.leave_community(
+        "user-2", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "MEMBER_HAS_UPCOMING_EVENTS"
+    assert (
+        table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-2"}).get(
+            "Item"
+        )
+        is not None
+    )
+
+
+def test_leave_community_blocked_by_upcoming_awaiting_approval_event(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    future = add_days_iso(now_iso_ms(), 7)
+    _put_event(table, "event-1", community_id="community-1", start_time=future)
+    _put_participant(
+        table, "event-1", "user-2", start_time=future, status="AWAITING_APPROVAL"
+    )
+
+    response = members.leave_community(
+        "user-2", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "MEMBER_HAS_UPCOMING_EVENTS"
+
+
+def test_leave_community_not_blocked_by_past_event(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    past = add_days_iso(now_iso_ms(), -7)
+    _put_event(table, "event-1", community_id="community-1", start_time=past)
+    _put_participant(table, "event-1", "user-2", start_time=past, status="CONFIRMED")
+
+    response = members.leave_community(
+        "user-2", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 200
+
+
+def test_leave_community_not_blocked_by_other_community_event(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    future = add_days_iso(now_iso_ms(), 7)
+    _put_event(table, "event-1", community_id="community-other", start_time=future)
+    _put_participant(table, "event-1", "user-2", start_time=future, status="CONFIRMED")
+
+    response = members.leave_community(
+        "user-2", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 200
+
+
+def test_leave_community_not_a_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    with pytest.raises(AuthError) as exc_info:
+        members.leave_community(
+            "user-2", api_event(path_params={"communityId": "community-1"})
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_update_member_remove_blocked_by_upcoming_event(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    future = add_days_iso(now_iso_ms(), 7)
+    _put_event(table, "event-1", community_id="community-1", start_time=future)
+    _put_participant(table, "event-1", "user-2", start_time=future, status="CONFIRMED")
+
+    response = members.update_member(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1", "userId": "user-2"},
+            body={"remove": True},
+        ),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "MEMBER_HAS_UPCOMING_EVENTS"
+    assert (
+        table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-2"}).get(
+            "Item"
+        )
+        is not None
+    )
 
 
 def test_update_my_frequency_limit_not_a_member(table):

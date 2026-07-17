@@ -30,6 +30,7 @@ from .frequency_limit import (
 from .http import BadRequest, parse_body
 from .ids import generate_id, generate_invite_token
 from .operation_log import write_operation_log
+from .participation import has_upcoming_reserved_participation
 from .router import dispatch
 from .time_utils import add_days_iso, now_iso_ms
 from .transact import transact_write
@@ -69,6 +70,7 @@ __all__ = [
     "generate_id",
     "generate_invite_token",
     "write_operation_log",
+    "has_upcoming_reserved_participation",
     "dispatch",
     "now_iso_ms",
     "add_days_iso",
