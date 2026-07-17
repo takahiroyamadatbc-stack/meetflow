@@ -11,6 +11,7 @@ from meetflow_common import (
     success_response,
 )
 
+from .attachments import generate_view_url
 from .operators import require_operator
 
 _KINDS = ("QUICK", "DETAILED")
@@ -136,7 +137,11 @@ def get_feedback(user_id, event):
     if item is None:
         return error_response("FEEDBACK_NOT_FOUND", "指定したフィードバックが見つかりません")
 
-    return success_response(_to_api_feedback(item, include_reply=True))
+    result = _to_api_feedback(item, include_reply=True)
+    result["attachmentUrls"] = [
+        generate_view_url(key) for key in sorted(item.get("attachmentKeys", []))
+    ]
+    return success_response(result)
 
 
 def update_feedback(user_id, event):
