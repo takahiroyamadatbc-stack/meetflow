@@ -64,6 +64,10 @@ _STATUS_BY_CODE = {
     "GAME_SESSION_NOT_FOUND": 404,
     # §8 Notification
     "NOTIFICATION_NOT_FOUND": 404,
+    # §9b Feedback / Announcement
+    "FEEDBACK_NOT_FOUND": 404,
+    "FEEDBACK_VALIDATION_ERROR": 400,
+    "ANNOUNCEMENT_NOT_FOUND": 404,
 }
 
 

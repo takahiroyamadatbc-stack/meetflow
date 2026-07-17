@@ -16,6 +16,7 @@ EVENT_STATUS_CHANGED = "EventStatusChanged"
 AVAILABILITY_REQUEST_CREATED = "AvailabilityRequestCreated"
 EVENT_AWAITING_APPROVAL = "EventAwaitingApproval"
 EVENT_PARTICIPANT_REJECTED = "EventParticipantRejected"
+FEEDBACK_REPLIED = "FeedbackReplied"
 
 _client = None
 
