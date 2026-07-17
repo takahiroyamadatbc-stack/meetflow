@@ -72,6 +72,7 @@ api_stack = MeetFlowApiStack(
     event_lambda=compute_stack.event_lambda,
     result_lambda=compute_stack.result_lambda,
     notification_lambda=compute_stack.notification_lambda,
+    feedback_lambda=compute_stack.feedback_lambda,
     env=env,
     description="MeetFlow REST API stack: API Gateway + Cognito Authorizer (API設計書v1.5)",
 )
