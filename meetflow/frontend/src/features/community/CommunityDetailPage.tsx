@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { RoleBadge } from "@/features/community/components/RoleBadge";
-import { communityKeys, deleteCommunity, getCommunity } from "@/features/community/api";
+import { communityKeys, deleteCommunity, getCommunity, leaveCommunity } from "@/features/community/api";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { paths } from "@/routes/paths";
 
@@ -31,6 +31,7 @@ export function CommunityDetailPage() {
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
 
   const { data: community, isLoading } = useQuery({
     queryKey: communityKeys.detail(communityId!),
@@ -47,6 +48,17 @@ export function CommunityDetailPage() {
     },
     onError: handleApiError,
     onSettled: () => setDeleteDialogOpen(false),
+  });
+
+  const leaveMutation = useMutation({
+    mutationFn: () => leaveCommunity(communityId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.all });
+      toast.success("コミュニティを退会しました");
+      navigate(paths.communityList, { replace: true });
+    },
+    onError: handleApiError,
+    onSettled: () => setLeaveDialogOpen(false),
   });
 
   if (isLoading) {
@@ -171,6 +183,19 @@ export function CommunityDetailPage() {
         </AccordionItem>
       </Accordion>
 
+      {community.role !== "OWNER" && (
+        <>
+          <Separator className="my-2" />
+          <Button
+            variant="destructive"
+            className="self-start"
+            onClick={() => setLeaveDialogOpen(true)}
+          >
+            このコミュニティを退会する
+          </Button>
+        </>
+      )}
+
       {community.role === "OWNER" && (
         <>
           <Separator className="my-2" />
@@ -199,6 +224,26 @@ export function CommunityDetailPage() {
               onClick={() => deleteMutation.mutate()}
             >
               削除する
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={leaveDialogOpen} onOpenChange={setLeaveDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>このコミュニティを退会しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              未来の確定イベント参加が残っている場合は退会できません。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex justify-end gap-2 px-4 pb-4">
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={leaveMutation.isPending}
+              onClick={() => leaveMutation.mutate()}
+            >
+              退会する
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
