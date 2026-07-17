@@ -4,7 +4,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { format, parseISO } from "date-fns";
+import { format, formatDistanceToNow, parseISO } from "date-fns";
+import { ja } from "date-fns/locale";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -115,6 +116,13 @@ export function MatchingCandidateDetailPage() {
                 </span>
               )}
             </div>
+            <span className="text-muted-foreground text-xs">
+              {formatDistanceToNow(parseISO(candidate.createdAt), {
+                addSuffix: true,
+                locale: ja,
+              })}
+              に生成
+            </span>
             <div className="flex flex-col gap-1">
               {candidate.members.map((member) => (
                 <div key={member.userId} className="flex items-center justify-between text-sm">

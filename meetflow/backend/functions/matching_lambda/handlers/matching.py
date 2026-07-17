@@ -374,6 +374,10 @@ def _to_api_candidate(table, community_id, item):
         "startTime": start_time,
         "endTime": end_time,
         "members": members,
+        # 候補の生成日時（Issue #28）。管理者が古い候補を選んでしまうと選定〜
+        # 全員承認完了までの間にAvailabilityが変わっている可能性が上がるため、
+        # 一覧・詳細画面で「新しさ」を認識できるようにする。
+        "createdAt": item.get("createdAt"),
     }
 
 
