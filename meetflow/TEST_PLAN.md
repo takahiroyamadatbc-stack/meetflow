@@ -17,10 +17,10 @@ Cognitoの`UserPoolClient`はSRPログインのみ許可（`admin_initiate_auth`
 
 | アカウント | メールアドレス（例） | コミュニティ内ロール | 主な用途 |
 |---|---|---|---|
-| A | `takahiro.yamada.tbc+mftest-a@gmail.com` | OWNER（コミュニティ作成者） | 管理操作全般、候補承認、イベント確定 |
-| B | `takahiro.yamada.tbc+mftest-b@gmail.com` | 一般メンバー | 空き予定登録、相互非公開チェックの当事者 |
-| C | `takahiro.yamada.tbc+mftest-c@gmail.com` | 一般メンバー | 相互非公開チェックの相手（BからCの予定が見えないか） |
-| D | `takahiro.yamada.tbc+mftest-d@gmail.com` | 非所属（コミュニティに参加しない） | 権限ネガティブテスト専用 |
+| A | `takahiro.yamada.tbc+mfdemo-a@gmail.com` | OWNER（コミュニティ作成者） | 管理操作全般、候補承認、イベント確定 |
+| B | `takahiro.yamada.tbc+mfdemo-b@gmail.com` | 一般メンバー | 空き予定登録、相互非公開チェックの当事者 |
+| C | `takahiro.yamada.tbc+mfdemo-c@gmail.com` | 一般メンバー | 相互非公開チェックの相手（BからCの予定が見えないか） |
+| D | `takahiro.yamada.tbc+mfdemo-d@gmail.com` | 非所属（コミュニティに参加しない） | 権限ネガティブテスト専用 |
 
 パスワードはすべてTest1234
 
