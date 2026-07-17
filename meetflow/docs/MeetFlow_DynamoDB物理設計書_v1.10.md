@@ -1,7 +1,7 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.8
+# MeetFlow DynamoDB 物理テーブル設計書 v1.10
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
-> v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.7→v1.8の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
+> v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.9→v1.10の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
 
 ---
 
@@ -47,11 +47,14 @@ SK:   PROFILE
 | beginnerOk | BOOL | 初心者対応可否 |
 | **frequencyLimitCount** | **N** | **（任意）ゲームジャンル単位の参加頻度上限回数。`frequencyLimitPeriod`とセットで設定・解除する [v1.9追加]** |
 | **frequencyLimitPeriod** | **S** | **（任意）上限回数の集計期間。`WEEK` / `MONTH` [v1.9追加]** |
+| **autoApprove** | **BOOL** | **（任意、既定false）イベント仮確定後の参加承認を以降自動で行うかどうかの全体デフォルト [v1.10追加]** |
 | createdAt | S | ISO8601 |
 
 > F-001/F-002/F-003 に対応。Cognito自体にはメール・パスワードのみ持たせ、プロフィールはDynamoDB側で管理する。
 >
 > **[v1.9追加]** `frequencyLimitCount`/`frequencyLimitPeriod`は要件定義書v1.6 30章「参加頻度上限」に対応する全体デフォルト設定。3.3 Membershipの同名属性（コミュニティ単位の任意上書き）が優先され、未設定の場合にこちらへフォールバックする（`displayName`と同じ解決順）。Phase3予約属性の`desiredFrequency`（3.3参照）とは別物で、あちらは複数コミュニティ横断の優先度比較・ランキング表示専用（マッチングのスコア計算には使わない）なのに対し、こちらは実際にF-403のスコアリングに反映される。
+>
+> **[v1.10追加]** `autoApprove`はF-502b「イベント確定フローの全員承認」（要件定義書v1.7 §17、Issue #10）に対応する全体デフォルト設定。3.3 Membershipの同名属性（コミュニティ単位の任意上書き）が優先され、未設定の場合にこちらへフォールバックする（`frequencyLimitCount`/`displayName`と同じ解決順）。自動承認は本人が事前に与えた明示的な同意を都度操作なしに反映するだけであり、システムが自律的にイベントを確定するわけではない（要件定義書v1.7 §17/§19参照）。
 
 ---
 
@@ -103,6 +106,7 @@ GSI1SK:  COMMUNITY#{communityId}
 | **sortOrder** | **N** | **（任意）コミュニティ一覧の表示順。ユーザーごとに並び替えAPIが0始まりの連番で書き込む。未設定（新規参加直後等）は一覧取得時に末尾へ回す [v1.8追加]** |
 | **frequencyLimitCount** | **N** | **（任意）このコミュニティにおける参加頻度上限回数。未設定時はUser側の全体デフォルトにフォールバック。`frequencyLimitPeriod`とセットで設定・解除する [v1.9追加]** |
 | **frequencyLimitPeriod** | **S** | **（任意）上限回数の集計期間。`WEEK` / `MONTH` [v1.9追加]** |
+| **autoApprove** | **BOOL** | **（任意）このコミュニティにおける自動承認設定。未設定時はUser側の全体デフォルトにフォールバック [v1.10追加]** |
 
 **アクセスパターン**
 - コミュニティのメンバー一覧：`PK=COMMUNITY#{id}, SK begins_with MEMBER#`
@@ -110,8 +114,9 @@ GSI1SK:  COMMUNITY#{communityId}
 - **[v1.6追加]** 表示名重複チェック：コミュニティのメンバー一覧を取得し（上記と同じクエリ）、各メンバーの実効表示名（`displayName`が未設定のメンバーはUser.nicknameを都度`GetItem`）をアプリケーション側で突き合わせる。コミュニティ規模（10〜30人程度）では軽い処理のため、専用GSIは追加しない。
 - **[v1.8追加]** コミュニティ一覧の表示順並び替え：上記のユーザーの所属コミュニティ一覧クエリで取得した各Membership行に対し、`sortOrder`を書き込む（`GetItem`/`UpdateItem`の組み合わせ。専用GSIは追加しない）。
 - **[v1.9追加]** 実効参加頻度上限の解決：`GetItem`でMembership行（`frequencyLimitCount`/`frequencyLimitPeriod`）とUser行（同名の全体デフォルト）を取得し、Membership側の値があれば優先、なければUser側にフォールバックする（`displayName`の解決と同じ形）。専用GSIは追加しない。
+- **[v1.10追加]** 実効自動承認設定の解決：`GetItem`でMembership行（`autoApprove`）とUser行（同名の全体デフォルト）を取得し、Membership側の値があれば優先、なければUser側にフォールバックする（`frequencyLimitCount`と同じ形）。イベント仮確定処理（EventLambda）が候補メンバーごとに呼ぶ。専用GSIは追加しない。
 
-> F-104, F-105, F-106（OWNER変更時は該当Membershipのroleを書き換え。元OWNERはrole=MEMBERに更新 [v1.1]）、F-108（コミュニティごとの表示名 [v1.6追加]）、F-109（参加頻度上限のコミュニティ単位の上書き [v1.9追加]）に対応。
+> F-104, F-105, F-106（OWNER変更時は該当Membershipのroleを書き換え。元OWNERはrole=MEMBERに更新 [v1.1]）、F-108（コミュニティごとの表示名 [v1.6追加]）、F-109（参加頻度上限のコミュニティ単位の上書き [v1.9追加]）、F-109b（自動承認のコミュニティ単位の上書き [v1.10追加]）に対応。
 >
 > **[v1.3追加]** `priorityWeight`/`desiredFrequency`はPhase3（複数コミュニティ横断の優先度・満足度比較機能）向けの予約属性。今は値を使わないが、後からの一括マイグレーションを避けるため属性だけ先に確保しておく。
 >
@@ -120,6 +125,8 @@ GSI1SK:  COMMUNITY#{communityId}
 > **[v1.8追加]** `sortOrder`も`displayName`と同様、PK/SK/GSI1の構造を変えない任意属性として追加した。並び替えAPI（API設計書v1.10 §4.2d）がユーザーの所属コミュニティ一覧クエリの結果に対し、渡された順序どおり0,1,2...を書き込む。専用GSIを持たないため、並び替え自体のクエリコストは所属コミュニティ数（10〜数十件程度を想定）に比例するのみで軽微。
 >
 > **[v1.9追加]** `frequencyLimitCount`/`frequencyLimitPeriod`も`displayName`と同じ「Membership優先・User側フォールバック」のパターンを踏襲する任意属性で、PK/SK/GSI1の構造には影響しない。解決ロジックはLambda層（`meetflow_common.frequency_limit`）に集約する。3.1 Userの同名属性の注記も参照。
+>
+> **[v1.10追加]** `autoApprove`も同じ「Membership優先・User側フォールバック」のパターンを踏襲する任意属性で、PK/SK/GSI1の構造には影響しない。解決ロジックはLambda層（`meetflow_common.auto_approve`）に集約する。3.1 Userの同名属性の注記も参照。
 
 ---
 
@@ -293,7 +300,7 @@ GSI1SK:  EVENT#{startTime}#{eventId}
 | candidateId | S | 元候補 |
 | locationId | S | 会場ID（Place参照、null可）[v1.1: 参照先をPlaceに変更] |
 | locationNote | S | 会場自由記述 |
-| status | S | DRAFT/OPEN/MATCHING/PENDING_APPROVAL/CONFIRMED/IN_PROGRESS/COMPLETED/CANCELLED |
+| status | S | DRAFT/OPEN/MATCHING/PENDING_APPROVAL/**AWAITING_MEMBER_APPROVAL[v1.10追加]**/CONFIRMED/IN_PROGRESS/COMPLETED/CANCELLED |
 | startTime / endTime | S | ISO8601 |
 | createdAt | S | ISO8601 |
 
@@ -302,6 +309,8 @@ GSI1SK:  EVENT#{startTime}#{eventId}
 - コミュニティのイベント一覧（開催日時順）：GSI1
 
 > F-501〜F-504、要件定義書14章のライフサイクルに対応。EventIdをPKにすることで、Participant/CancelRequest/GameSession等の子エンティティを同一PK配下にぶら下げられる（次項参照）。
+>
+> **[v1.10追加]** `AWAITING_MEMBER_APPROVAL`はF-502b「イベント確定フローの全員承認」（Issue #10）で追加した中間状態。管理者による仮確定（F-502、`PENDING_APPROVAL`→`AWAITING_MEMBER_APPROVAL`）と、参加予定者全員の個別承認完了による本確定（`AWAITING_MEMBER_APPROVAL`→`CONFIRMED`）の間に位置する。候補メンバー全員が自動承認（3.1/3.3の`autoApprove`）ONの場合はこの状態を経由せず直接`CONFIRMED`になる。
 
 ---
 
@@ -316,15 +325,20 @@ GSI1SK:  PARTICIPANT#{startTime}#{eventId}
 
 | 属性 | 型 | 説明 |
 |---|---|---|
-| status | S | CONFIRMED / CANCEL_REQUESTED / CANCELLED |
+| status | S | CONFIRMED / CANCEL_REQUESTED / CANCELLED / **AWAITING_APPROVAL[v1.10追加]** / **REJECTED[v1.10追加]** |
 | startTime / endTime | S | ISO8601（Eventの日時をコピー。ダブルブッキング検知の時間範囲クエリ用） |
 | joinedAt | S | ISO8601 |
 | **communityGenre** | **S** | **確定時点のCommunity.genreを非正規化してコピーしたもの（3.2参照）[v1.9追加]** |
+| **approvedAt** | **S** | **（任意）ISO8601。本人が参加承認した日時（自動承認された場合も含む）[v1.10追加]** |
+| **autoApproved** | **BOOL** | **（任意）仮確定時に自動承認によってCONFIRMEDになった場合true [v1.10追加]** |
+| **rejectedAt** | **S** | **（任意）ISO8601。本人が参加を辞退した日時 [v1.10追加]** |
+| **rejectReason** | **S** | **（任意）辞退理由の自由記述 [v1.10追加]** |
 
 **アクセスパターン**
 - ユーザーの確定済み参加イベントを時間帯で横断検索（ダブルブッキング検知用）：`GSI1PK=USER#{userId}, GSI1SK between PARTICIPANT#{from} and PARTICIPANT#{to}`
 - **[v1.8追加]** ユーザー自身が参加する確定イベントのコミュニティ横断一覧（予定タブのカレンダー表示用）：`GSI1PK=USER#{userId}, GSI1SK begins_with PARTICIPANT#`（`status=CONFIRMED`の行のみ抽出し、各行のEventも取得してEvent側の`status`もCONFIRMEDであることを確認する。イベント全体中止時はParticipant行自体は更新されないため）
 - **[v1.9追加]** 参加頻度上限のコミュニティ横断カウント（マッチング処理F-401内部専用）：`GSI1PK=USER#{userId}, GSI1SK between PARTICIPANT#{periodStart} and PARTICIPANT#{periodEnd}`（集計対象期間はF-109/F-003で設定した週/月）で取得した行のうち、`communityGenre`が候補生成対象コミュニティの`genre`と一致するものだけを件数カウントする。ダブルブッキング検知（1つ目のパターン）と同一インデックスの応用で、新規GSIは追加しない。
+- **[v1.10追加]** 全員承認済み判定（F-502b、本確定のトリガー）：`PK=EVENT#{eventId}, SK begins_with PARTICIPANT#`（アクセスパターン14と同一クエリ）で取得した全行の`status`が`CONFIRMED`であるかを判定する。1件でも`AWAITING_APPROVAL`/`REJECTED`が残っていれば本確定しない。新規GSIは追加しない。
 
 > F-502（承認時に一括作成）、9.1に対応。
 >
@@ -333,6 +347,8 @@ GSI1SK:  PARTICIPANT#{startTime}#{eventId}
 > **[v1.8追加]** 上記のGSI1レンジクエリは元々ダブルブッキング検知専用だったが、同じインデックスがユーザー横断の確定イベント一覧取得（API設計書v1.10 §8.7b）にもそのまま流用できるため、新規GSIは追加していない。この横断取得は自分自身の確定予定のみを対象とし、他メンバーの空き予定を公開するものではないため、相互非公開型マッチング（要件定義書v1.5 29章）の原則には抵触しない。
 >
 > **[v1.9追加]** `communityGenre`はイベント確定処理（F-502、EventLambda）でCommunity METADATA（3.2）の`genre`を`GetItem`で取得しParticipant作成時にコピーする。これにより参加頻度上限のジャンル横断カウント（要件定義書v1.6 30.4）がGSI1のレンジクエリ1発＋アプリ側フィルタで完結し、確定イベントごとにEventTemplateへ`GetItem`するN+1呼び出しを避けられる。
+>
+> **[v1.10追加]** F-502b「イベント確定フローの全員承認」（Issue #10）に対応。仮確定（F-502）時点では、候補メンバーの実効自動承認設定（3.1/3.3の`autoApprove`）に応じて`status`を`CONFIRMED`（`autoApproved=true`）または`AWAITING_APPROVAL`のいずれかで作成する。`AWAITING_APPROVAL`の参加者は`POST /events/{eventId}/participants/me/approve`で`CONFIRMED`（本人による個別承認）、`POST /events/{eventId}/participants/me/reject`で`REJECTED`（明示的な辞退）に遷移する。全員が`CONFIRMED`になった時点でEvent側もAWAITING_MEMBER_APPROVAL→CONFIRMEDへ本確定する（上記アクセスパターン参照）。`REJECTED`は自動でイベント全体を中止しない — 管理者への通知（Notification）のみを行い、中止するかどうかの判断は既存のcancel_event（F-605）に委ねる（要件定義書v1.7 §17/§19のヒューマン・イン・ザ・ループ原則）。
 
 ---
 
@@ -572,6 +588,7 @@ SK:   AVAILREQ#{requestId}
 | 29 | コミュニティ一覧の表示順並び替え（アクセスパターン3の応用。各Membership行にsortOrderを書き込む） [v1.8] | PK=COMMUNITY#{id}, SK=MEMBER#{userId} |
 | 30 | ユーザー自身が参加する確定イベントのコミュニティ横断一覧（予定タブのカレンダー表示用。アクセスパターン15の応用） [v1.8] | GSI1PK=USER#{id}, SK begins_with PARTICIPANT# |
 | 31 | 参加頻度上限のジャンル横断カウント（マッチング処理F-401内部専用。アクセスパターン15の応用＋communityGenre絞り込み） [v1.9] | GSI1PK=USER#{id}, SK between PARTICIPANT#{periodStart}~{periodEnd} |
+| 32 | イベント全員承認済み判定（F-502b、本確定のトリガー。アクセスパターン14と同一クエリ） [v1.10] | PK=EVENT#{id}, SK begins_with PARTICIPANT# |
 
 ---
 
@@ -580,10 +597,12 @@ SK:   AVAILREQ#{requestId}
 | ケース | 対応 |
 |---|---|
 | 参加リクエスト承認（JoinRequest更新＋Membership作成） | `TransactWriteItems`で同時コミット |
-| イベント承認（Event状態更新＋Participant一括作成） | `TransactWriteItems` |
+| イベント仮確定（Event状態更新＋Participant一括作成）[v1.10: 「イベント承認」から名称変更] | `TransactWriteItems` |
 | キャンセル承認の二重実行防止 | `UpdateItem`に`ConditionExpression: status = PENDING`を付与 |
 | OWNER変更（Membership.roleの入れ替え） | `TransactWriteItems`で「新OWNERのrole更新」と「元OWNERのrole=MEMBER更新」を同時に行い、途中失敗による権限不整合を防ぐ |
-| **イベント承認時のダブルブッキング事前チェック** [v1.3] | Participant一括作成の**前**に、候補メンバー全員分についてGSI1（`PARTICIPANT#{startTime}#{eventId}`）を時間範囲でQueryし、既存の確定済みイベントと重複がないか確認。重複があれば`TransactWriteItems`を実行せず`PARTICIPANT_SCHEDULE_CONFLICT`エラーで中断する |
+| **イベント仮確定時のダブルブッキング事前チェック** [v1.3、v1.10で判定対象statusを拡張] | Participant一括作成の**前**に、候補メンバー全員分についてGSI1（`PARTICIPANT#{startTime}#{eventId}`）を時間範囲でQueryし、`status`が`CONFIRMED`または`AWAITING_APPROVAL`（承認待ち＝事実上予約済み）の既存行と重複がないか確認。重複があれば`TransactWriteItems`を実行せず`PARTICIPANT_SCHEDULE_CONFLICT`エラーで中断する |
+| **参加者個別承認の二重実行防止** [v1.10] | `UpdateItem`に`ConditionExpression: status = AWAITING_APPROVAL`を付与（承認・拒否のいずれも同じ形） |
+| **イベント本確定（全員承認完了時のAWAITING_MEMBER_APPROVAL→CONFIRMED）** [v1.10] | `UpdateItem`に`ConditionExpression: status = AWAITING_MEMBER_APPROVAL`を付与。競合時（既に本確定済み、または承認待ち中に管理者がイベント全体を中止済み）は現在のstatusを再取得し、`CONFIRMED`以外の場合はEventConfirmedを発行しない |
 
 ---
 
@@ -608,7 +627,7 @@ SK:   AVAILREQ#{requestId}
 | MatchCandidate / CandidateMember | F-401〜F-404 | 6.1〜6.3 |
 | Place | F-107 | 8.5, 8.6 |
 | Event | F-501〜F-504 | 8.1, 8.2 |
-| Participant | F-502, ダブルブッキング防止（Lambda設計書v1.1 7.2） | 9.1, 8.3 |
+| Participant | F-502, F-502b, F-502c [v1.10], ダブルブッキング防止（Lambda設計書v1.6 7.2b） | 9.1, 8.3, 8.3b, 8.3c |
 | CancelRequest | F-601, F-602 | 9.2, 9.3 |
 | GameSession / GameResult | F-801〜F-804 | 10.1, 10.2 |
 | Notification | F-701, F-702 | 11.1, 11.2 |
@@ -723,3 +742,18 @@ SK:   AVAILREQ#{requestId}
 | 3 | 3.11 Participantに`communityGenre`(S)属性を追加。イベント確定時にCommunity.genreを非正規化してコピーする | 参加頻度上限のコミュニティ横断・ジャンル単位カウントを、既存GSI1のレンジクエリ1発＋アプリ側フィルタで実現し、EventTemplateへのN+1 GetItemを避けるため |
 | 4 | 3.11のアクセスパターンに参加頻度上限のカウントクエリを追記 | ダブルブッキング検知と同一インデックスの応用であることを明記 |
 | 5 | 4章アクセスパターン一覧にNo.31を追加 | 上記No.3・No.4のアクセスパターンを総括表にも反映 |
+
+---
+
+## 18. v1.9 → v1.10 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.1 Userに`autoApprove`(BOOL)属性を追加 | イベント確定フローへの「全員承認」ステップ追加（要件定義書v1.7 §17、Issue #10）に伴う、自動承認の全体デフォルト設定 |
+| 2 | 3.3 Membershipに同名属性を任意の上書きとして追加（F-109b新規） | `displayName`/`frequencyLimitCount`と同じ「コミュニティ単位で上書き、未設定ならUser側にフォールバック」構造を踏襲 |
+| 3 | 3.10 Event.statusに`AWAITING_MEMBER_APPROVAL`を追加 | 管理者による仮確定と、参加予定者全員の承認完了による本確定の間の中間状態 |
+| 4 | 3.11 Participant.statusに`AWAITING_APPROVAL`/`REJECTED`を追加。`approvedAt`/`autoApproved`/`rejectedAt`/`rejectReason`属性を追加 | 参加者ごとの個別承認・辞退の状態を保持するため |
+| 5 | 3.11のアクセスパターンに「全員承認済み判定」を追記 | 既存のPK直接クエリ（参加者一覧取得）の応用で新規GSIが不要であることを明記 |
+| 6 | 4章アクセスパターン一覧にNo.32を追加 | 上記No.5のアクセスパターンを総括表にも反映 |
+| 7 | 5章トランザクション設計に「イベント仮確定時のダブルブッキング判定対象の拡張」「参加者個別承認の二重実行防止」「イベント本確定」の3行を追加・修正 | 判定対象statusの拡張と、新規の2段階承認フローにおけるConditionExpression設計を明記 |
+| 8 | 7章の対応関係表でParticipant行にF-502b/F-502cを追記 | 新規APIエンドポイント（API設計書v1.12 §8.3b/§8.3c）との対応を明記 |

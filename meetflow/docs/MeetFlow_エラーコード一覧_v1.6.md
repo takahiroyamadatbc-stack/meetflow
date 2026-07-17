@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.5
+# MeetFlow エラーコード一覧 v1.6
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。v1.5→v1.6はAPI設計書v1.12で追加された参加承認・辞退のエンドポイントを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -101,8 +101,9 @@
 | `CANCEL_REQUEST_ALREADY_PENDING` | 409 | 既に未処理のキャンセル申請が存在する（同一ユーザーによる二重申請） | `POST /events/{id}/cancel-request` |
 | `CANCEL_REQUEST_NOT_FOUND` | 404 | 指定したキャンセル申請が存在しない | `POST /events/{id}/cancel-requests/{userId}/approve` |
 | `CANCEL_REQUEST_ALREADY_PROCESSED` | 409 | 既に承認/却下済みのキャンセル申請を再処理しようとした（`ConditionExpression: status=PENDING`による二重承認防止、CDK設計書v1.0・DynamoDB物理設計書v1.1の冪等性設計に対応） | `POST /events/{id}/cancel-requests/{userId}/approve` |
-| `NOT_A_PARTICIPANT` | 403 | イベント参加者ではないユーザーがキャンセル申請しようとした | `POST /events/{id}/cancel-request` |
-| `PARTICIPANT_SCHEDULE_CONFLICT` | 409 | イベント承認時、候補メンバーの誰かが既に別の確定済みイベントと時間が重複している（ダブルブッキング防止） | `POST /events/{id}/confirm` |
+| `NOT_A_PARTICIPANT` | 403 | イベント参加者ではないユーザーがキャンセル申請、または参加承認・辞退（[v1.6追加]）しようとした | `POST /events/{id}/cancel-request`, `POST /events/{id}/participants/me/approve`, `POST /events/{id}/participants/me/reject` |
+| `PARTICIPANT_SCHEDULE_CONFLICT` | 409 | イベント仮確定時、候補メンバーの誰かが既に別の確定済みまたは承認待ちのイベントと時間が重複している（ダブルブッキング防止。[v1.6修正]判定対象に承認待ちを追加） | `POST /events/{id}/confirm` |
+| **`PARTICIPANT_ALREADY_RESPONDED`** [v1.6新規] | 409 | 既に参加承認または辞退が完了している参加者（自動承認済みを含む）が再度応答しようとした（`ConditionExpression: status=AWAITING_APPROVAL`による二重応答防止） | `POST /events/{id}/participants/me/approve`, `POST /events/{id}/participants/me/reject` |
 
 ---
 
@@ -139,7 +140,7 @@
 | 表示形式 | 該当するエラーコードの傾向 |
 |---|---|
 | インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR`, `DISPLAY_NAME_ALREADY_TAKEN`（**[v1.3追加]**）, `FREQUENCY_LIMIT_VALIDATION_ERROR`（**[v1.5追加]**） |
-| トースト（一時的なエラー） | `INTERNAL_ERROR`, `AVAILABILITY_OVERLAP`, `ALREADY_MEMBER`, `JOIN_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PROCESSED`, `CANDIDATE_ALREADY_USED`, `EVENT_ALREADY_CONFIRMED`, `EVENT_ALREADY_CANCELLED` |
+| トースト（一時的なエラー） | `INTERNAL_ERROR`, `AVAILABILITY_OVERLAP`, `ALREADY_MEMBER`, `JOIN_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PROCESSED`, `CANDIDATE_ALREADY_USED`, `EVENT_ALREADY_CONFIRMED`, `EVENT_ALREADY_CANCELLED`, `PARTICIPANT_ALREADY_RESPONDED`（**[v1.6追加]**） |
 | モーダル（明示的な操作が必要） | `UNAUTHORIZED`（再ログイン誘導）, `FORBIDDEN`（権限不足の説明）, **`PARTICIPANT_SCHEDULE_CONFLICT`（承認をブロックした理由の明示、[v1.1追加]）** |
 | 空状態画面 | `NO_CANDIDATES_FOUND`, 各種`*_NOT_FOUND`（削除済みリソースへのアクセス） |
 
@@ -198,3 +199,14 @@
 | 1 | Communityドメインに`FREQUENCY_LIMIT_VALIDATION_ERROR`（400）を新規追加 | 要件定義書v1.6 30章：参加頻度上限。機能要件書v1.7 F-109（コミュニティ単位の上書き）のバリデーションエラー |
 | 2 | `PROFILE_VALIDATION_ERROR`の内容に、参加頻度上限（プロフィール側、F-003）のバリデーション不正を含める旨を追記（新規コードなし、既存コードを流用） | 上記と同一の決定事項。ユーザー全体デフォルト側はUserドメインの既存コードで対応 |
 | 3 | フロントエンド表示方針表のインライン欄に`FREQUENCY_LIMIT_VALIDATION_ERROR`を追加 | 上記と同一の決定事項 |
+
+---
+
+## v1.5 → v1.6 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | Eventドメインに`PARTICIPANT_ALREADY_RESPONDED`（409）を新規追加 | Issue #10：イベント確定フローへの「全員承認」ステップ追加（機能要件書v1.8 F-502b/F-502c）。参加承認・辞退の二重応答防止 |
+| 2 | `NOT_A_PARTICIPANT`の発生APIに参加承認・辞退の2エンドポイントを追加（新規コードなし、既存コードを流用） | 上記と同一の決定事項。「候補メンバーではない/Participant行が存在しない」ケースの認可はキャンセル申請と同じ構造 |
+| 3 | `PARTICIPANT_SCHEDULE_CONFLICT`の内容を、判定対象が承認待ち（`AWAITING_APPROVAL`）にも拡張された旨に更新 | 仮確定＝承認待ちの時点で参加者の時間枠は事実上予約済みになるため（DynamoDB物理設計書v1.10 5章） |
+| 4 | フロントエンド表示方針表のトースト欄に`PARTICIPANT_ALREADY_RESPONDED`を追加 | 上記No.1と同一の決定事項 |
