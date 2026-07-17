@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { CommunityCard } from "@/features/community/components/CommunityCard";
 import { communityKeys, listCommunities } from "@/features/community/api";
 import { useUnreadNotificationCount } from "@/features/notification/api";
+import { AnnouncementCard } from "@/features/announcement/AnnouncementCard";
 import { paths } from "@/routes/paths";
 
 /** S-02 ホーム画面 */
@@ -26,6 +27,8 @@ export function HomePage() {
           </Link>
         )}
       </div>
+
+      <AnnouncementCard />
 
       {isLoading && <Skeleton className="h-20 w-full" />}
 

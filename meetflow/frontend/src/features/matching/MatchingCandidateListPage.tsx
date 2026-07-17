@@ -13,6 +13,7 @@ import {
   matchingKeys,
 } from "@/features/matching/api";
 import { GAME_TYPE_LABELS } from "@/features/user/types";
+import { QuickFeedbackPrompt } from "@/features/feedback/QuickFeedbackPrompt";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 
 /** S-12 マッチング候補一覧画面 */
@@ -21,6 +22,7 @@ export function MatchingCandidateListPage() {
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [showQuickFeedback, setShowQuickFeedback] = useState(false);
 
   const { data: templates, isLoading: isLoadingTemplates } = useQuery({
     queryKey: matchingKeys.templates(communityId!),
@@ -43,6 +45,9 @@ export function MatchingCandidateListPage() {
           ? `候補を${created.length}件生成しました`
           : "条件に合う候補が見つかりませんでした",
       );
+      if (created.length > 0) {
+        setShowQuickFeedback(true);
+      }
     },
     onError: handleApiError,
   });
@@ -80,6 +85,13 @@ export function MatchingCandidateListPage() {
           候補を生成
         </Button>
       </div>
+
+      {showQuickFeedback && (
+        <QuickFeedbackPrompt
+          relatedFeature="MATCHING_CANDIDATE"
+          storageKey={`matching:${communityId}:${candidates?.map((c) => c.candidateId).join(",")}`}
+        />
+      )}
 
       {(candidates ?? []).length === 0 ? (
         <EmptyState
