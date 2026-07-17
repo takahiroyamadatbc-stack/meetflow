@@ -40,6 +40,13 @@ export type CommunityDetail = CommunityMutationResult & {
   role: MembershipRole;
 };
 
+/** invites.py get_invite_preview() のレスポンス実体（Issue #23） */
+export type InvitePreview = {
+  communityId: string;
+  communityName: string;
+  approvalRequired: boolean;
+};
+
 export type CreateCommunityInput = {
   name: string;
   description?: string;
