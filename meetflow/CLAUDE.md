@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 実装前に必ず docs/ 内の以下を読むこと:
 
-- 要件定義書v1.6（29章「相互非公開型マッチング」はMeetFlowのコア設計原則）
-- 機能要件書v1.7
-- DynamoDB物理設計書v1.9（特に単一テーブル設計のPK/SK/GSI1/GSI2）
-- Lambda設計書v1.5（7ドメイン構成、IAM権限は「案C」を採用）
-- API設計書v1.11
-- 画面設計書v1.6
-- エラーコード一覧v1.5
+- 要件定義書v1.8（29章「相互非公開型マッチング」はMeetFlowのコア設計原則）
+- 機能要件書v1.10
+- DynamoDB物理設計書v1.12（特に単一テーブル設計のPK/SK/GSI1/GSI2）
+- Lambda設計書v1.7（8ドメイン構成、IAM権限は「案C」を採用）
+- API設計書v1.17
+- 画面設計書v1.13
+- エラーコード一覧v1.9
 - AWSシステム構成設計書v1.3
 
 ## 技術スタック
