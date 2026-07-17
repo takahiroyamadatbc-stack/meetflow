@@ -15,6 +15,7 @@ from meetflow_common import (
     period_bounds,
     require_membership,
     success_response,
+    transact_write,
 )
 
 from .scoring import calculate_score
@@ -45,6 +46,10 @@ def generate_candidates(user_id, event):
         return error_response(
             "EVENT_TEMPLATE_NOT_FOUND", "指定した開催条件が見つかりません"
         )
+
+    # 再生成時、同一テンプレートの既存PENDING候補を積み残さないよう
+    # DISCARDEDへ一括更新してから新規候補を生成する（Issue #27）。
+    _discard_stale_pending_candidates(table, community_id, template_id)
 
     # NO_CANDIDATES_FOUND（エラーコード一覧v1.1 §5）はエラーではなく正常な
     # 200の空結果である -- ここでは空の`candidates`リストで対応する。
@@ -93,6 +98,59 @@ def get_candidate_detail(user_id, event):
     community_id = items[0]["PK"].split("#", 1)[1]
     require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
     return success_response(_to_api_candidate(table, community_id, items[0]))
+
+
+def _discard_stale_pending_candidates(table, community_id, template_id):
+    """候補再生成時に、同一templateIdの既存PENDING候補（と紐づく
+    CandidateMember）をDISCARDEDにする（Issue #27）。CONFIRMED（イベント
+    化済み）の候補には触れない。粒度はコミュニティ全体ではなくtemplateId
+    単位とし、他テンプレートの候補生成が無関係な候補を巻き込まないように
+    する。
+
+    管理者による単発の手動実行が前提でMVP規模では競合リスクが低いため、
+    ConditionExpressionは付けない（他の単純なupdate_itemと同様の簡潔さを
+    優先）。TransactWriteItemsの100件上限は100件単位のチャンクに分けて
+    吸収する。
+    """
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
+        & Key("SK").begins_with("CANDIDATE#")
+    )
+    stale = [
+        item
+        for item in resp.get("Items", [])
+        if "#MEMBER#" not in item["SK"]
+        and item.get("templateId") == template_id
+        and item.get("status") == "PENDING"
+    ]
+    if not stale:
+        return
+
+    operations = []
+    for item in stale:
+        candidate_id = item["GSI2PK"].split("#", 1)[1]
+        operations.append(_discard_update(item["PK"], item["SK"]))
+        for uid in item.get("members", []):
+            operations.append(
+                _discard_update(
+                    f"COMMUNITY#{community_id}",
+                    f"CANDIDATE#{candidate_id}#MEMBER#{uid}",
+                )
+            )
+
+    for i in range(0, len(operations), 100):
+        transact_write(operations[i : i + 100])
+
+
+def _discard_update(pk, sk):
+    return {
+        "Update": {
+            "Key": {"PK": pk, "SK": sk},
+            "UpdateExpression": "SET #status = :discarded",
+            "ExpressionAttributeNames": {"#status": "status"},
+            "ExpressionAttributeValues": {":discarded": "DISCARDED"},
+        }
+    }
 
 
 def _run_matching(table, community_id, template_id, template):

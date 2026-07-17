@@ -311,6 +311,125 @@ def test_generate_candidates_forbidden_for_plain_member(table):
     assert exc_info.value.code == "FORBIDDEN"
 
 
+def _get_candidate_item(table, candidate_id):
+    from boto3.dynamodb.conditions import Key
+
+    resp = table.query(
+        IndexName="GSI2",
+        KeyConditionExpression=Key("GSI2PK").eq(f"CANDIDATE#{candidate_id}"),
+        Limit=1,
+    )
+    return resp["Items"][0]
+
+
+def test_generate_candidates_discards_stale_pending_on_regeneration(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+
+    first_response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+    first_candidate = body_of(first_response)["data"]["candidates"][0]
+    first_candidate_id = first_candidate["candidateId"]
+
+    second_response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+    second_candidates = body_of(second_response)["data"]["candidates"]
+    assert len(second_candidates) == 1
+    assert second_candidates[0]["candidateId"] != first_candidate_id
+
+    stale_item = _get_candidate_item(table, first_candidate_id)
+    assert stale_item["status"] == "DISCARDED"
+
+    for user_id in [m["userId"] for m in first_candidate["members"]]:
+        member_item = table.get_item(
+            Key={
+                "PK": "COMMUNITY#community-1",
+                "SK": f"CANDIDATE#{first_candidate_id}#MEMBER#{user_id}",
+            }
+        )["Item"]
+        assert member_item["status"] == "DISCARDED"
+
+
+def test_generate_candidates_does_not_discard_confirmed_candidate(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+
+    first_response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+    first_candidate_id = body_of(first_response)["data"]["candidates"][0]["candidateId"]
+    stale_item = _get_candidate_item(table, first_candidate_id)
+    table.update_item(
+        Key={"PK": stale_item["PK"], "SK": stale_item["SK"]},
+        UpdateExpression="SET #status = :confirmed",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={":confirmed": "CONFIRMED"},
+    )
+
+    matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    confirmed_item = _get_candidate_item(table, first_candidate_id)
+    assert confirmed_item["status"] == "CONFIRMED"
+
+
+def test_generate_candidates_discard_scoped_to_template(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    put_template(
+        table, "community-1", "template-2", min_players=4, max_players=4, game_type="MAHJONG3"
+    )
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+    _seed_matching_group(
+        table,
+        "community-1",
+        ["user-1", "user-2", "user-3", "user-4"],
+        game_type="MAHJONG3",
+    )
+
+    response_1 = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+    response_2 = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-2"}
+        ),
+    )
+    candidate_2_id = body_of(response_2)["data"]["candidates"][0]["candidateId"]
+
+    # template-1のみ再生成。template-2の候補はPENDINGのまま影響を受けない。
+    matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    unaffected_item = _get_candidate_item(table, candidate_2_id)
+    assert unaffected_item["status"] == "PENDING"
+
+
 def test_list_candidates_success(table):
     put_membership(table, "community-1", "user-1", role="OWNER")
     put_template(table, "community-1", "template-1", min_players=4, max_players=4)
