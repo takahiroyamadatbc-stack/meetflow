@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.11
+# MeetFlow DynamoDB 物理テーブル設計書 v1.12
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | （プライマリ） | PK | SK | エンティティ本体・親子関係の取得 |
 | GSI1（ByUser） | GSI1PK | GSI1SK | 「あるユーザーの○○一覧」を横断的に取得 |
-| GSI2（ByAltId） | GSI2PK | GSI2SK | コミュニティIDを介さない直接ID検索（候補詳細など） |
+| GSI2（ByAltId） | GSI2PK | GSI2SK | コミュニティIDを介さない直接ID検索（候補詳細など）。**[v1.12追加]** 種別横断の一覧化（例：全フィードバック一覧）にも、GSI2PKへ種別を表す固定文字列を入れる形で流用する（3.19/3.20参照） |
 
 ---
 
@@ -555,6 +555,68 @@ SK:   AVAILREQ#{requestId}
 
 ---
 
+### 3.19 Feedback（フィードバック） **[v1.12新規]**
+
+```
+PK:      FEEDBACK#{feedbackId}
+SK:      METADATA
+GSI1PK:  USER#{userId}
+GSI1SK:  FEEDBACK#{createdAt}#{feedbackId}
+GSI2PK:  FEEDBACK
+GSI2SK:  {createdAt}#{feedbackId}
+```
+
+| 属性 | 型 | 説明 |
+|---|---|---|
+| userId | S | 投稿者（Cognito sub）。連絡先の別入力は求めず、常にこの値で追跡する |
+| kind | S | QUICK（1クリック評価）／ DETAILED（詳細投稿） |
+| relatedFeature | S | 該当機能（画面・操作を表す識別子。例：`MATCHING_CANDIDATE_LIST`） |
+| rating | S | （kind=QUICKのみ）BAD／NEUTRAL／GOOD |
+| category | S | （kind=DETAILEDのみ）BUG／FEATURE_REQUEST／UX_IMPROVEMENT |
+| content | S | （kind=DETAILEDのみ、任意）詳細内容 |
+| attachmentKeys | SS | （kind=DETAILEDのみ、任意）スクリーンショットのS3オブジェクトキー一覧 |
+| status | S | UNHANDLED／PLANNED／DONE（既定UNHANDLED） |
+| priority | S | （任意）LOW／MEDIUM／HIGH |
+| reply | M | （任意）運営者からの返信。`{ message: S, repliedBy: S(userId), repliedAt: S }` |
+| createdAt | S | ISO8601 |
+| updatedAt | S | ISO8601 |
+
+**アクセスパターン**
+- フィードバック詳細取得：`PK=FEEDBACK#{feedbackId}`（`GetItem`）
+- 投稿者自身の投稿履歴：`GSI1PK=USER#{userId}, GSI1SK begins_with FEEDBACK#`
+- 運営者向け・全フィードバック一覧（新着順）：`GSI2PK=FEEDBACK`をQuery（`ScanIndexForward=false`で新着順）。種別・ステータスでの絞り込みはFilterExpressionで行う
+
+> **[v1.12新規]** F-1401〜F-1405（機能要件書v1.10）に対応。GSI2PKに固定文字列`FEEDBACK`を用いる「種別横断の一覧化」は、既存のGSI2（直接ID検索専用）の使い方を拡張したものである。フィードバック投稿数はコミュニティ単位のアクセスパターンと異なり全体でも小規模（個人開発のMVP検証規模を想定）なため、ステータス絞り込みを専用のSK設計（例：`{status}#{createdAt}#{feedbackId}`）にせずFilterExpressionに委ねる軽量な実装とした。将来投稿数が増えステータス別の一覧化コストが問題になった場合は、8章の未決事項としてSK設計の見直しを検討する。
+>
+> 投稿者本人以外（他ユーザー）のフィードバック本文を閲覧できるのは運営者のみであり、権限判定はLambda層（`cognito:groups`にOperatorsが含まれるか）で行う。DynamoDBのキー設計自体には権限分離の仕組みは持たせていない（Lambda設計書v1.7 §12.4参照）。
+
+---
+
+### 3.20 Announcement（アップデート予告） **[v1.12新規]**
+
+```
+PK:      ANNOUNCEMENT#{announcementId}
+SK:      METADATA
+GSI2PK:  ANNOUNCEMENT
+GSI2SK:  {createdAt}#{announcementId}
+```
+
+| 属性 | 型 | 説明 |
+|---|---|---|
+| title | S | タイトル |
+| body | S | 本文 |
+| status | S | DRAFT／PUBLISHED／ARCHIVED |
+| createdBy | S | 作成した運営者userId |
+| createdAt | S | ISO8601 |
+| updatedAt | S | ISO8601 |
+
+**アクセスパターン**
+- 一覧取得：`GSI2PK=ANNOUNCEMENT`をQuery（`ScanIndexForward=false`で新着順）。一般ユーザー向けには`status=PUBLISHED`のFilterExpressionを適用し、運営者向けには全件返却する
+
+> **[v1.12新規]** F-1406（機能要件書v1.10）に対応。3.19 Feedbackと同じ「GSI2PKに固定文字列を用いた一覧化」パターンを踏襲する。件数は少数（月1回程度の告知を想定）のためFilterExpressionで十分であり、専用GSIやSK設計の作り込みは行わない。
+
+---
+
 ## 4. アクセスパターン一覧（総括）
 
 | No | アクセスパターン | 使用キー |
@@ -592,6 +654,9 @@ SK:   AVAILREQ#{requestId}
 | 30 | ユーザー自身が参加する確定イベントのコミュニティ横断一覧（予定タブのカレンダー表示用。アクセスパターン15の応用） [v1.8] | GSI1PK=USER#{id}, SK begins_with PARTICIPANT# |
 | 31 | 参加頻度上限のジャンル横断カウント（マッチング処理F-401内部専用。アクセスパターン15の応用＋communityGenre絞り込み） [v1.9] | GSI1PK=USER#{id}, SK between PARTICIPANT#{periodStart}~{periodEnd} |
 | 32 | イベント全員承認済み判定（F-502b、本確定のトリガー。アクセスパターン14と同一クエリ） [v1.10] | PK=EVENT#{id}, SK begins_with PARTICIPANT# |
+| 33 | 運営者向け・全フィードバック一覧（種別/ステータス絞り込みはFilterExpression） [v1.12] | GSI2PK=FEEDBACK |
+| 34 | 投稿者自身のフィードバック投稿履歴 [v1.12] | GSI1PK=USER#{id}, SK begins_with FEEDBACK# |
+| 35 | アップデート予告一覧（一般ユーザーはstatus=PUBLISHEDのみFilterExpressionで絞り込み） [v1.12] | GSI2PK=ANNOUNCEMENT |
 
 ---
 
@@ -638,6 +703,8 @@ SK:   AVAILREQ#{requestId}
 | EventStatusHistory | 要件定義書14章 | （内部利用、API非公開） |
 | PushSubscription [v1.4] | F-703, F-704 | 11.3, 11.4 |
 | AvailabilityRequest [v1.4] | F-205, F-206 | 5.5〜5.7 |
+| Feedback [v1.12] | F-1401〜F-1405 | 12b.1〜12b.6 |
+| Announcement [v1.12] | F-1406 | 12c.1〜12c.3 |
 
 ---
 
@@ -651,6 +718,7 @@ SK:   AVAILREQ#{requestId}
 6. **複数コミュニティ横断の優先度比較（Phase3）**：`priorityWeight`/`desiredFrequency`属性は確保済みだが、実際にどう使うか（単純ソートか、スコアへの重み付けか）は満足度の定義が固まってから設計する
 7. **公平性指標（3.11b CandidateMember）の集計をどのLambdaが担うか**：候補一覧取得時にMatchingLambdaが都度計算するか、非同期で事前集計しておくかは、コミュニティ規模が大きくなった際のクエリコストを見て判断する
 8. **AvailabilityRequestの未提出者確認のスケーリング** [v1.4]：対象メンバー数分のQueryを都度実行する軽量実装（3.18参照）はコミュニティ規模10〜30人であれば十分だが、規模が大きくなった場合は提出済みユーザーIDのSetをAvailabilityRequest側にキャッシュする等の事前集計化を検討する
+9. **Feedback/AnnouncementのGSI2固定パーティション化に伴うスケーリング** [v1.12]：GSI2PK=`FEEDBACK`/`ANNOUNCEMENT`という固定値パーティションは、投稿数が個人開発のMVP検証規模を大きく超えた場合にホットパーティション・肥大化の懸念がある。その場合はステータス別にSKを分ける（例：`{status}#{createdAt}#{feedbackId}`）か、日付でパーティションを分割する等の見直しを検討する
 
 ---
 
@@ -768,3 +836,16 @@ SK:   AVAILREQ#{requestId}
 | No | 変更内容 | 理由 |
 |---|---|---|
 | 1 | 3.4 Inviteに`createdByRole`（S）属性を追加 | 招待URL発行がOWNER/ADMIN限定からコミュニティの全メンバーに開放されたこと（Issue #22）に伴い、発行者ロールをスナップショット保持し参加時の承認要否分岐に使う |
+
+---
+
+## 20. v1.11 → v1.12 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | Feedback（3.19）を新規追加 | 機能要件書v1.10 F-1401〜F-1405：フィードバック機能（簡易フィードバック・詳細投稿・運営者レビュー・返信・集計） |
+| 2 | Announcement（3.20）を新規追加 | 機能要件書v1.10 F-1406：アップデート予告 |
+| 3 | 2章のGSI2説明に、種別横断の一覧化（固定文字列パーティション）という新しい使い方を追記 | 上記2エンティティが、既存の直接ID検索専用だったGSI2の用途を拡張するため |
+| 4 | 4章アクセスパターン一覧にNo.33〜35を追加 | 上記2エンティティのアクセスパターンを総括表にも反映 |
+| 5 | 7章の対応関係表に上記2エンティティを追加 | 整合性維持 |
+| 6 | 8章未決事項に、GSI2固定パーティション化に伴う将来のスケーリング検討事項を追加 | 投稿数が増えた場合のホットパーティション・肥大化リスクを明記 |
