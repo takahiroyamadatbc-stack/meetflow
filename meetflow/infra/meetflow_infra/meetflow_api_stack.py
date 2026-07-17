@@ -127,12 +127,22 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("PUT", "/notifications/{notificationId}/read", "notification"),
     ("POST", "/users/me/push-subscriptions", "notification"),
     ("DELETE", "/users/me/push-subscriptions", "notification"),
+    # FeedbackLambda
+    ("POST", "/feedback", "feedback"),
+    ("GET", "/feedback", "feedback"),
+    ("GET", "/feedback/stats", "feedback"),
+    ("GET", "/feedback/{feedbackId}", "feedback"),
+    ("PATCH", "/feedback/{feedbackId}", "feedback"),
+    ("POST", "/feedback/attachments/presign", "feedback"),
+    ("GET", "/announcements", "feedback"),
+    ("POST", "/announcements", "feedback"),
+    ("PUT", "/announcements/{announcementId}", "feedback"),
 ]
 
 
 class MeetFlowApiStack(Stack):
     """MeetFlowのREST API用CDKスタック（API設計書v1.5、AWSシステム構成
-    設計書v1.3 §5-6）：7つのドメインLambdaすべての前段に配置する単一の
+    設計書v1.3 §5-6）：8つのドメインLambdaすべての前段に配置する単一の
     API Gateway RestApi。すべてのメソッドでCognito User Pool Authorizerを
     必須とする（全ルートにログイン済みの呼び出し元が必要であり、公開
     エンドポイントは存在しない）。
@@ -152,6 +162,7 @@ class MeetFlowApiStack(Stack):
         event_lambda: lambda_.IFunction,
         result_lambda: lambda_.IFunction,
         notification_lambda: lambda_.IFunction,
+        feedback_lambda: lambda_.IFunction,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -165,6 +176,7 @@ class MeetFlowApiStack(Stack):
             "event": event_lambda,
             "result": result_lambda,
             "notification": notification_lambda,
+            "feedback": feedback_lambda,
         }
 
         # アクセスログの書き込みには、アカウント/リージョンごとに一度だけ
@@ -245,7 +257,17 @@ class MeetFlowApiStack(Stack):
         for method, path, domain in _ROUTES:
             integration = integrations.get(domain)
             if integration is None:
-                integration = apigateway.LambdaIntegration(lambdas_by_domain[domain])
+                # allow_test_invoke=False: デフォルトTrueだと各メソッドご
+                # とに「本番ステージ用」に加えて「APIGatewayコンソールの
+                # テスト呼び出し用」のLambda::Permissionも追加され、Sta
+                # tement数が実質倍になる。CommunityLambdaは24エンドポイ
+                # ントを一手に引き受けており、両方作るとLambdaのリソース
+                # ポリシーサイズ上限(20480バイト)を超えてCREATE_FAILEDに
+                # なる（コンソールの「テスト」ボタンが使えなくなるだけで
+                # 実際のAPI呼び出しには影響しない）。
+                integration = apigateway.LambdaIntegration(
+                    lambdas_by_domain[domain], allow_test_invoke=False
+                )
                 integrations[domain] = integration
             resource = _resource_for_path(path)
             resource.add_method(

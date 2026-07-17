@@ -120,6 +120,21 @@ class MeetFlowAuthStack(Stack):
             description="Cognito User Pool Web Client ID",
         )
 
+        # Lambda設計書v1.7 §9b.4: フィードバック管理・アップデート予告投稿
+        # 限定エンドポイントの認可に使う「運営者」ロール。コミュニティ単位の
+        # Membership.roleとは別軸のシステム全体ロールで、専用の
+        # 申請・付与フローは設けずMVPでは手動運用(グループへのユーザー追加は
+        # AWSコンソール/CLIで行う)とする。FeedbackLambda側は`cognito:groups`
+        # クレームにこのグループ名が含まれるかで判定する
+        # (handlers/operators.py参照)。
+        self.operators_group = cognito.CfnUserPoolGroup(
+            self,
+            "OperatorsGroup",
+            user_pool_id=self.user_pool.user_pool_id,
+            group_name="Operators",
+            description="フィードバック管理・アップデート予告投稿を行える運営者",
+        )
+
     def add_post_confirmation_trigger(self) -> None:
         """UserLambdaのPost ConfirmationトリガーをこのUser Poolに配線する。
 

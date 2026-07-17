@@ -8,6 +8,7 @@ from meetflow_common import (
     EVENT_AWAITING_APPROVAL,
     EVENT_CONFIRMED,
     EVENT_PARTICIPANT_REJECTED,
+    FEEDBACK_REPLIED,
 )
 
 from handlers import event_subscriber
@@ -156,3 +157,16 @@ def test_event_participant_rejected_notifies_admins_only(table):
         assert len(notifications) == 1
         assert notifications[0]["type"] == "PARTICIPANT_REJECTED"
     assert _notifications_for(table, "user-3") == []
+
+
+def test_feedback_replied_notifies_submitter(table):
+    event_subscriber.handle_domain_event(
+        domain_event(
+            FEEDBACK_REPLIED,
+            {"feedbackId": "feedback-1", "targetUserId": "user-1", "message": "対応します"},
+        )
+    )
+
+    notifications = _notifications_for(table, "user-1")
+    assert len(notifications) == 1
+    assert notifications[0]["type"] == "FEEDBACK_REPLIED"
