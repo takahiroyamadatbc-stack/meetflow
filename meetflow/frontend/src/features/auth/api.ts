@@ -82,3 +82,21 @@ export async function getIdToken(): Promise<string | undefined> {
 export async function getCurrentAuthUser() {
   return getCurrentUser();
 }
+
+/**
+ * ログイン中のユーザーが運営者ロール（CognitoのOperatorsグループ、
+ * Lambda設計書v1.7 §9b.4）を持つかどうかを判定する。コミュニティ単位の
+ * OWNER/ADMIN判定（Membership.role）とは別軸。IDトークンの`cognito:groups`
+ * クレームはJWT自体では文字列配列で入っている（API Gatewayが
+ * event.requestContext.authorizer.claims経由でLambdaに渡す際はカンマ区切り
+ * 文字列に平坦化されるが、それはサーバー側の話）。
+ */
+export async function getIsOperator(): Promise<boolean> {
+  try {
+    const session = await fetchAuthSession();
+    const groups = session.tokens?.idToken?.payload["cognito:groups"];
+    return Array.isArray(groups) && groups.includes("Operators");
+  } catch {
+    return false;
+  }
+}

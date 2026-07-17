@@ -160,6 +160,28 @@ def test_get_feedback_not_found(table):
     assert body_of(resp)["error"]["code"] == "FEEDBACK_NOT_FOUND"
 
 
+def test_get_feedback_includes_presigned_attachment_urls(table):
+    create_resp = feedback.create_feedback(
+        "user-1",
+        api_event(
+            body={
+                "kind": "DETAILED",
+                "relatedFeature": "A",
+                "category": "BUG",
+                "attachmentKeys": ["feedback/user-1/a.png", "feedback/user-1/b.png"],
+            }
+        ),
+    )
+    feedback_id = body_of(create_resp)["data"]["feedbackId"]
+
+    resp = feedback.get_feedback(
+        "op-1", api_event(path_params={"feedbackId": feedback_id}, groups=["Operators"])
+    )
+    data = body_of(resp)["data"]
+    assert len(data["attachmentUrls"]) == 2
+    assert all(url.startswith("https://") for url in data["attachmentUrls"])
+
+
 def test_update_feedback_reply_publishes_event(table):
     create_resp = feedback.create_feedback(
         "user-1",
