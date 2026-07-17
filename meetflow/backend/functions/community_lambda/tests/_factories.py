@@ -102,13 +102,14 @@ def put_profile(
     )
 
 
-def put_invite(table, token, *, community_id, created_by, revoked=False):
+def put_invite(table, token, *, community_id, created_by, revoked=False, created_by_role="OWNER"):
     table.put_item(
         Item={
             "PK": f"INVITE#{token}",
             "SK": "METADATA",
             "communityId": community_id,
             "createdBy": created_by,
+            "createdByRole": created_by_role,
             "revoked": revoked,
             "createdAt": now_iso_ms(),
         }

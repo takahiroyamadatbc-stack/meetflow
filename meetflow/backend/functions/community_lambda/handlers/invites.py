@@ -15,13 +15,16 @@ _DEFAULT_INVITE_BASE_URL = "https://meetflow.jp/invite"
 
 
 def create_invite(user_id, event):
-    """F-102（API設計書v1.4 §4.3）: OWNER/ADMINが招待URLを発行する。推測
-    不可能なトークンを直接キーとする（DynamoDB物理設計書v1.3 §3.4）ため、
-    参加処理はGetItem1回で済む。
+    """F-102（API設計書v1.13 §4.3）: コミュニティの全メンバーが招待URLを
+    発行できる（Issue #22でOWNER/ADMIN限定から開放）。推測不可能な
+    トークンを直接キーとする（DynamoDB物理設計書v1.11 §3.4）ため、
+    参加処理はGetItem1回で済む。発行時点の発行者ロールを`createdByRole`
+    としてスナップショット保持し、`join_via_invite`の承認要否分岐
+    （MEMBER発行分は強制的に承認制）に使う。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
-    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+    membership = require_membership(table, community_id, user_id)
 
     token = generate_invite_token()
     table.put_item(
@@ -30,6 +33,7 @@ def create_invite(user_id, event):
             "SK": "METADATA",
             "communityId": community_id,
             "createdBy": user_id,
+            "createdByRole": membership.get("role"),
             "revoked": False,
             "createdAt": now_iso_ms(),
         }
@@ -46,10 +50,12 @@ def create_invite(user_id, event):
 
 
 def revoke_invite(user_id, event):
-    """POST /invites/{token}/revoke（API設計書v1.8 §4.3b、新規）: OWNER/ADMINが
-    発行済み招待URLを無効化する。招待発行と同じくコミュニティ単位の権限
-    （require_membership）で判定するため、tokenからInvite.communityIdを
-    引いた上でチェックする。
+    """POST /invites/{token}/revoke（API設計書v1.13 §4.3b）: OWNER/ADMIN、
+    または発行者本人（`invite.createdBy == user_id`）が発行済み招待URLを
+    無効化する（Issue #22で発行者本人にも開放）。発行者本人であれば現在
+    の所属状況・ロールを問わず許可する。それ以外は招待発行と同じく
+    コミュニティ単位の権限（require_membership）で判定するため、tokenから
+    Invite.communityIdを引いた上でチェックする。
 
     NotificationLambdaのプッシュ購読解除（Lambda設計書v1.2 §9.2）と同様、
     既に無効化済みの招待に対する再実行はエラーにせず冪等に成功として扱う。
@@ -61,7 +67,8 @@ def revoke_invite(user_id, event):
         return error_response("INVITE_NOT_FOUND", "招待URLが存在しません", status_code=404)
 
     community_id = invite["communityId"]
-    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+    if invite.get("createdBy") != user_id:
+        require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
 
     if not invite.get("revoked"):
         table.update_item(
@@ -80,9 +87,12 @@ def revoke_invite(user_id, event):
 
 
 def join_via_invite(user_id, event):
-    """F-103（API設計書v1.4 §4.4）: コミュニティの`memberApprovalRequired`
-    フラグ（要件定義書v1.2 §10.1）によって、即時のMembership作成とPENDING
-    JoinRequestのどちらになるかが分岐する。
+    """F-103（API設計書v1.13 §4.4）: コミュニティの`memberApprovalRequired`
+    フラグ（要件定義書v1.2 §10.1）、または招待発行者がMEMBERロールだった
+    こと（`invite.createdByRole == "MEMBER"`、Issue #22）のいずれかに
+    よって、即時のMembership作成とPENDING JoinRequestのどちらになるかが
+    分岐する。管理者以外が発行した招待は、コミュニティ側の設定に関わらず
+    強制的に承認制になる。
     """
     token = event["pathParameters"]["token"]
     body = parse_body(event)
@@ -114,7 +124,7 @@ def join_via_invite(user_id, event):
     if community is None:
         return error_response("COMMUNITY_NOT_FOUND", "コミュニティが見つかりません")
 
-    if community.get("memberApprovalRequired"):
+    if community.get("memberApprovalRequired") or invite.get("createdByRole") == "MEMBER":
         return _create_join_request(table, community_id, user_id, message)
     return _add_member_immediately(table, community_id, user_id)
 
