@@ -10,6 +10,7 @@ import type {
   Place,
   UpdateMemberInput,
 } from "@/features/community/types";
+import type { FrequencyLimitPeriod } from "@/features/user/types";
 
 export const communityKeys = {
   all: ["communities"] as const,
@@ -116,6 +117,23 @@ export function updateMyAutoApprove(communityId: string, autoApprove: boolean | 
     `/communities/${communityId}/members/me/auto-approve`,
     { autoApprove },
   );
+}
+
+/** PUT /communities/{communityId}/members/me/frequency-limit（Issue #19 F-109b） */
+export function updateMyFrequencyLimit(
+  communityId: string,
+  frequencyLimitCount: number | null,
+  frequencyLimitPeriod: FrequencyLimitPeriod | null,
+) {
+  return apiClient.put<{
+    communityId: string;
+    userId: string;
+    frequencyLimitCount: number | null;
+    frequencyLimitPeriod: FrequencyLimitPeriod | null;
+  }>(`/communities/${communityId}/members/me/frequency-limit`, {
+    frequencyLimitCount,
+    frequencyLimitPeriod,
+  });
 }
 
 /** GET /communities/{communityId}/join-requests（statusフィルタはPENDING固定で扱う） */

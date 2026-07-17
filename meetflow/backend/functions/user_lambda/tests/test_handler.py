@@ -72,6 +72,84 @@ def test_get_profile_auto_approve_defaults_false(table):
     assert body_of(response)["data"]["autoApprove"] is False
 
 
+def test_update_profile_frequency_limit_set(table):
+    """Issue #19: 参加頻度上限(全体デフォルト)を回数+期間で設定できること。"""
+    put_profile(table, "user-1")
+
+    response = handler._update_profile(
+        "user-1",
+        api_event(body={"frequencyLimitCount": 2, "frequencyLimitPeriod": "MONTH"}),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["frequencyLimitCount"] == 2
+    assert data["frequencyLimitPeriod"] == "MONTH"
+
+
+def test_update_profile_frequency_limit_clear(table):
+    put_profile(table, "user-1")
+    handler._update_profile(
+        "user-1",
+        api_event(body={"frequencyLimitCount": 1, "frequencyLimitPeriod": "WEEK"}),
+    )
+
+    response = handler._update_profile(
+        "user-1",
+        api_event(body={"frequencyLimitCount": None, "frequencyLimitPeriod": None}),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["frequencyLimitCount"] is None
+    assert data["frequencyLimitPeriod"] is None
+
+
+def test_update_profile_frequency_limit_partial_only_count(table):
+    put_profile(table, "user-1")
+
+    response = handler._update_profile(
+        "user-1", api_event(body={"frequencyLimitCount": 2})
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "PROFILE_VALIDATION_ERROR"
+
+
+def test_update_profile_frequency_limit_non_positive_count(table):
+    put_profile(table, "user-1")
+
+    response = handler._update_profile(
+        "user-1",
+        api_event(body={"frequencyLimitCount": 0, "frequencyLimitPeriod": "WEEK"}),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "PROFILE_VALIDATION_ERROR"
+
+
+def test_update_profile_frequency_limit_invalid_period(table):
+    put_profile(table, "user-1")
+
+    response = handler._update_profile(
+        "user-1",
+        api_event(body={"frequencyLimitCount": 2, "frequencyLimitPeriod": "YEAR"}),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "PROFILE_VALIDATION_ERROR"
+
+
+def test_get_profile_frequency_limit_defaults_null(table):
+    put_profile(table, "user-1")
+
+    response = handler._get_profile("user-1")
+
+    data = body_of(response)["data"]
+    assert data["frequencyLimitCount"] is None
+    assert data["frequencyLimitPeriod"] is None
+
+
 def test_update_profile_invalid_nickname_too_long(table):
     put_profile(table, "user-1")
 

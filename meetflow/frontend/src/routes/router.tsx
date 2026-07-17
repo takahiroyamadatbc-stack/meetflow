@@ -14,6 +14,7 @@ import { CommunityCreatePage } from "@/features/community/CommunityCreatePage";
 import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
 import { DisplayNameEditPage } from "@/features/community/DisplayNameEditPage";
 import { AutoApproveEditPage } from "@/features/community/AutoApproveEditPage";
+import { FrequencyLimitEditPage } from "@/features/community/FrequencyLimitEditPage";
 import { ThemeColorEditPage } from "@/features/community/ThemeColorEditPage";
 import { InvitePage } from "@/features/community/InvitePage";
 import { InviteAcceptPage } from "@/features/community/InviteAcceptPage";
@@ -130,6 +131,11 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/auto-approve",
         element: <AutoApproveEditPage />,
         handle: { title: "自動承認設定を変更" },
+      },
+      {
+        path: "/communities/:communityId/frequency-limit",
+        element: <FrequencyLimitEditPage />,
+        handle: { title: "参加頻度上限を変更" },
       },
       {
         path: "/communities/:communityId/availability/new",

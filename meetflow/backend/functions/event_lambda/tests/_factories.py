@@ -11,6 +11,22 @@ def api_event(*, path_params=None, body=None, query=None):
     }
 
 
+def put_community(table, community_id, *, owner_id="user-1", genre="麻雀"):
+    table.put_item(
+        Item={
+            "PK": f"COMMUNITY#{community_id}",
+            "SK": "METADATA",
+            "name": "テストコミュニティ",
+            "description": "",
+            "genre": genre,
+            "memberApprovalRequired": False,
+            "communityType": "PERSONAL",
+            "ownerId": owner_id,
+            "createdAt": now_iso_ms(),
+        }
+    )
+
+
 def put_membership(
     table, community_id, user_id, *, role="MEMBER", status="ACTIVE", display_name=None
 ):

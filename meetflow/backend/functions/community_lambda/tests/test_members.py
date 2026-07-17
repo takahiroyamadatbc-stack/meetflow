@@ -334,3 +334,131 @@ def test_update_my_auto_approve_not_a_member(table):
             ),
         )
     assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_update_my_frequency_limit_set(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_frequency_limit(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"frequencyLimitCount": 2, "frequencyLimitPeriod": "MONTH"},
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["frequencyLimitCount"] == 2
+    assert data["frequencyLimitPeriod"] == "MONTH"
+    membership = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-1"}
+    )["Item"]
+    assert membership["frequencyLimitCount"] == 2
+    assert membership["frequencyLimitPeriod"] == "MONTH"
+
+
+def test_update_my_frequency_limit_clear_reverts_to_fallback(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    members.update_my_frequency_limit(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"frequencyLimitCount": 1, "frequencyLimitPeriod": "WEEK"},
+        ),
+    )
+
+    response = members.update_my_frequency_limit(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"frequencyLimitCount": None, "frequencyLimitPeriod": None},
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    membership = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-1"}
+    )["Item"]
+    assert "frequencyLimitCount" not in membership
+    assert "frequencyLimitPeriod" not in membership
+
+
+def test_update_my_frequency_limit_partial_only_count_error(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_frequency_limit(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"frequencyLimitCount": 2}
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "FREQUENCY_LIMIT_VALIDATION_ERROR"
+
+
+def test_update_my_frequency_limit_partial_only_period_error(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_frequency_limit(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"frequencyLimitPeriod": "WEEK"},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "FREQUENCY_LIMIT_VALIDATION_ERROR"
+
+
+def test_update_my_frequency_limit_non_positive_count(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_frequency_limit(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"frequencyLimitCount": 0, "frequencyLimitPeriod": "WEEK"},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "FREQUENCY_LIMIT_VALIDATION_ERROR"
+
+
+def test_update_my_frequency_limit_invalid_period(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = members.update_my_frequency_limit(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"frequencyLimitCount": 2, "frequencyLimitPeriod": "YEAR"},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "FREQUENCY_LIMIT_VALIDATION_ERROR"
+
+
+def test_update_my_frequency_limit_not_a_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    with pytest.raises(AuthError) as exc_info:
+        members.update_my_frequency_limit(
+            "user-2",
+            api_event(
+                path_params={"communityId": "community-1"},
+                body={"frequencyLimitCount": 2, "frequencyLimitPeriod": "WEEK"},
+            ),
+        )
+    assert exc_info.value.code == "FORBIDDEN"

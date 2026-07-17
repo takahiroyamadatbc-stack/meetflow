@@ -9,8 +9,10 @@ from _factories import (
     api_event,
     body_of,
     put_availability,
+    put_community,
     put_membership,
     put_participant,
+    put_profile,
     put_template,
 )
 
@@ -182,6 +184,92 @@ def test_generate_candidates_uses_display_name_when_set(table):
     candidates = body_of(response)["data"]["candidates"]
     nicknames = {m["userId"]: m["nickname"] for m in candidates[0]["members"]}
     assert nicknames["user-1"] == "たか"
+
+
+def test_generate_candidates_penalizes_member_over_frequency_limit(table):
+    """Issue #19: 参加頻度上限に達しているメンバーがいる場合、成立理由に
+    その旨が明記されること。カウントはコミュニティ横断で行われるため
+    （要件定義書v1.7 §30.4）、過去の参加履歴のイベントは候補生成対象の
+    コミュニティとは無関係なIDでも判定に含まれる。
+    """
+    put_community(table, "community-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+    put_profile(table, "user-1", frequency_limit_count=1, frequency_limit_period="WEEK")
+    put_participant(
+        table,
+        "past-event-in-other-community",
+        "user-1",
+        start_time=add_days_iso(_START, -1),
+        end_time=add_days_iso(_START, -1),
+        status="CONFIRMED",
+        community_genre="麻雀",
+    )
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    candidate = body_of(response)["data"]["candidates"][0]
+    assert any("上限" in r for r in candidate["reasons"])
+
+
+def test_generate_candidates_frequency_limit_not_exceeded_when_under_count(table):
+    put_community(table, "community-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+    put_profile(table, "user-1", frequency_limit_count=2, frequency_limit_period="WEEK")
+    put_participant(
+        table,
+        "past-event-1",
+        "user-1",
+        start_time=add_days_iso(_START, -1),
+        end_time=add_days_iso(_START, -1),
+        status="CONFIRMED",
+        community_genre="麻雀",
+    )
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    candidate = body_of(response)["data"]["candidates"][0]
+    assert not any("上限" in r for r in candidate["reasons"])
+
+
+def test_generate_candidates_frequency_limit_ignores_other_genre(table):
+    put_community(table, "community-1", genre="麻雀")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+    put_profile(table, "user-1", frequency_limit_count=1, frequency_limit_period="WEEK")
+    put_participant(
+        table,
+        "past-event-1",
+        "user-1",
+        start_time=add_days_iso(_START, -1),
+        end_time=add_days_iso(_START, -1),
+        status="CONFIRMED",
+        community_genre="ボードゲーム",
+    )
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    candidate = body_of(response)["data"]["candidates"][0]
+    assert not any("上限" in r for r in candidate["reasons"])
 
 
 def test_generate_candidates_template_not_found(table):

@@ -255,3 +255,70 @@ def update_my_auto_approve(user_id, event):
     return success_response(
         {"communityId": community_id, "userId": user_id, "autoApprove": raw}
     )
+
+
+def update_my_frequency_limit(user_id, event):
+    """PUT /communities/{communityId}/members/me/frequency-limit（Issue #19、
+    機能要件書v1.8 F-109）。
+
+    自分自身のMembership.frequencyLimitCount/frequencyLimitPeriodを設定・
+    解除する。コミュニティ単位でF-003の全体デフォルトから上書きしたい場合に
+    使う。回数と期間は同時に設定・解除する（片方のみの指定はエラー）。
+    両方null送信は上書きの解除（User側の全体デフォルトへのフォールバックに
+    戻す）を意味する。解決ロジック自体はmeetflow_common.frequency_limitに
+    一元化している。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id)
+
+    body = parse_body(event)
+    count = body.get("frequencyLimitCount")
+    period = body.get("frequencyLimitPeriod")
+    if (count is None) != (period is None):
+        return error_response(
+            "FREQUENCY_LIMIT_VALIDATION_ERROR",
+            "参加頻度上限は回数と期間を同時に設定・解除してください",
+        )
+    if count is not None:
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+            return error_response(
+                "FREQUENCY_LIMIT_VALIDATION_ERROR", "上限回数は正の整数で指定してください"
+            )
+        if period not in ("WEEK", "MONTH"):
+            return error_response(
+                "FREQUENCY_LIMIT_VALIDATION_ERROR",
+                "期間はWEEK/MONTHのいずれかで指定してください",
+            )
+
+    key = {"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"}
+    if count is None:
+        table.update_item(
+            Key=key,
+            UpdateExpression="REMOVE frequencyLimitCount, frequencyLimitPeriod",
+            ConditionExpression="attribute_exists(PK)",
+        )
+    else:
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET frequencyLimitCount = :c, frequencyLimitPeriod = :p",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":c": count, ":p": period},
+        )
+
+    write_operation_log(
+        action="UPDATE_FREQUENCY_LIMIT",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Membership",
+        target_id=user_id,
+        after={"frequencyLimitCount": count, "frequencyLimitPeriod": period},
+    )
+    return success_response(
+        {
+            "communityId": community_id,
+            "userId": user_id,
+            "frequencyLimitCount": count,
+            "frequencyLimitPeriod": period,
+        }
+    )

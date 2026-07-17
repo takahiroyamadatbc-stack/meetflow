@@ -17,9 +17,16 @@ _BEGINNER_WEIGHT = 20
 _RECENCY_WEIGHT = 30
 _PRIORITY_WEIGHT = 20
 _RECENCY_CAP_DAYS = 30
+_FREQUENCY_LIMIT_PENALTY_WEIGHT = 25
 
 
-def calculate_score(*, template, members_profiles, members_days_since_last_played):
+def calculate_score(
+    *,
+    template,
+    members_profiles,
+    members_days_since_last_played,
+    members_frequency_status=None,
+):
     """
     template: EventTemplateアイテム（dict）-- `conditions`（Map）と
         `priority`（0-100）が必要。
@@ -27,6 +34,12 @@ def calculate_score(*, template, members_profiles, members_days_since_last_playe
     members_days_since_last_played: メンバーごとのint値のリスト -- 各人の
         直近のCONFIRMED Participantレコードからの経過日数。参加履歴が
         一件も無い場合はNone（最大限「新鮮」として扱う）。
+    members_frequency_status: メンバーごとの参加頻度上限の状態リスト
+        （Issue #19、要件定義書v1.7 §30）。各要素は上限未設定/未達なら
+        None、上限に達していれば{"name", "period", "limit", "count"}の
+        dict。候補からの機械的な除外はせず、超過メンバーの割合に応じて
+        スコアを減点し、成立理由に個別に明記するのみに留める
+        （ヒューマン・イン・ザ・ループ原則、要件定義書§19）。
 
     戻り値: (score: int 0-100, reasons: list[str])。
     """
@@ -67,4 +80,18 @@ def calculate_score(*, template, members_profiles, members_days_since_last_playe
         + _RECENCY_WEIGHT * recency_fraction
         + _PRIORITY_WEIGHT * (priority / 100)
     )
-    return round(min(total, 100)), reasons
+
+    exceeded_statuses = [s for s in (members_frequency_status or []) if s is not None]
+    if members_frequency_status:
+        exceeded_fraction = len(exceeded_statuses) / len(members_frequency_status)
+    else:
+        exceeded_fraction = 0.0
+    total -= _FREQUENCY_LIMIT_PENALTY_WEIGHT * exceeded_fraction
+    for status in exceeded_statuses:
+        period_label = "週" if status["period"] == "WEEK" else "月"
+        reasons.append(
+            f"{status['name']}さんは{period_label}の上限（{status['limit']}回）に"
+            "すでに達している"
+        )
+
+    return round(min(max(total, 0), 100)), reasons

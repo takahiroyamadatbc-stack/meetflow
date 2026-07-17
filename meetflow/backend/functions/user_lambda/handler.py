@@ -117,6 +117,35 @@ def _update_profile(user_id, event):
         _set("beginnerOk", bool(body["beginnerOk"]))
     if "autoApprove" in body:
         _set("autoApprove", bool(body["autoApprove"]))
+    if "frequencyLimitCount" in body or "frequencyLimitPeriod" in body:
+        limit_count = body.get("frequencyLimitCount")
+        limit_period = body.get("frequencyLimitPeriod")
+        if (limit_count is None) != (limit_period is None):
+            return error_response(
+                "PROFILE_VALIDATION_ERROR",
+                "参加頻度上限は回数と期間を同時に設定・解除してください",
+            )
+        if limit_count is not None:
+            if (
+                not isinstance(limit_count, int)
+                or isinstance(limit_count, bool)
+                or limit_count <= 0
+            ):
+                return error_response(
+                    "PROFILE_VALIDATION_ERROR", "上限回数は正の整数で指定してください"
+                )
+            if limit_period not in ("WEEK", "MONTH"):
+                return error_response(
+                    "PROFILE_VALIDATION_ERROR",
+                    "期間はWEEK/MONTHのいずれかで指定してください",
+                )
+            _set("frequencyLimitCount", limit_count)
+            _set("frequencyLimitPeriod", limit_period)
+        else:
+            names["#frequencyLimitCount"] = "frequencyLimitCount"
+            names["#frequencyLimitPeriod"] = "frequencyLimitPeriod"
+            remove_clauses.append("#frequencyLimitCount")
+            remove_clauses.append("#frequencyLimitPeriod")
     if "gameTypes" in body:
         game_types = body["gameTypes"] or []
         if game_types:
@@ -165,4 +194,6 @@ def _to_api_profile(item):
         "gameTypes": sorted(item["gameTypes"]) if item.get("gameTypes") else [],
         "beginnerOk": item.get("beginnerOk", False),
         "autoApprove": item.get("autoApprove", False),
+        "frequencyLimitCount": item.get("frequencyLimitCount"),
+        "frequencyLimitPeriod": item.get("frequencyLimitPeriod"),
     }
