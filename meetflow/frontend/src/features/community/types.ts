@@ -38,6 +38,8 @@ export type CommunityMutationResult = {
 export type CommunityDetail = CommunityMutationResult & {
   themeColor: string | null;
   role: MembershipRole;
+  /** 未処理（PENDING）JoinRequest件数（Issue #29）。管理者向けバッジ表示用 */
+  pendingRequestCount: number;
 };
 
 /** invites.py get_invite_preview() のレスポンス実体（Issue #23） */
