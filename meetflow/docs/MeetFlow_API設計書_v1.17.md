@@ -1033,6 +1033,8 @@ Response
 
 `GET /feedback/{feedbackId}`
 
+処理：`attachmentKeys`に対応する`attachmentUrls`（署名付きGET URL、有効期限5分）を都度発行してレスポンスに含める（Lambda設計書v1.7 §9b.3。バケット自体は非公開のため）。一覧取得（12b.3）では発行しない（絞り込み前の全件に対して署名生成コストがかかるため）。
+
 ### 12b.5 フィードバックのステータス・優先度更新／返信（運営者限定） **[v1.17新規]**
 
 `PATCH /feedback/{feedbackId}`

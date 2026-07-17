@@ -50,4 +50,8 @@ export const paths = {
 
   myPage: "/mypage",
   profileEdit: "/mypage/profile",
+
+  feedbackNew: "/feedback",
+  feedbackAdmin: "/feedback/admin",
+  announcementList: "/announcements",
 } as const;

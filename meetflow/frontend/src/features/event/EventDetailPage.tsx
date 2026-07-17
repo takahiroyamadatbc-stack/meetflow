@@ -31,6 +31,7 @@ import {
 import { EVENT_STATUS_LABELS, PARTICIPANT_STATUS_LABELS } from "@/features/event/types";
 import { listEventSessions, resultKeys } from "@/features/result/api";
 import { GAME_TYPE_LABELS } from "@/features/user/types";
+import { QuickFeedbackPrompt } from "@/features/feedback/QuickFeedbackPrompt";
 import { useAuthUser } from "@/features/auth/useAuthUser";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { paths } from "@/routes/paths";
@@ -226,11 +227,17 @@ export function EventDetailPage() {
       )}
 
       {event.status === "CONFIRMED" && myParticipant?.status === "CONFIRMED" && (
-        <Link to={paths.eventCancelRequest(event.eventId)}>
-          <Button variant="outline" className="w-full">
-            参加をキャンセル申請する
-          </Button>
-        </Link>
+        <>
+          <QuickFeedbackPrompt
+            relatedFeature="EVENT_CONFIRM"
+            storageKey={`event-confirm:${event.eventId}`}
+          />
+          <Link to={paths.eventCancelRequest(event.eventId)}>
+            <Button variant="outline" className="w-full">
+              参加をキャンセル申請する
+            </Button>
+          </Link>
+        </>
       )}
 
       {event.status === "CONFIRMED" && isAdmin && (

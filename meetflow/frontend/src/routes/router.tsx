@@ -36,6 +36,9 @@ import { CancelRequestListPage } from "@/features/event/CancelRequestListPage";
 import { ResultSessionCreatePage } from "@/features/result/ResultSessionCreatePage";
 import { ResultSummaryPage } from "@/features/result/ResultSummaryPage";
 import { NotificationListPage } from "@/features/notification/NotificationListPage";
+import { FeedbackFormPage } from "@/features/feedback/FeedbackFormPage";
+import { FeedbackAdminPage } from "@/features/feedback/FeedbackAdminPage";
+import { AnnouncementListPage } from "@/features/announcement/AnnouncementListPage";
 import { paths } from "@/routes/paths";
 
 export const router = createBrowserRouter([
@@ -221,6 +224,21 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/results/:userId",
         element: <ResultSummaryPage />,
         handle: { title: "成績" },
+      },
+      {
+        path: "/feedback",
+        element: <FeedbackFormPage />,
+        handle: { title: "フィードバック" },
+      },
+      {
+        path: "/feedback/admin",
+        element: <FeedbackAdminPage />,
+        handle: { title: "フィードバック管理" },
+      },
+      {
+        path: "/announcements",
+        element: <AnnouncementListPage />,
+        handle: { title: "お知らせ" },
       },
     ],
   },

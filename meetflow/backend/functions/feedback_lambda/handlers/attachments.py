@@ -52,3 +52,20 @@ def create_attachment_upload_url(user_id, event):
             "expiresIn": _EXPIRES_IN_SECONDS,
         }
     )
+
+
+def generate_view_url(attachment_key: str) -> str:
+    """Lambda設計書v1.7 §9b.3: 運営者がフィードバック管理画面(S-29)から
+    スクリーンショットを閲覧する際、都度署名付きGET URLを発行する
+    (バケット自体は非公開のため)。フィードバック詳細取得(feedback.
+    get_feedback)からのみ呼ばれる想定で、一覧取得では呼ばない
+    (attachmentKeysの数だけ署名生成コストがかかるため)。
+    """
+    return _get_s3_client().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": os.environ["FEEDBACK_ATTACHMENTS_BUCKET_NAME"],
+            "Key": attachment_key,
+        },
+        ExpiresIn=_EXPIRES_IN_SECONDS,
+    )

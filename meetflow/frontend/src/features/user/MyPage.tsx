@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { getMyProfile, userKeys } from "@/features/user/api";
 import { GAME_TYPE_LABELS } from "@/features/user/types";
 import { signOutUser } from "@/features/auth/api";
+import { useIsOperator } from "@/features/auth/useIsOperator";
 import {
   getExistingPushSubscription,
   isIosInstallRequired,
@@ -25,6 +26,7 @@ import { paths } from "@/routes/paths";
 export function MyPage() {
   const navigate = useNavigate();
   const handleApiError = useApiErrorToast();
+  const isOperator = useIsOperator();
   const { data: profile, isLoading } = useQuery({
     queryKey: userKeys.me,
     queryFn: getMyProfile,
@@ -75,6 +77,26 @@ export function MyPage() {
       </Link>
 
       <PushNotificationSetting />
+
+      <Link to={paths.feedbackNew}>
+        <Card>
+          <CardContent className="flex items-center justify-between">
+            <span className="text-sm">フィードバックを送る</span>
+            <ChevronRight className="text-muted-foreground size-4" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      {isOperator && (
+        <Link to={paths.feedbackAdmin}>
+          <Card>
+            <CardContent className="flex items-center justify-between">
+              <span className="text-sm">フィードバック管理</span>
+              <ChevronRight className="text-muted-foreground size-4" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       <Button variant="outline" onClick={handleSignOut}>
         ログアウト
