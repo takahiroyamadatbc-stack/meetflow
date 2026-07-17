@@ -26,20 +26,25 @@ import type { CommunityMember } from "@/features/community/types";
 type MemberCardProps = {
   member: CommunityMember;
   canManage: boolean;
+  isCurrentUserOwner: boolean;
   onChangeRole: (role: "ADMIN" | "MEMBER") => void;
   onChangeStatus: (status: "ACTIVE" | "SUSPENDED") => void;
   onRemove: () => void;
+  onTransferOwner: () => void;
 };
 
-/** S-08 メンバー管理画面のカード。破壊的操作（退会）は二段階確認する */
+/** S-08 メンバー管理画面のカード。破壊的操作（退会・オーナー譲渡）は二段階確認する */
 export function MemberCard({
   member,
   canManage,
+  isCurrentUserOwner,
   onChangeRole,
   onChangeStatus,
   onRemove,
+  onTransferOwner,
 }: MemberCardProps) {
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [confirmTransferOpen, setConfirmTransferOpen] = useState(false);
   const isOwner = member.role === "OWNER";
 
   return (
@@ -84,6 +89,11 @@ export function MemberCard({
                   一時停止を解除する
                 </DropdownMenuItem>
               )}
+              {isCurrentUserOwner && (
+                <DropdownMenuItem onClick={() => setConfirmTransferOpen(true)}>
+                  オーナーを譲渡する
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => setConfirmRemoveOpen(true)}
@@ -104,6 +114,21 @@ export function MemberCard({
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction onClick={onRemove}>退会させる</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmTransferOpen} onOpenChange={setConfirmTransferOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{member.nickname}さんにオーナー権限を譲渡しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {member.nickname}さんがオーナーになり、あなたはメンバーに戻ります。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={onTransferOwner}>譲渡する</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

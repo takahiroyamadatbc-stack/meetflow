@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { MemberCard } from "@/features/community/components/MemberCard";
-import { communityKeys, listMembers, updateMember } from "@/features/community/api";
+import { communityKeys, listMembers, transferOwner, updateMember } from "@/features/community/api";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { useAuthUser } from "@/features/auth/useAuthUser";
 
@@ -23,6 +23,7 @@ export function MemberListPage() {
 
   const currentMember = members?.find((m) => m.userId === currentUserId);
   const canManage = currentMember?.role === "OWNER" || currentMember?.role === "ADMIN";
+  const isCurrentUserOwner = currentMember?.role === "OWNER";
 
   const mutation = useMutation({
     mutationFn: ({
@@ -35,6 +36,15 @@ export function MemberListPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: communityKeys.members(communityId!) });
       toast.success("メンバー情報を更新しました");
+    },
+    onError: handleApiError,
+  });
+
+  const transferOwnerMutation = useMutation({
+    mutationFn: (newOwnerId: string) => transferOwner(communityId!, newOwnerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.members(communityId!) });
+      toast.success("オーナーを譲渡しました");
     },
     onError: handleApiError,
   });
@@ -59,11 +69,13 @@ export function MemberListPage() {
           key={member.userId}
           member={member}
           canManage={canManage}
+          isCurrentUserOwner={isCurrentUserOwner}
           onChangeRole={(role) => mutation.mutate({ targetUserId: member.userId, input: { role } })}
           onChangeStatus={(memberStatus) =>
             mutation.mutate({ targetUserId: member.userId, input: { status: memberStatus } })
           }
           onRemove={() => mutation.mutate({ targetUserId: member.userId, input: { remove: true } })}
+          onTransferOwner={() => transferOwnerMutation.mutate(member.userId)}
         />
       ))}
     </div>

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ApiError } from "@/api/errors";
 
-/** モーダル表示が必要なエラーコード（UNAUTHORIZED/FORBIDDEN/PARTICIPANT_SCHEDULE_CONFLICT）向けの見出し */
+/** モーダル表示が必要なエラーコード（UNAUTHORIZED/FORBIDDEN/PARTICIPANT_SCHEDULE_CONFLICT/MEMBER_HAS_UPCOMING_EVENTS）向けの見出し */
 function titleForCode(code: string): string {
   switch (code) {
     case "UNAUTHORIZED":
@@ -19,6 +19,8 @@ function titleForCode(code: string): string {
       return "権限がありません";
     case "PARTICIPANT_SCHEDULE_CONFLICT":
       return "参加者の予定が重複しています";
+    case "MEMBER_HAS_UPCOMING_EVENTS":
+      return "退会できません";
     default:
       return "エラーが発生しました";
   }
