@@ -470,6 +470,48 @@ def test_get_candidate_detail_success(table):
     assert body_of(response)["data"]["candidateId"] == candidate_id
 
 
+def test_list_candidates_includes_created_at(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+    matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    response = matching.list_candidates(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    candidates = body_of(response)["data"]["candidates"]
+    assert len(candidates) == 1
+    assert isinstance(candidates[0]["createdAt"], str)
+    assert candidates[0]["createdAt"]
+
+
+def test_get_candidate_detail_includes_created_at(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+    create_response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+    candidate_id = body_of(create_response)["data"]["candidates"][0]["candidateId"]
+
+    response = matching.get_candidate_detail(
+        "user-1", api_event(path_params={"candidateId": candidate_id})
+    )
+
+    data = body_of(response)["data"]
+    assert isinstance(data["createdAt"], str)
+    assert data["createdAt"]
+
+
 def test_get_candidate_detail_not_found(table):
     response = matching.get_candidate_detail(
         "user-1", api_event(path_params={"candidateId": "does-not-exist"})

@@ -42,4 +42,6 @@ export type Candidate = {
   startTime: string | null;
   endTime: string | null;
   members: CandidateMemberInfo[];
+  /** 候補の生成日時（ISO8601、Issue #28） */
+  createdAt: string;
 };
