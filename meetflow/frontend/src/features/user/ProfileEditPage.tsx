@@ -11,6 +11,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Form,
   FormControl,
   FormField,
@@ -32,6 +39,9 @@ const profileSchema = z.object({
   gameTypes: z.array(z.enum(["MAHJONG4", "MAHJONG3"])),
   beginnerOk: z.boolean(),
   autoApprove: z.boolean(),
+  frequencyLimitEnabled: z.boolean(),
+  frequencyLimitCount: z.number().int().min(1).optional(),
+  frequencyLimitPeriod: z.enum(["WEEK", "MONTH"]).optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -68,6 +78,9 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
       gameTypes: profile.gameTypes,
       beginnerOk: profile.beginnerOk,
       autoApprove: profile.autoApprove,
+      frequencyLimitEnabled: profile.frequencyLimitCount != null,
+      frequencyLimitCount: profile.frequencyLimitCount ?? undefined,
+      frequencyLimitPeriod: profile.frequencyLimitPeriod ?? "WEEK",
     },
   });
 
@@ -87,8 +100,19 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
     },
   });
 
+  const frequencyLimitEnabled = form.watch("frequencyLimitEnabled");
+
   function onSubmit(values: ProfileFormValues) {
-    mutation.mutate(values);
+    const { frequencyLimitEnabled: enabled, ...rest } = values;
+    if (enabled && values.frequencyLimitCount === undefined) {
+      form.setError("frequencyLimitCount", { message: "上限回数を入力してください" });
+      return;
+    }
+    mutation.mutate({
+      ...rest,
+      frequencyLimitCount: enabled ? (values.frequencyLimitCount ?? null) : null,
+      frequencyLimitPeriod: enabled ? (values.frequencyLimitPeriod ?? null) : null,
+    });
   }
 
   return (
@@ -188,6 +212,69 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
               </FormItem>
             )}
           />
+          <FormField
+            control={form.control}
+            name="frequencyLimitEnabled"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between">
+                <div>
+                  <FormLabel>参加頻度に上限を設ける</FormLabel>
+                  <p className="text-muted-foreground text-sm">
+                    ゲームジャンルごとの参加回数に上限を設け、マッチングのスコアに反映します
+                  </p>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          {frequencyLimitEnabled && (
+            <div className="flex flex-row items-center gap-2">
+              <FormField
+                control={form.control}
+                name="frequencyLimitCount"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="回数"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value === "" ? undefined : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <span className="text-sm">回 /</span>
+              <FormField
+                control={form.control}
+                name="frequencyLimitPeriod"
+                render={({ field }) => (
+                  <FormItem>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="WEEK">週</SelectItem>
+                        <SelectItem value="MONTH">月</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
           <Button type="submit" disabled={mutation.isPending}>
             保存する
           </Button>

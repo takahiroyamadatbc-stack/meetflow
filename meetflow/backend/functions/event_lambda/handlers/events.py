@@ -209,6 +209,13 @@ def confirm_event(user_id, event):
     community_id = event_item["GSI1PK"].split("#", 1)[1]
     require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
 
+    # Participant.communityGenreへの非正規化コピー用（DynamoDB物理設計書
+    # v1.10 §3.11、参加頻度上限のジャンル横断カウントで使用、Issue #19）。
+    community_item = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
+    ).get("Item") or {}
+    community_genre = community_item.get("genre", "")
+
     status = event_item.get("status")
     if status == "CONFIRMED":
         return error_response(
@@ -290,6 +297,7 @@ def confirm_event(user_id, event):
             "startTime": start_time,
             "endTime": end_time,
             "joinedAt": created_at,
+            "communityGenre": community_genre,
         }
         if is_auto:
             participant_item["autoApproved"] = True

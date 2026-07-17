@@ -9,6 +9,7 @@ from _factories import (
     body_of,
     put_availability,
     put_candidate,
+    put_community,
     put_confirmed_participant,
     put_event_status,
     put_membership,
@@ -266,6 +267,26 @@ def test_confirm_event_blocks_on_awaiting_approval_conflict(table):
 
     assert response["statusCode"] == 409
     assert body_of(response)["error"]["code"] == "PARTICIPANT_SCHEDULE_CONFLICT"
+
+
+def test_confirm_event_copies_community_genre_to_participant(table):
+    """Issue #19: 仮確定時、Community METADATAのgenreがParticipant.
+    communityGenreへ非正規化コピーされること(参加頻度上限のジャンル横断
+    カウントで使用)。
+    """
+    put_community(table, "community-1", genre="麻雀")
+    event_id = _create_pending_event(table)
+
+    response = events.confirm_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+
+    assert response["statusCode"] == 200
+    for uid in ("user-1", "user-2", "user-3", "user-4"):
+        participant = table.get_item(
+            Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}
+        )["Item"]
+        assert participant["communityGenre"] == "麻雀"
 
 
 def test_confirm_event_deletes_overlapping_availability(table):
