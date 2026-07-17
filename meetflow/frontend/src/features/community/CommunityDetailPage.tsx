@@ -124,26 +124,6 @@ export function CommunityDetailPage() {
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="settings">
-          <AccordionTrigger>設定</AccordionTrigger>
-          <AccordionContent>
-            <div className="flex flex-col gap-3">
-              <NavCard
-                to={paths.communityDisplayNameEdit(community.communityId)}
-                label="このコミュニティでの表示名を変更"
-              />
-              <NavCard
-                to={paths.communityAutoApproveEdit(community.communityId)}
-                label="このコミュニティでの自動承認設定を変更"
-              />
-              <NavCard
-                to={paths.communityFrequencyLimitEdit(community.communityId)}
-                label="このコミュニティでの参加頻度上限を変更"
-              />
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
         <AccordionItem value="availability">
           <AccordionTrigger>空き予定</AccordionTrigger>
           <AccordionContent>
@@ -178,6 +158,26 @@ export function CommunityDetailPage() {
                   />
                 </>
               )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="settings">
+          <AccordionTrigger>設定</AccordionTrigger>
+          <AccordionContent>
+            <div className="flex flex-col gap-3">
+              <NavCard
+                to={paths.communityDisplayNameEdit(community.communityId)}
+                label="このコミュニティでの表示名を変更"
+              />
+              <NavCard
+                to={paths.communityAutoApproveEdit(community.communityId)}
+                label="このコミュニティでの自動承認設定を変更"
+              />
+              <NavCard
+                to={paths.communityFrequencyLimitEdit(community.communityId)}
+                label="このコミュニティでの参加頻度上限を変更"
+              />
             </div>
           </AccordionContent>
         </AccordionItem>
