@@ -26,6 +26,10 @@ _ROUTES = {
         "/communities/{communityId}/members/me/auto-approve",
     ): members.update_my_auto_approve,
     (
+        "PUT",
+        "/communities/{communityId}/members/me/frequency-limit",
+    ): members.update_my_frequency_limit,
+    (
         "GET",
         "/communities/{communityId}/join-requests",
     ): join_requests.list_join_requests,

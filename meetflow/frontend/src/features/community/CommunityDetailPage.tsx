@@ -108,6 +108,10 @@ export function CommunityDetailPage() {
                 to={paths.communityAutoApproveEdit(community.communityId)}
                 label="このコミュニティでの自動承認設定を変更"
               />
+              <NavCard
+                to={paths.communityFrequencyLimitEdit(community.communityId)}
+                label="このコミュニティでの参加頻度上限を変更"
+              />
               {isAdmin && (
                 <>
                   <NavCard
