@@ -27,14 +27,21 @@ type TimeSlotSheetProps = {
   selectedDateCount: number;
   onSubmit: (value: TimeSlotValue) => void;
   submitting?: boolean;
-  /** 編集モード時の初期値。未指定なら新規登録モード（既定値で開始）。 */
+  /** 編集モードかどうか（タイトル・ボタンラベルの出し分けに使う） */
+  isEditMode?: boolean;
+  /**
+   * 初期値。編集モードでは編集対象の値、新規登録モードでは前回登録値からの
+   * デフォルト値に使う（Issue #21）。
+   */
   initialValue?: TimeSlotValue;
 };
 
 /**
  * S-09 空き予定登録画面の時間帯選択パネル。
  * カレンダーで選択した全ての日付に、ここで指定した同一の時間帯・条件を適用する。
- * `initialValue`を渡すと既存の1件を編集するモードになる（空き予定一覧画面から使用）。
+ * `isEditMode`が真の時は既存の1件を編集するモードになる（空き予定一覧画面から使用）。
+ * `initialValue`は編集モードの初期値だけでなく、新規登録モードでの前回登録値
+ * デフォルト表示にも使うため、モード判定とは切り離している。
  */
 export function TimeSlotSheet({
   open,
@@ -42,9 +49,9 @@ export function TimeSlotSheet({
   selectedDateCount,
   onSubmit,
   submitting,
+  isEditMode = false,
   initialValue,
 }: TimeSlotSheetProps) {
-  const isEditMode = initialValue !== undefined;
   const [startHour, setStartHour] = useState(initialValue?.startHour ?? "19:00");
   const [endHour, setEndHour] = useState(initialValue?.endHour ?? "22:00");
   const [gameTypes, setGameTypes] = useState<GameType[]>(initialValue?.gameTypes ?? []);
