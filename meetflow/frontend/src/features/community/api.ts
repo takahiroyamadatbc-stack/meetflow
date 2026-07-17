@@ -109,6 +109,14 @@ export function updateMember(communityId: string, userId: string, input: UpdateM
   return apiClient.put(`/communities/${communityId}/members/${userId}`, input);
 }
 
+/** POST /communities/{communityId}/owner-transfer（Issue #24 F-106） */
+export function transferOwner(communityId: string, newOwnerId: string) {
+  return apiClient.post<{ communityId: string; ownerId: string }>(
+    `/communities/${communityId}/owner-transfer`,
+    { newOwnerId },
+  );
+}
+
 /** PUT /communities/{communityId}/members/me/display-name */
 export function updateMyDisplayName(communityId: string, displayName: string) {
   return apiClient.put<{ communityId: string; userId: string; displayName: string | null }>(
