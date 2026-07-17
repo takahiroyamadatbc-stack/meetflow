@@ -31,6 +31,7 @@ const profileSchema = z.object({
   profile: z.string().max(300, "300文字以内で入力してください"),
   gameTypes: z.array(z.enum(["MAHJONG4", "MAHJONG3"])),
   beginnerOk: z.boolean(),
+  autoApprove: z.boolean(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -66,6 +67,7 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
       profile: profile.profile,
       gameTypes: profile.gameTypes,
       beginnerOk: profile.beginnerOk,
+      autoApprove: profile.autoApprove,
     },
   });
 
@@ -163,6 +165,23 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between">
                 <FormLabel>初心者歓迎</FormLabel>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="autoApprove"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between">
+                <div>
+                  <FormLabel>参加を自動承認する</FormLabel>
+                  <p className="text-muted-foreground text-sm">
+                    イベントが仮確定した際、参加承認を都度行わず自動で確定します
+                  </p>
+                </div>
                 <FormControl>
                   <Switch checked={field.value} onCheckedChange={field.onChange} />
                 </FormControl>

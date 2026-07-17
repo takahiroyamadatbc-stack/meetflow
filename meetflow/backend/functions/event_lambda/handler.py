@@ -23,6 +23,14 @@ _ROUTES = {
         "POST",
         "/events/{eventId}/cancel-requests/{userId}/approve",
     ): participants.approve_cancel_request,
+    (
+        "POST",
+        "/events/{eventId}/participants/me/approve",
+    ): participants.approve_participation,
+    (
+        "POST",
+        "/events/{eventId}/participants/me/reject",
+    ): participants.reject_participation,
 }
 
 

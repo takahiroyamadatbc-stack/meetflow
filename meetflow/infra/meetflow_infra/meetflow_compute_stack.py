@@ -306,12 +306,18 @@ class MeetFlowComputeStack(Stack):
             queue_name=f"{self.env_name}-meetflow-matching-event-confirmed-dlq",
             retention_period=Duration.days(14),
         )
+        # Issue #10: 実際の「予約」(Participant行の作成・Availability削除)は
+        # イベント仮確定(confirm_event)時点で発生するようになったため、
+        # 事後的なダブルブッキング検知も`EventAwaitingApproval`時点で走る
+        # 必要がある。全員自動承認ONで承認待ちを経由せず直接CONFIRMEDになる
+        # ケースを取りこぼさないよう、`EventConfirmed`も引き続き購読する。
         events.Rule(
             self,
             "MatchingEventConfirmedRule",
             rule_name=f"{self.env_name}-meetflow-matching-event-confirmed",
             event_pattern=events.EventPattern(
-                source=["meetflow.events"], detail_type=["EventConfirmed"]
+                source=["meetflow.events"],
+                detail_type=["EventAwaitingApproval", "EventConfirmed"],
             ),
             targets=[
                 events_targets.LambdaFunction(
@@ -361,8 +367,9 @@ class MeetFlowComputeStack(Stack):
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
-        # §7.4: EventConfirmed/EventCancelled/CancelApproved用の
-        # `events:PutEvents`。
+        # §7.4: EventConfirmed/EventCancelled/CancelApproved、および
+        # Issue #10で追加したEventAwaitingApproval/EventParticipantRejected
+        # 用の`events:PutEvents`。
         events.EventBus.grant_all_put_events(fn)
 
         CfnOutput(
@@ -485,6 +492,8 @@ class MeetFlowComputeStack(Stack):
                     "CancelApproved",
                     "CandidateConflictDetected",
                     "AvailabilityRequestCreated",
+                    "EventAwaitingApproval",
+                    "EventParticipantRejected",
                 ],
             ),
             targets=[

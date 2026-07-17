@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { format, isSameDay, parseISO } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +27,7 @@ import {
 } from "@/features/availability/components/TimeSlotSheet";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import type { AvailabilityInput } from "@/features/availability/types";
+import { updateMyProfile, userKeys } from "@/features/user/api";
 
 /**
  * S-09 空き予定登録画面（カレンダーで複数日選択→時間帯パネルでバッチ登録）。
@@ -42,6 +45,7 @@ export function AvailabilityCalendarPage() {
   const [selectedDates, setSelectedDates] = useState<Date[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [pendingEntries, setPendingEntries] = useState<AvailabilityInput[] | null>(null);
+  const [autoApprove, setAutoApprove] = useState(false);
 
   const { data: availabilities } = useQuery({
     queryKey: availabilityKeys.list(communityId!),
@@ -63,9 +67,17 @@ export function AvailabilityCalendarPage() {
   );
 
   const mutation = useMutation({
-    mutationFn: (entries: AvailabilityInput[]) => createAvailabilityBatch(communityId!, entries),
+    mutationFn: async (entries: AvailabilityInput[]) => {
+      await createAvailabilityBatch(communityId!, entries);
+      if (autoApprove) {
+        await updateMyProfile({ autoApprove: true });
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: availabilityKeys.list(communityId!) });
+      if (autoApprove) {
+        queryClient.invalidateQueries({ queryKey: userKeys.me });
+      }
       toast.success("空き予定を登録しました");
       navigate(-1);
     },
@@ -110,6 +122,17 @@ export function AvailabilityCalendarPage() {
           ? `${selectedDates.length}日を選択中 - 時間帯を設定する`
           : "日付を選択してください"}
       </Button>
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="auto-approve"
+          checked={autoApprove}
+          onCheckedChange={(checked) => setAutoApprove(checked === true)}
+        />
+        <Label htmlFor="auto-approve" className="text-sm font-normal">
+          次回以降は参加を自動承認する
+        </Label>
+      </div>
 
       <TimeSlotSheet
         open={sheetOpen}

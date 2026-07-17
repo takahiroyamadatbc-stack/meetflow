@@ -17,6 +17,8 @@ export type UserProfile = {
   icon: string;
   gameTypes: GameType[];
   beginnerOk: boolean;
+  /** イベント仮確定後の参加承認を以降自動で行うかどうか（Issue #10、全体デフォルト） */
+  autoApprove: boolean;
 };
 
 export type UpdateUserProfileInput = Partial<{
@@ -25,4 +27,5 @@ export type UpdateUserProfileInput = Partial<{
   icon: string;
   gameTypes: GameType[];
   beginnerOk: boolean;
+  autoApprove: boolean;
 }>;
