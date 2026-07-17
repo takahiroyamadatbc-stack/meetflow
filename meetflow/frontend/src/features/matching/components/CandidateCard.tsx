@@ -1,4 +1,5 @@
-import { format, parseISO } from "date-fns";
+import { format, formatDistanceToNow, parseISO } from "date-fns";
+import { ja } from "date-fns/locale";
 import { Link } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,11 @@ export function CandidateCard({
               </span>
             )}
           </div>
+
+          <span className="text-muted-foreground text-xs">
+            {formatDistanceToNow(parseISO(candidate.createdAt), { addSuffix: true, locale: ja })}
+            に生成
+          </span>
 
           {candidate.members.some((m) => m.conflictWarning) && (
             <div className="text-destructive flex items-center gap-1 text-xs">
