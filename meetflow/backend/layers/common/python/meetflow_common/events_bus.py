@@ -14,6 +14,8 @@ CANCEL_APPROVED = "CancelApproved"
 CANDIDATE_CONFLICT_DETECTED = "CandidateConflictDetected"
 EVENT_STATUS_CHANGED = "EventStatusChanged"
 AVAILABILITY_REQUEST_CREATED = "AvailabilityRequestCreated"
+EVENT_AWAITING_APPROVAL = "EventAwaitingApproval"
+EVENT_PARTICIPANT_REJECTED = "EventParticipantRejected"
 
 _client = None
 

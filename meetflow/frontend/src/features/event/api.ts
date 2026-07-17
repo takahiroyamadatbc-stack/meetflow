@@ -6,6 +6,8 @@ import type {
   EventSummary,
   MyEvent,
   Participant,
+  ParticipationApproveResult,
+  ParticipationRejectResult,
 } from "@/features/event/types";
 
 export const eventKeys = {
@@ -72,4 +74,19 @@ export function createCancelRequest(eventId: string, reason: string) {
 /** POST /events/{eventId}/cancel-requests/{userId}/approve */
 export function approveCancelRequest(eventId: string, userId: string) {
   return apiClient.post(`/events/${eventId}/cancel-requests/${userId}/approve`);
+}
+
+/** POST /events/{eventId}/participants/me/approve（Issue #10 F-502b） */
+export function approveParticipation(eventId: string) {
+  return apiClient.post<ParticipationApproveResult>(
+    `/events/${eventId}/participants/me/approve`,
+  );
+}
+
+/** POST /events/{eventId}/participants/me/reject（Issue #10 F-502c） */
+export function rejectParticipation(eventId: string, reason?: string) {
+  return apiClient.post<ParticipationRejectResult>(
+    `/events/${eventId}/participants/me/reject`,
+    reason ? { reason } : {},
+  );
 }

@@ -110,6 +110,14 @@ export function updateMyDisplayName(communityId: string, displayName: string) {
   );
 }
 
+/** PUT /communities/{communityId}/members/me/auto-approve（Issue #10 F-109b） */
+export function updateMyAutoApprove(communityId: string, autoApprove: boolean | null) {
+  return apiClient.put<{ communityId: string; userId: string; autoApprove: boolean | null }>(
+    `/communities/${communityId}/members/me/auto-approve`,
+    { autoApprove },
+  );
+}
+
 /** GET /communities/{communityId}/join-requests（statusフィルタはPENDING固定で扱う） */
 export function listJoinRequests(communityId: string) {
   return apiClient

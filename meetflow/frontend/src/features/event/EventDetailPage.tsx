@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,14 +19,16 @@ import {
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { communityKeys, getCommunity } from "@/features/community/api";
 import {
+  approveParticipation,
   cancelEvent,
   confirmEvent,
   eventKeys,
   getEvent,
   listCancelRequests,
   listParticipants,
+  rejectParticipation,
 } from "@/features/event/api";
-import { EVENT_STATUS_LABELS } from "@/features/event/types";
+import { EVENT_STATUS_LABELS, PARTICIPANT_STATUS_LABELS } from "@/features/event/types";
 import { listEventSessions, resultKeys } from "@/features/result/api";
 import { GAME_TYPE_LABELS } from "@/features/user/types";
 import { useAuthUser } from "@/features/auth/useAuthUser";
@@ -39,6 +42,8 @@ export function EventDetailPage() {
   const handleApiError = useApiErrorToast();
   const { userId } = useAuthUser();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   const { data: event, isLoading } = useQuery({
     queryKey: eventKeys.detail(eventId!),
@@ -80,7 +85,12 @@ export function EventDetailPage() {
     mutationFn: () => confirmEvent(eventId!),
     onSuccess: (updated) => {
       queryClient.setQueryData(eventKeys.detail(eventId!), updated);
-      toast.success("イベントを承認しました");
+      queryClient.invalidateQueries({ queryKey: eventKeys.participants(eventId!) });
+      toast.success(
+        updated.status === "CONFIRMED"
+          ? "イベントを仮確定しました。全員が自動承認済みのため、そのまま確定しました"
+          : "イベントを仮確定しました。参加予定者全員の承認を待っています",
+      );
     },
     onError: handleApiError,
   });
@@ -93,6 +103,34 @@ export function EventDetailPage() {
     },
     onError: handleApiError,
     onSettled: () => setShowCancelConfirm(false),
+  });
+
+  const approveParticipationMutation = useMutation({
+    mutationFn: () => approveParticipation(eventId!),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId!) });
+      queryClient.invalidateQueries({ queryKey: eventKeys.participants(eventId!) });
+      toast.success(
+        result.eventStatus === "CONFIRMED"
+          ? "参加を承認しました。全員の承認が完了し、イベントが確定しました"
+          : "参加を承認しました",
+      );
+    },
+    onError: handleApiError,
+  });
+
+  const rejectParticipationMutation = useMutation({
+    mutationFn: () => rejectParticipation(eventId!, rejectReason || undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId!) });
+      queryClient.invalidateQueries({ queryKey: eventKeys.participants(eventId!) });
+      toast.success("参加を辞退しました。管理者に通知されます");
+    },
+    onError: handleApiError,
+    onSettled: () => {
+      setShowRejectConfirm(false);
+      setRejectReason("");
+    },
   });
 
   if (isLoading) {
@@ -110,6 +148,9 @@ export function EventDetailPage() {
   const isAdmin = community?.role === "OWNER" || community?.role === "ADMIN";
   const myParticipant = participants?.find((p) => p.userId === userId);
   const pendingCancelCount = (cancelRequests ?? []).filter((r) => r.status === "PENDING").length;
+  const confirmedParticipantCount = (participants ?? []).filter(
+    (p) => p.status === "CONFIRMED",
+  ).length;
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -145,9 +186,7 @@ export function EventDetailPage() {
                 <span>{participant.nickname}</span>
               )}
               {participant.status !== "CONFIRMED" && (
-                <Badge variant="outline">
-                  {participant.status === "CANCEL_REQUESTED" ? "離脱申請中" : "離脱済み"}
-                </Badge>
+                <Badge variant="outline">{PARTICIPANT_STATUS_LABELS[participant.status]}</Badge>
               )}
             </div>
           ))}
@@ -156,8 +195,34 @@ export function EventDetailPage() {
 
       {event.status === "PENDING_APPROVAL" && isAdmin && (
         <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
-          このイベントを承認する
+          このイベントを仮確定する
         </Button>
+      )}
+
+      {event.status === "AWAITING_MEMBER_APPROVAL" &&
+        myParticipant?.status === "AWAITING_APPROVAL" && (
+          <div className="flex flex-col gap-2">
+            <Button
+              onClick={() => approveParticipationMutation.mutate()}
+              disabled={approveParticipationMutation.isPending}
+            >
+              参加を承認する
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowRejectConfirm(true)}
+              disabled={rejectParticipationMutation.isPending}
+            >
+              参加を辞退する
+            </Button>
+          </div>
+        )}
+
+      {event.status === "AWAITING_MEMBER_APPROVAL" && isAdmin && (
+        <p className="text-muted-foreground text-sm">
+          参加予定者全員の承認をお待ちください（{confirmedParticipantCount}/
+          {(participants ?? []).length}人が承認済み）
+        </p>
       )}
 
       {event.status === "CONFIRMED" && myParticipant?.status === "CONFIRMED" && (
@@ -232,6 +297,30 @@ export function EventDetailPage() {
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction onClick={() => cancelMutation.mutate()}>
               中止する
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showRejectConfirm} onOpenChange={setShowRejectConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>参加を辞退しますか？</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className="flex flex-col gap-2 px-4">
+            <p className="text-muted-foreground text-sm">
+              辞退すると、管理者の承認を待たず即座に確定します。イベント自体は自動では中止されず、継続するかどうかは管理者の判断に委ねられます。
+            </p>
+            <Textarea
+              placeholder="辞退理由（任意）"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 px-4 pb-4">
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => rejectParticipationMutation.mutate()}>
+              辞退する
             </AlertDialogAction>
           </div>
         </AlertDialogContent>

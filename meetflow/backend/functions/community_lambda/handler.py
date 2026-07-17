@@ -22,6 +22,10 @@ _ROUTES = {
         "/communities/{communityId}/members/me/display-name",
     ): members.update_my_display_name,
     (
+        "PUT",
+        "/communities/{communityId}/members/me/auto-approve",
+    ): members.update_my_auto_approve,
+    (
         "GET",
         "/communities/{communityId}/join-requests",
     ): join_requests.list_join_requests,
