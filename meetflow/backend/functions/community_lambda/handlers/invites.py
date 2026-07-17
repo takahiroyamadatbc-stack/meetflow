@@ -86,6 +86,43 @@ def revoke_invite(user_id, event):
     return success_response({"token": token, "communityId": community_id, "revoked": True})
 
 
+def get_invite_preview(user_id, event):
+    """GET /invites/{token}（API設計書v1.14 §4.3c、新規）: 招待受諾画面
+    （InviteAcceptPage）が承認要否を事前判定するためのプレビューAPI
+    （Issue #23）。対象コミュニティへの所属は要求しない（招待未受諾の
+    呼び出し元が使うAPIのため）。承認要否はjoin_via_inviteと同じ条件
+    （`memberApprovalRequired`または`createdByRole == "MEMBER"`）で判定
+    する。
+    """
+    token = event["pathParameters"]["token"]
+    table = get_table()
+    invite = table.get_item(Key={"PK": f"INVITE#{token}", "SK": "METADATA"}).get("Item")
+    if invite is None:
+        return error_response("INVITE_NOT_FOUND", "招待URLが存在しません", status_code=404)
+    if invite.get("revoked"):
+        return error_response(
+            "INVITE_REVOKED", "招待URLが無効化されています", status_code=410
+        )
+
+    community_id = invite["communityId"]
+    community = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
+    ).get("Item")
+    if community is None:
+        return error_response("COMMUNITY_NOT_FOUND", "コミュニティが見つかりません")
+
+    approval_required = bool(community.get("memberApprovalRequired")) or (
+        invite.get("createdByRole") == "MEMBER"
+    )
+    return success_response(
+        {
+            "communityId": community_id,
+            "communityName": community.get("name"),
+            "approvalRequired": approval_required,
+        }
+    )
+
+
 def join_via_invite(user_id, event):
     """F-103（API設計書v1.13 §4.4）: コミュニティの`memberApprovalRequired`
     フラグ（要件定義書v1.2 §10.1）、または招待発行者がMEMBERロールだった

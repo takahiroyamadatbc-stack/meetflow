@@ -6,6 +6,7 @@ import type {
   CommunitySummary,
   CreateCommunityInput,
   CreatePlaceInput,
+  InvitePreview,
   JoinRequest,
   Place,
   UpdateMemberInput,
@@ -74,6 +75,11 @@ export function deleteCommunity(communityId: string) {
 /** POST /communities/{communityId}/invite */
 export function createInvite(communityId: string) {
   return apiClient.post<{ url: string }>(`/communities/${communityId}/invite`);
+}
+
+/** GET /invites/{token}（Issue #23：招待受諾画面が承認要否を事前判定するためのプレビューAPI） */
+export function getInvitePreview(token: string) {
+  return apiClient.get<InvitePreview>(`/invites/${token}`);
 }
 
 /** POST /invites/{token}/join */

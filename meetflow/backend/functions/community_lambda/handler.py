@@ -13,6 +13,7 @@ _ROUTES = {
     ("PUT", "/communities/{communityId}/theme-color"): communities.update_theme_color,
     ("POST", "/communities/{communityId}/owner-transfer"): communities.transfer_owner,
     ("POST", "/communities/{communityId}/invite"): invites.create_invite,
+    ("GET", "/invites/{token}"): invites.get_invite_preview,
     ("POST", "/invites/{token}/join"): invites.join_via_invite,
     ("POST", "/invites/{token}/revoke"): invites.revoke_invite,
     ("GET", "/communities/{communityId}/members"): members.list_members,
