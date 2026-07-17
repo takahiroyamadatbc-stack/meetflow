@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.8
+# MeetFlow エラーコード一覧 v1.9
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。v1.5→v1.6はAPI設計書v1.12で追加された参加承認・辞退のエンドポイントを踏まえて更新。v1.6→v1.7はAPI設計書v1.13で招待URL発行・無効化の権限が変更されたこと（Issue #22）を踏まえて更新。v1.7→v1.8はAPI設計書v1.16で追加されたメンバー自主退会のエンドポイントを踏まえて更新。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。v1.5→v1.6はAPI設計書v1.12で追加された参加承認・辞退のエンドポイントを踏まえて更新。v1.6→v1.7はAPI設計書v1.13で招待URL発行・無効化の権限が変更されたこと（Issue #22）を踏まえて更新。v1.7→v1.8はAPI設計書v1.16で追加されたメンバー自主退会のエンドポイントを踏まえて更新。v1.8→v1.9はAPI設計書v1.17で追加されたFeedback/Announcement APIを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -138,13 +138,25 @@
 
 ---
 
+## 9b. Feedback / Announcement ドメイン **[v1.9新規]**
+
+| コード | HTTPステータス | 内容 | 発生API |
+|---|---|---|---|
+| `FEEDBACK_NOT_FOUND` | 404 | 指定したフィードバックが存在しない | `GET /feedback/{id}`, `PATCH /feedback/{id}` |
+| `FEEDBACK_VALIDATION_ERROR` | 400 | `kind`と`rating`/`category`の組み合わせ不正（例：`kind=QUICK`なのに`category`を指定）等 | `POST /feedback` |
+| `ANNOUNCEMENT_NOT_FOUND` | 404 | 指定したアップデート予告が存在しない | `PUT /announcements/{id}` |
+
+> **[v1.9新規]** 運営者限定エンドポイント（`GET/PATCH /feedback`系、`POST/PUT /announcements`系）で運営者（Operators）でないユーザーがアクセスした場合は、専用コードを新設せず既存の共通`FORBIDDEN`（1章）を流用する。
+
+---
+
 ## 10. フロントエンド表示方針との対応
 
 画面設計書v1.2 1章のエラー表示方針に沿って、コードごとの表示形式を分類する。
 
 | 表示形式 | 該当するエラーコードの傾向 |
 |---|---|
-| インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR`, `DISPLAY_NAME_ALREADY_TAKEN`（**[v1.3追加]**）, `FREQUENCY_LIMIT_VALIDATION_ERROR`（**[v1.5追加]**） |
+| インライン（フォーム項目の下） | `INVALID_PARAMETER`, `INVALID_TIME_RANGE`, `INVALID_PLAYER_RANGE`, `RESULT_VALIDATION_ERROR`, `PROFILE_VALIDATION_ERROR`, `DISPLAY_NAME_ALREADY_TAKEN`（**[v1.3追加]**）, `FREQUENCY_LIMIT_VALIDATION_ERROR`（**[v1.5追加]**）, `FEEDBACK_VALIDATION_ERROR`（**[v1.9追加]**） |
 | トースト（一時的なエラー） | `INTERNAL_ERROR`, `AVAILABILITY_OVERLAP`, `ALREADY_MEMBER`, `JOIN_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PENDING`, `CANCEL_REQUEST_ALREADY_PROCESSED`, `CANDIDATE_ALREADY_USED`, `EVENT_ALREADY_CONFIRMED`, `EVENT_ALREADY_CANCELLED`, `PARTICIPANT_ALREADY_RESPONDED`（**[v1.6追加]**） |
 | モーダル（明示的な操作が必要） | `UNAUTHORIZED`（再ログイン誘導）, `FORBIDDEN`（権限不足の説明）, **`PARTICIPANT_SCHEDULE_CONFLICT`（承認をブロックした理由の明示、[v1.1追加]）**, **`MEMBER_HAS_UPCOMING_EVENTS`（退会をブロックした理由の明示、[v1.8追加]）** |
 | 空状態画面 | `NO_CANDIDATES_FOUND`, 各種`*_NOT_FOUND`（削除済みリソースへのアクセス） |
@@ -233,3 +245,13 @@
 | 1 | Communityドメインに`MEMBER_HAS_UPCOMING_EVENTS`（409）を新規追加 | Issue #25：メンバー自主退会機能の新設。未来の確定イベント参加が残っている場合のブロック判定 |
 | 2 | `MEMBER_HAS_UPCOMING_EVENTS`の発生APIに管理者による強制退会（`PUT .../members/{userId}`のremove指定）を追加（新規コードなし、自主退会と同じコードを流用） | Issue #26：強制退会が同チェックを欠いていた抜け穴の解消 |
 | 3 | フロントエンド表示方針表のモーダル欄に`MEMBER_HAS_UPCOMING_EVENTS`を追加 | 上記No.1と同一の決定事項 |
+
+---
+
+## v1.8 → v1.9 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | 9b章「Feedback / Announcement ドメイン」を新規追加。`FEEDBACK_NOT_FOUND`（404）・`FEEDBACK_VALIDATION_ERROR`（400）・`ANNOUNCEMENT_NOT_FOUND`（404）を新規追加 | Issue #34：フィードバック機能の設計書追加。API設計書v1.17 §12b/§12c |
+| 2 | 運営者限定エンドポイントへの非運営者アクセスは、専用コードを新設せず既存の共通`FORBIDDEN`を流用する旨を明記 | 上記と同一の決定事項 |
+| 3 | フロントエンド表示方針表のインライン欄に`FEEDBACK_VALIDATION_ERROR`を追加 | 上記No.1と同一の決定事項 |
