@@ -98,6 +98,12 @@ def get_community(user_id, event):
     Membership（require_membershipの戻り値）からroleを取得できるため、
     一覧(list_communities)には無いroleとmemberApprovalRequiredの両方を
     レスポンスに含められる。
+
+    `pendingRequestCount`（Issue #29）：JOINREQ#プレフィックスをクエリし
+    PENDING件数をカウントする。管理者向けのバッジ表示用の値だが、
+    `list_join_requests`と同じクエリ+クライアント側フィルタパターンを
+    踏襲し、ロールを問わず常に計算・返却する（フロント側でisAdminの
+    場合のみバッジとして描画する）。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -109,6 +115,16 @@ def get_community(user_id, event):
     if community is None:
         return error_response("COMMUNITY_NOT_FOUND", "コミュニティが見つかりません")
 
+    join_requests_resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
+        & Key("SK").begins_with("JOINREQ#")
+    )
+    pending_request_count = sum(
+        1
+        for item in join_requests_resp.get("Items", [])
+        if item.get("status") == "PENDING"
+    )
+
     return success_response(
         {
             "communityId": community_id,
@@ -118,6 +134,7 @@ def get_community(user_id, event):
             "memberApprovalRequired": community.get("memberApprovalRequired", False),
             "themeColor": community.get("themeColor"),
             "role": membership.get("role"),
+            "pendingRequestCount": pending_request_count,
         }
     )
 

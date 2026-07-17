@@ -3,7 +3,7 @@ from meetflow_common import AuthError
 
 from handlers import communities
 
-from _factories import api_event, body_of, put_community, put_membership
+from _factories import api_event, body_of, put_community, put_join_request, put_membership
 
 
 def test_create_community_success(table):
@@ -63,7 +63,33 @@ def test_get_community_success(table):
         "memberApprovalRequired": True,
         "themeColor": None,
         "role": "OWNER",
+        "pendingRequestCount": 0,
     }
+
+
+def test_get_community_pending_request_count_zero_when_none(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.get_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert body_of(response)["data"]["pendingRequestCount"] == 0
+
+
+def test_get_community_pending_request_count_counts_only_pending(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_join_request(table, "community-1", "user-2", status="PENDING")
+    put_join_request(table, "community-1", "user-3", status="PENDING")
+    put_join_request(table, "community-1", "user-4", status="APPROVED")
+
+    response = communities.get_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert body_of(response)["data"]["pendingRequestCount"] == 2
 
 
 def test_get_community_forbidden_for_non_member(table):
