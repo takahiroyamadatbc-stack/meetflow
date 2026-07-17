@@ -93,6 +93,14 @@ export function CommunityDetailPage() {
           label="テーマカラーを変更"
         />
       )}
+      <NavCard to={paths.communityInvite(community.communityId)} label="メンバーを招待する" />
+      {isAdmin && (
+        <NavCard
+          to={paths.communityJoinRequests(community.communityId)}
+          label="参加リクエスト一覧"
+          badgeCount={community.pendingRequestCount}
+        />
+      )}
 
       <Accordion className="flex flex-col gap-2">
         <AccordionItem value="member">
@@ -100,6 +108,14 @@ export function CommunityDetailPage() {
           <AccordionContent>
             <div className="flex flex-col gap-3">
               <NavCard to={paths.communityMembers(community.communityId)} label="メンバー一覧" />
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="settings">
+          <AccordionTrigger>設定</AccordionTrigger>
+          <AccordionContent>
+            <div className="flex flex-col gap-3">
               <NavCard
                 to={paths.communityDisplayNameEdit(community.communityId)}
                 label="このコミュニティでの表示名を変更"
@@ -112,18 +128,6 @@ export function CommunityDetailPage() {
                 to={paths.communityFrequencyLimitEdit(community.communityId)}
                 label="このコミュニティでの参加頻度上限を変更"
               />
-              {isAdmin && (
-                <>
-                  <NavCard
-                    to={paths.communityInvite(community.communityId)}
-                    label="メンバーを招待する"
-                  />
-                  <NavCard
-                    to={paths.communityJoinRequests(community.communityId)}
-                    label="参加リクエスト一覧"
-                  />
-                </>
-              )}
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -203,12 +207,23 @@ export function CommunityDetailPage() {
   );
 }
 
-function NavCard({ to, label }: { to: string; label: string }) {
+function NavCard({
+  to,
+  label,
+  badgeCount,
+}: {
+  to: string;
+  label: string;
+  badgeCount?: number;
+}) {
   return (
     <Link to={to}>
       <Card>
         <CardContent className="flex items-center justify-between">
-          <span className="text-sm">{label}</span>
+          <span className="flex items-center gap-2 text-sm">
+            {label}
+            {!!badgeCount && <Badge variant="destructive">{badgeCount}</Badge>}
+          </span>
           <ChevronRight className="text-muted-foreground size-4" />
         </CardContent>
       </Card>
