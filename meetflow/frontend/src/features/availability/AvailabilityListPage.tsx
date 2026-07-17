@@ -192,9 +192,12 @@ function AvailabilityRowCard({
             {format(parseISO(availability.startTime), "HH:mm")} -{" "}
             {format(parseISO(availability.endTime), "HH:mm")}
           </p>
-          <Link to={paths.availabilityCalendar(community.communityId)}>
-            <Badge variant="outline">{community.name}</Badge>
-          </Link>
+          <div className="flex items-center gap-1">
+            <Badge variant="secondary">空き予定</Badge>
+            <Link to={paths.availabilityCalendar(community.communityId)}>
+              <Badge variant="outline">{community.name}</Badge>
+            </Link>
+          </div>
         </div>
         {availability.gameTypes.length > 0 && (
           <div className="flex gap-1">
@@ -222,6 +225,7 @@ function ScheduleDayButton({
 }: React.ComponentProps<typeof DayButton> & { markersByDate: Map<string, DayMarker[]> }) {
   const dateKey = format(day.date, "yyyy-MM-dd");
   const markers = markersByDate.get(dateKey) ?? [];
+  const hasConfirmed = markers.some((m) => m.kind === "confirmed");
 
   return (
     <Button
@@ -234,7 +238,9 @@ function ScheduleDayButton({
       )}
       {...props}
     >
-      <span>{day.date.getDate()}</span>
+      <span className={cn(hasConfirmed && "text-primary font-bold data-[selected-single=true]:text-primary-foreground")} data-selected-single={modifiers.selected}>
+        {day.date.getDate()}
+      </span>
       {markers.length > 0 && (
         <span className="flex flex-col items-center gap-0.5">
           {markers.slice(0, 3).map((marker, i) => (
