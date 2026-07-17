@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuthUser } from "@/features/auth/useAuthUser";
+import { consumePendingInvitePath } from "@/features/auth/pendingInvite";
 import { paths } from "@/routes/paths";
 import brandIcon from "@/assets/brand/meetflow-icon-v2.svg";
 
@@ -23,7 +24,11 @@ export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
   }
 
   if (status === "authenticated") {
-    return <Navigate to={paths.home} replace />;
+    // LoginPage/ConfirmSignUpPage側のonSubmitでも同じsessionStorageを消費して
+    // 招待ページへ遷移しようとするが、getCurrentAuthUser()完了を待つ本コンポーネントの
+    // 判定はそれより後に確定しやすく、先に消費済みなら以下はnullを受けてhomeへ
+    // フォールバックするだけになる（詳細はIssue #32参照）。
+    return <Navigate to={consumePendingInvitePath() ?? paths.home} replace />;
   }
 
   return <>{children}</>;
