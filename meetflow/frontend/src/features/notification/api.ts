@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
 import type { NotificationItem } from "@/features/notification/types";
@@ -35,5 +36,21 @@ export function unregisterPushSubscription(endpoint: string) {
 /** タブバー・ホーム画面共通の未読件数。通知一覧と同じキャッシュを共有する */
 export function useUnreadNotificationCount() {
   const { data } = useQuery({ queryKey: notificationKeys.all, queryFn: listNotifications });
-  return data?.filter((n) => !n.read).length ?? 0;
+  const count = data?.filter((n) => !n.read).length ?? 0;
+
+  // Issue #50: 未読件数をPWAのホーム画面アイコンにOSレベルのバッジとして
+  // 反映する。Badging APIの対応可否はブラウザ・OSに依存するため呼び出し前に
+  // 存在チェックする（未対応環境では何もしない）。
+  useEffect(() => {
+    if (!("setAppBadge" in navigator)) {
+      return;
+    }
+    if (count > 0) {
+      navigator.setAppBadge(count).catch(() => {});
+    } else {
+      navigator.clearAppBadge?.().catch(() => {});
+    }
+  }, [count]);
+
+  return count;
 }
