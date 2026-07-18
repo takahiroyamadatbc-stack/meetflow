@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -307,20 +308,32 @@ function buildHanchanDefaults(
         returnPoints: 30000,
         umaByRank: [0, 0, 0, 0],
       };
+  // 参加者選択チェックボックスの初期値（左詰めで対象人数分）と揃える。
+  const defaultParticipantIds = new Set(
+    rows.slice(0, expectedPlayerCount(base.gameType)).map((r) => r.userId),
+  );
   return {
     gameType: base.gameType,
     calcMode: base.calcMode,
     startingPoints: base.startingPoints,
     returnPoints: base.returnPoints,
     umaByRank: [0, 1, 2, 3].map((i) => base.umaByRank[i] ?? 0),
-    rows: rows.map((r) => ({ userId: r.userId, nickname: r.nickname, score: "", chipCount: 0 })),
+    rows: rows.map((r) => ({
+      userId: r.userId,
+      nickname: r.nickname,
+      // 自動計算モードでは、参加者としてデフォルトで選ばれている人の点数欄に
+      // 配給原点をあらかじめ入力しておく（手動計算モードでは空欄のまま）。
+      score: base.calcMode === "AUTO" && defaultParticipantIds.has(r.userId) ? base.startingPoints : "",
+      chipCount: 0,
+    })),
   };
 }
 
 /**
- * イベント参加者全員をカラムとして常時表示し、点数が入力された人だけを
- * その半荘の参加者として扱う（卓の事前選択UIは持たない）。送信後は画面遷移せず
- * 点数欄だけをクリアして、続けて次の半荘を入力できるようにする。
+ * イベント参加者全員をカラムとして常時表示する。参加者数がゲーム種別の対象人数
+ * （四麻=4人・三麻=3人）以下ならその半荘の参加者は全員固定、対象人数を超える
+ * 場合のみ参加者選択チェックボックスを表示し、対象人数ぶんだけ選べるようにする。
+ * 送信後は画面遷移せず点数欄だけをクリアして、続けて次の半荘を入力できるようにする。
  */
 function HanchanEntryForm({
   eventId,
@@ -334,9 +347,10 @@ function HanchanEntryForm({
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
 
+  const defaultValues = buildHanchanDefaults(rows, lastSettings);
   const form = useForm<HanchanFormInput, unknown, HanchanFormValues>({
     resolver: zodResolver(hanchanSchema),
-    defaultValues: buildHanchanDefaults(rows, lastSettings),
+    defaultValues,
   });
   /** 点数が同点になった場合の並び順（先頭ほど上位）。既定は参加者一覧の並び順。 */
   const [tieOrder, setTieOrder] = useState<string[]>(() => rows.map((r) => r.userId));
@@ -359,10 +373,57 @@ function HanchanEntryForm({
   const umaByRank = form.watch("umaByRank");
 
   const expectedCount = expectedPlayerCount(gameType);
+  const needsSelection = rows.length > expectedCount;
+  /** 参加者数が対象人数を超える場合のみ使う、この半荘に参加するメンバーの選択状態。 */
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>(() =>
+    rows.slice(0, expectedPlayerCount(defaultValues.gameType)).map((r) => r.userId),
+  );
+
+  const fillDefaultScore = (userId: string) => {
+    if (calcMode !== "AUTO") return;
+    const index = rows.findIndex((r) => r.userId === userId);
+    if (index === -1) return;
+    form.setValue(`rows.${index}.score`, numeric(startingPoints));
+  };
+
+  const toggleParticipant = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      if (prev.includes(userId)) {
+        return prev.filter((id) => id !== userId);
+      }
+      if (prev.length >= expectedCount) {
+        // 対象人数に達している場合は追加できない（先に他の人のチェックを外す）
+        return prev;
+      }
+      return [...prev, userId];
+    });
+    fillDefaultScore(userId);
+  };
+
+  /** ゲーム種別が変わったら対象人数も変わるため、選択を左詰めの初期状態に戻す。 */
+  const handleGameTypeChange = (nextGameType: GameType) => {
+    form.setValue("gameType", nextGameType);
+    setSelectedUserIds(rows.slice(0, expectedPlayerCount(nextGameType)).map((r) => r.userId));
+  };
+
+  /** 手動計算→自動計算に切り替えた瞬間、参加中の全員の点数欄に配給原点を入力する。 */
+  const handleCalcModeChange = (nextCalcMode: CalcMode) => {
+    form.setValue("calcMode", nextCalcMode);
+    if (nextCalcMode === "AUTO") {
+      const participantIds = needsSelection ? selectedUserIds : rows.map((r) => r.userId);
+      rows.forEach((r, index) => {
+        if (participantIds.includes(r.userId)) {
+          form.setValue(`rows.${index}.score`, numeric(form.getValues("startingPoints")));
+        }
+      });
+    }
+  };
+
+  const participantIds = needsSelection ? selectedUserIds : rows.map((r) => r.userId);
   const filled = watchedRows
     .map((r, index) => ({ ...r, index }))
-    .filter((r) => isFilledScore(r.score));
-  const participantCountWarning = filled.length > expectedCount;
+    .filter((r) => participantIds.includes(r.userId));
+  const participantCountWarning = filled.length !== expectedCount;
 
   const liveResults = computeLiveResults(
     filled.map((r) => ({ userId: r.userId, nickname: r.nickname, score: numeric(r.score) })),
@@ -382,7 +443,7 @@ function HanchanEntryForm({
 
   const mutation = useMutation({
     mutationFn: (values: HanchanFormValues) => {
-      const filledValues = values.rows.filter((r) => isFilledScore(r.score));
+      const filledValues = values.rows.filter((r) => participantIds.includes(r.userId));
       const orderedResults = sortByTieOrder(
         filledValues.map((r) => ({ userId: r.userId, score: r.score as number })),
         tieOrder,
@@ -405,11 +466,28 @@ function HanchanEntryForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: resultKeys.eventSessions(eventId) });
       toast.success("半荘の成績を登録しました。続けて次の半荘を入力できます。");
+      // ゲーム種別・計算方法・配給原点は今回の入力値を引き継いだまま、
+      // 点数欄と参加者選択だけを次の半荘用にリセットする。
+      const currentGameType = form.getValues("gameType");
+      const currentCalcMode = form.getValues("calcMode");
+      const currentStartingPoints = form.getValues("startingPoints");
+      const nextSelected = rows
+        .slice(0, expectedPlayerCount(currentGameType))
+        .map((r) => r.userId);
       form.setValue(
         "rows",
-        rows.map((r) => ({ userId: r.userId, nickname: r.nickname, score: "", chipCount: 0 })),
+        rows.map((r) => ({
+          userId: r.userId,
+          nickname: r.nickname,
+          score:
+            currentCalcMode === "AUTO" && nextSelected.includes(r.userId)
+              ? currentStartingPoints
+              : "",
+          chipCount: 0,
+        })),
       );
       setTieOrder(rows.map((r) => r.userId));
+      setSelectedUserIds(nextSelected);
     },
     onError: (err) => {
       if (err instanceof ApiError && getErrorDisplay(err.code) === "inline") {
@@ -421,8 +499,15 @@ function HanchanEntryForm({
   });
 
   const onSubmit = (values: HanchanFormValues) => {
-    if (!values.rows.some((r) => isFilledScore(r.score))) {
+    if (participantIds.length === 0) {
       toast.error("少なくとも1人分の点数を入力してください");
+      return;
+    }
+    const missingScore = values.rows.some(
+      (r) => participantIds.includes(r.userId) && !isFilledScore(r.score),
+    );
+    if (missingScore) {
+      toast.error("参加者として選ばれている人の点数が未入力です");
       return;
     }
     mutation.mutate(values);
@@ -444,7 +529,7 @@ function HanchanEntryForm({
                       key={gt}
                       type="button"
                       variant={field.value === gt ? "default" : "outline"}
-                      onClick={() => field.onChange(gt)}
+                      onClick={() => handleGameTypeChange(gt)}
                     >
                       {GAME_TYPE_LABELS[gt]}
                     </Button>
@@ -466,7 +551,7 @@ function HanchanEntryForm({
                       key={mode.value}
                       type="button"
                       variant={field.value === mode.value ? "default" : "outline"}
-                      onClick={() => field.onChange(mode.value)}
+                      onClick={() => handleCalcModeChange(mode.value)}
                     >
                       {mode.label}
                     </Button>
@@ -532,7 +617,9 @@ function HanchanEntryForm({
           <div>
             <p className="mb-1 text-sm font-medium">点数</p>
             <p className="text-muted-foreground mb-2 text-xs">
-              この半荘に実際に参加した{expectedCount}人分だけ点数を入力してください（空欄の人は参加していないものとして扱われます）。
+              {needsSelection
+                ? `この半荘に参加した${expectedCount}人にチェックを入れて点数を入力してください。`
+                : `この半荘の参加者${rows.length}人分の点数を入力してください。`}
             </p>
             <div className="overflow-x-auto">
               <Table>
@@ -547,32 +634,54 @@ function HanchanEntryForm({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {needsSelection && (
+                    <TableRow>
+                      <TableCell className="font-medium">参加</TableCell>
+                      {rows.map((r) => {
+                        const checked = selectedUserIds.includes(r.userId);
+                        return (
+                          <TableCell key={r.userId}>
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleParticipant(r.userId)}
+                              disabled={!checked && selectedUserIds.length >= expectedCount}
+                            />
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  )}
                   <TableRow>
                     <TableCell className="font-medium">点数</TableCell>
-                    {rows.map((r, index) => (
-                      <TableCell key={r.userId}>
-                        <FormField
-                          control={form.control}
-                          name={`rows.${index}.score`}
-                          render={({ field }) => (
-                            <Input
-                              type="number"
-                              {...field}
-                              value={field.value as number | string}
-                              placeholder="不参加"
-                            />
-                          )}
-                        />
-                      </TableCell>
-                    ))}
+                    {rows.map((r, index) => {
+                      const isParticipant = participantIds.includes(r.userId);
+                      return (
+                        <TableCell key={r.userId}>
+                          <FormField
+                            control={form.control}
+                            name={`rows.${index}.score`}
+                            render={({ field }) => (
+                              <Input
+                                type="number"
+                                {...field}
+                                value={field.value as number | string}
+                                placeholder="不参加"
+                                disabled={needsSelection && !isParticipant}
+                              />
+                            )}
+                          />
+                        </TableCell>
+                      );
+                    })}
                   </TableRow>
                 </TableBody>
               </Table>
             </div>
             {participantCountWarning && (
               <p className="mt-2 text-sm text-amber-600">
-                点数が入力されている人が{filled.length}人います（{GAME_TYPE_LABELS[gameType]}は
-                {expectedCount}人です）。入力内容をご確認ください（登録は可能です）。
+                {needsSelection
+                  ? `参加者として選択されている人が${filled.length}人です（${GAME_TYPE_LABELS[gameType]}は${expectedCount}人必要です）。チェックをご確認ください。`
+                  : `この半荘の参加者が${filled.length}人です（${GAME_TYPE_LABELS[gameType]}は${expectedCount}人必要です）。入力内容をご確認ください（登録は可能です）。`}
               </p>
             )}
             {scoreMismatch && (
