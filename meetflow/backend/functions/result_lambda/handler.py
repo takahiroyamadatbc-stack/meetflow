@@ -7,6 +7,7 @@ _ROUTES = {
     ("POST", "/events/{eventId}/sessions"): results.create_session,
     ("GET", "/events/{eventId}/sessions"): results.list_event_sessions,
     ("PUT", "/events/{eventId}/sessions/{sessionNo}"): results.update_session,
+    ("DELETE", "/events/{eventId}/sessions/{sessionNo}"): results.delete_session,
     (
         "GET",
         "/communities/{communityId}/game-sessions/last-settings",

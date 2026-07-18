@@ -27,6 +27,13 @@ export function updateSession(eventId: string, sessionNo: string, input: Session
   );
 }
 
+/** DELETE /events/{eventId}/sessions/{sessionNo} */
+export function deleteSession(eventId: string, sessionNo: string) {
+  return apiClient.delete<{ eventId: string; sessionNo: string }>(
+    `/events/${eventId}/sessions/${sessionNo}`,
+  );
+}
+
 /** GET /events/{eventId}/sessions */
 export function listEventSessions(eventId: string) {
   return apiClient
