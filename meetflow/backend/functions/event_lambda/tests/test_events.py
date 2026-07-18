@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
-from meetflow_common import EVENT_AWAITING_APPROVAL, EVENT_CONFIRMED
+import pytest
+
+from meetflow_common import AuthError, EVENT_AWAITING_APPROVAL, EVENT_CONFIRMED
 
 from handlers import events
 
@@ -469,6 +471,66 @@ def test_cancel_event_completed_cannot_be_cancelled(table):
     put_event_status(table, event_id, "COMPLETED")
 
     response = events.cancel_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
+
+
+def _create_confirmed_event(table):
+    event_id = _create_pending_event(table)
+    for uid in ("user-1", "user-2", "user-3", "user-4"):
+        put_profile(table, uid, auto_approve=True)
+    events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+    return event_id
+
+
+def test_complete_event_success(table):
+    """本日の対局を終了する（Issue #20：長らく未実装だったCOMPLETED遷移）。
+    OWNER/ADMINがCONFIRMED状態のイベントを終了させるとCOMPLETEDになる。
+    """
+    event_id = _create_confirmed_event(table)
+
+    with patch.object(events, "put_event") as mock_put_event:
+        response = events.complete_event(
+            "user-1", api_event(path_params={"eventId": event_id})
+        )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["status"] == "COMPLETED"
+    stored = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"})["Item"]
+    assert stored["status"] == "COMPLETED"
+    mock_put_event.assert_called_once()
+
+
+def test_complete_event_requires_admin_role(table):
+    event_id = _create_confirmed_event(table)
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    with pytest.raises(AuthError) as exc_info:
+        events.complete_event(
+            "user-2", api_event(path_params={"eventId": event_id})
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_complete_event_rejects_non_confirmed_status(table):
+    event_id = _create_pending_event(table)
+
+    response = events.complete_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
+
+
+def test_complete_event_already_completed(table):
+    event_id = _create_confirmed_event(table)
+    events.complete_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    response = events.complete_event(
         "user-1", api_event(path_params={"eventId": event_id})
     )
 

@@ -44,6 +44,11 @@ export function cancelEvent(eventId: string) {
   return apiClient.post<{ eventId: string; status: "CANCELLED" }>(`/events/${eventId}/cancel`);
 }
 
+/** POST /events/{eventId}/complete（本日の対局を終了し、成績をコミュニティの通算成績に反映する） */
+export function completeEvent(eventId: string) {
+  return apiClient.post<{ eventId: string; status: "COMPLETED" }>(`/events/${eventId}/complete`);
+}
+
 /** GET /communities/{communityId}/events?status=... */
 export function listCommunityEvents(communityId: string, status?: string) {
   const query = status ? `?status=${status}` : "";

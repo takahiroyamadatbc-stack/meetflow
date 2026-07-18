@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.12
+# MeetFlow DynamoDB 物理テーブル設計書 v1.13
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -405,7 +405,7 @@ SK:   CANCELREQ#{userId}
 
 ---
 
-### 3.13 GameSession / GameResult
+### 3.13 GameSession / GameResult / GameResultChip **[v1.13修正]**
 
 ```
 GameSession
@@ -417,12 +417,22 @@ PK:      EVENT#{eventId}
 SK:      SESSION#{sessionNo}#RESULT#{userId}
 GSI1PK:  USER#{userId}
 GSI1SK:  COMMUNITY#{communityId}#{playedAt}
+
+GameResultChip
+PK:      EVENT#{eventId}
+SK:      SESSION#{sessionNo}#CHIP#{userId}
+GSI1PK:  USER#{userId}
+GSI1SK:  COMMUNITY#{communityId}#{playedAt}
 ```
 
 | 属性(GameSession) | 型 | 説明 |
 |---|---|---|
-| gameType | S | ゲーム種別 |
+| gameType | S | ゲーム種別（`MAHJONG4`/`MAHJONG3`） |
 | playedAt | S | 実施日時 |
+| calcMode | S | `AUTO`（ウマ・オカ自動計算）/`MANUAL`（点数のみ） **[v1.13追加、実装済みだが未文書化だった属性を反映]** |
+| startingPoints | N | 配給原点（calcMode=AUTOの場合のみ） **[v1.13追加]** |
+| returnPoints | N | 返し点（calcMode=AUTOの場合のみ） **[v1.13追加]** |
+| umaByRank | List\<N\> | 着順ごとのウマ（calcMode=AUTOの場合のみ） **[v1.13追加]** |
 
 | 属性(GameResult) | 型 | 説明 |
 |---|---|---|
@@ -430,12 +440,21 @@ GSI1SK:  COMMUNITY#{communityId}#{playedAt}
 | score | N | 点数 |
 | rankPoints | N | 順位点 |
 | playedAt | S | ISO8601（GSI1SKと同期） |
+| gameType | S | ゲーム種別（GameSessionから書き込み時に非正規化） **[v1.13新規]** |
+
+| 属性(GameResultChip) | 型 | 説明 |
+|---|---|---|
+| chipCount | N | チップ枚数 |
+| playedAt | S | ISO8601（GSI1SKと同期） |
+| gameType | S | ゲーム種別（GameSessionから書き込み時に非正規化） **[v1.13新規]** |
 
 **アクセスパターン**
 - イベント内の全セッション・結果取得：`PK=EVENT#{id}, SK begins_with SESSION#`
-- ユーザーの特定コミュニティ内の成績一覧：`GSI1PK=USER#{userId}, GSI1SK begins_with COMMUNITY#{communityId}`（API設計書10.2の権限方針「同一コミュニティ内でのみ閲覧可」をキー設計レベルで担保）
+- ユーザーの特定コミュニティ内の成績一覧：`GSI1PK=USER#{userId}, GSI1SK begins_with COMMUNITY#{communityId}`（API設計書10.2の権限方針「同一コミュニティ内でのみ閲覧可」をキー設計レベルで担保）。GameResultとGameResultChipはGSI1PK/GSI1SKのプレフィックスを共有するため、アプリ側はSKの`#RESULT#`/`#CHIP#`で判別する
 
 > F-801〜F-804に対応。ゲーム固有結果（ポーカーのBuy-in等）は`extra`属性（Map型）に格納し、基本キー構造は変えずに拡張する（F-902の設計方針）。
+>
+> **[v1.13追加]** `GameResult.gameType`/`GameResultChip.gameType`は、四麻と三麻で平均着順のスケールが異なり合算すると指標として意味を持たなくなる問題（ResultLambda `_aggregate`）に対応するために追加した。GameResultにはイベント/セッションの状態が保持されておらず`GameSession`への都度JOINが必要になるため、GSI1で1回のQueryのまま種別ごとに集計できるよう書き込み時に非正規化した（読み取り時に都度GameSessionを引く方式は、コミュニティの通算成績集計のような多件数アクセスパターンでは高コストになるため採用しない）。
 
 ---
 
@@ -849,3 +868,13 @@ GSI2SK:  {createdAt}#{announcementId}
 | 4 | 4章アクセスパターン一覧にNo.33〜35を追加 | 上記2エンティティのアクセスパターンを総括表にも反映 |
 | 5 | 7章の対応関係表に上記2エンティティを追加 | 整合性維持 |
 | 6 | 8章未決事項に、GSI2固定パーティション化に伴う将来のスケーリング検討事項を追加 | 投稿数が増えた場合のホットパーティション・肥大化リスクを明記 |
+
+---
+
+## 21. v1.12 → v1.13 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.13 GameSessionの属性表に`calcMode`/`startingPoints`/`returnPoints`/`umaByRank`を追加（新規属性ではなく、既に実装済みだったが本書に未反映だった属性の反映） | 実装（ResultLambda）と設計書の食い違いの解消。自動計算（ウマ・オカ）機能追加時に本書側の更新が漏れていた |
+| 2 | 3.13にGameResultChild（`GameResultChip`、SK=`SESSION#{sessionNo}#CHIP#{userId}`）を新規追加 | 同上。チップ集計機能追加時に本書側の更新が漏れていた |
+| 3 | 3.13 GameResult/GameResultChipに`gameType`属性を追加（書き込み時にGameSessionから非正規化） | Issue #20派生：四麻/三麻混在ユーザーの平均着順が意味を持たなくなる問題の解消。ResultLambda `_aggregate`をゲーム種別ごとに集計できるようにするため |

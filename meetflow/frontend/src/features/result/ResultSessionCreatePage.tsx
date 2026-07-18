@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -38,6 +39,7 @@ import {
   computeLiveResults,
   expectedPlayerCount,
   hasScoreMismatch,
+  sortByTieOrder,
 } from "@/features/result/calc";
 import type {
   CalcMode,
@@ -184,42 +186,56 @@ function EventResultsPage({
   nicknameByUserId: Map<string, string>;
   lastSettings?: LastGameSettings;
 }) {
-  const totals = aggregateSessionTotals(sessions, nicknameByUserId);
   const orderedSessions = [...sessions].sort(
     (a, b) => Number(a.sessionNo) - Number(b.sessionNo),
   );
+  const sessionsByGameType = GAME_TYPES.map((gt) => ({
+    gameType: gt,
+    totals: aggregateSessionTotals(
+      sessions.filter((s) => s.gameType === gt),
+      nicknameByUserId,
+    ),
+  })).filter((g) => g.totals.length > 0);
 
   return (
     <div className="flex flex-col gap-6 p-4">
-      <div>
-        <h2 className="mb-2 text-base font-semibold">当日の累計成績</h2>
-        {totals.length === 0 ? (
+      <div className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">当日の累計成績</h2>
+        <p className="text-muted-foreground -mt-2 text-xs">
+          四麻と三麻は着順の定義が異なるため、平均順位は種別ごとに分けて集計しています。
+        </p>
+        {sessionsByGameType.length === 0 ? (
           <p className="text-muted-foreground text-sm">まだ対局は登録されていません</p>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>参加者</TableHead>
-                  <TableHead>対局数</TableHead>
-                  <TableHead>合計ポイント</TableHead>
-                  <TableHead>平均順位</TableHead>
-                  <TableHead>チップ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {totals.map((t) => (
-                  <TableRow key={t.userId}>
-                    <TableCell>{t.nickname}</TableCell>
-                    <TableCell>{t.games}</TableCell>
-                    <TableCell>{t.totalRankPoints}</TableCell>
-                    <TableCell>{t.averageRank}</TableCell>
-                    <TableCell>{t.totalChips}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          sessionsByGameType.map(({ gameType, totals }) => (
+            <div key={gameType}>
+              <h3 className="mb-2 text-sm font-medium">{GAME_TYPE_LABELS[gameType]}</h3>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>参加者</TableHead>
+                      <TableHead>対局数</TableHead>
+                      <TableHead>合計ポイント</TableHead>
+                      <TableHead>平均順位</TableHead>
+                      <TableHead>チップ</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {totals.map((t) => (
+                      <TableRow key={t.userId}>
+                        <TableCell>{t.nickname}</TableCell>
+                        <TableCell>{t.games}</TableCell>
+                        <TableCell>{t.totalRankPoints}</TableCell>
+                        <TableCell>{t.averageRank}</TableCell>
+                        <TableCell>{t.totalChips}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ))
         )}
       </div>
 
@@ -248,12 +264,7 @@ function EventResultsPage({
 
       <div>
         <h2 className="mb-2 text-base font-semibold">半荘を追加</h2>
-        <HanchanEntryForm
-          eventId={eventId}
-          rows={rows}
-          isAdmin={isAdmin}
-          lastSettings={lastSettings}
-        />
+        <HanchanEntryForm eventId={eventId} rows={rows} lastSettings={lastSettings} />
       </div>
     </div>
   );
@@ -291,7 +302,7 @@ function buildHanchanDefaults(
       }
     : {
         gameType: "MAHJONG4" as GameType,
-        calcMode: "MANUAL" as CalcMode,
+        calcMode: "AUTO" as CalcMode,
         startingPoints: 25000,
         returnPoints: 30000,
         umaByRank: [0, 0, 0, 0],
@@ -314,12 +325,10 @@ function buildHanchanDefaults(
 function HanchanEntryForm({
   eventId,
   rows,
-  isAdmin,
   lastSettings,
 }: {
   eventId: string;
   rows: { userId: string; nickname: string }[];
-  isAdmin: boolean;
   lastSettings?: LastGameSettings;
 }) {
   const queryClient = useQueryClient();
@@ -329,6 +338,18 @@ function HanchanEntryForm({
     resolver: zodResolver(hanchanSchema),
     defaultValues: buildHanchanDefaults(rows, lastSettings),
   });
+  /** 点数が同点になった場合の並び順（先頭ほど上位）。既定は参加者一覧の並び順。 */
+  const [tieOrder, setTieOrder] = useState<string[]>(() => rows.map((r) => r.userId));
+  const swapTieOrder = (userIdA: string, userIdB: string) => {
+    setTieOrder((prev) => {
+      const next = [...prev];
+      const ia = next.indexOf(userIdA);
+      const ib = next.indexOf(userIdB);
+      if (ia === -1 || ib === -1) return prev;
+      [next[ia], next[ib]] = [next[ib], next[ia]];
+      return next;
+    });
+  };
 
   const calcMode = form.watch("calcMode");
   const gameType = form.watch("gameType");
@@ -349,6 +370,7 @@ function HanchanEntryForm({
     numeric(startingPoints),
     numeric(returnPoints),
     umaByRank.map(numeric),
+    tieOrder,
   );
   const scoreMismatch =
     calcMode === "AUTO" &&
@@ -361,10 +383,14 @@ function HanchanEntryForm({
   const mutation = useMutation({
     mutationFn: (values: HanchanFormValues) => {
       const filledValues = values.rows.filter((r) => isFilledScore(r.score));
+      const orderedResults = sortByTieOrder(
+        filledValues.map((r) => ({ userId: r.userId, score: r.score as number })),
+        tieOrder,
+      );
       const input = {
         gameType: values.gameType,
         calcMode: values.calcMode,
-        results: filledValues.map((r) => ({ userId: r.userId, score: r.score as number })),
+        results: orderedResults,
         chips: filledValues.map((r) => ({ userId: r.userId, chipCount: r.chipCount })),
         ...(values.calcMode === "AUTO"
           ? {
@@ -383,6 +409,7 @@ function HanchanEntryForm({
         "rows",
         rows.map((r) => ({ userId: r.userId, nickname: r.nickname, score: "", chipCount: 0 })),
       );
+      setTieOrder(rows.map((r) => r.userId));
     },
     onError: (err) => {
       if (err instanceof ApiError && getErrorDisplay(err.code) === "inline") {
@@ -403,11 +430,6 @@ function HanchanEntryForm({
 
   return (
     <div>
-      {!isAdmin && (
-        <p className="text-muted-foreground mb-4 text-sm">
-          入力内容はこの場で確認できますが、登録・編集は管理者のみ実行できます。
-        </p>
-      )}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-6">
           <FormField
@@ -563,6 +585,11 @@ function HanchanEntryForm({
           {calcMode === "AUTO" && filled.length > 0 && (
             <div>
               <p className="mb-2 text-sm font-medium">計算結果（プレビュー）</p>
+              {liveResults.some((r, i) => liveResults[i + 1]?.score === r.score) && (
+                <p className="text-muted-foreground mb-2 text-xs">
+                  同点の場合は「⇄」で順位を入れ替えられます。
+                </p>
+              )}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -578,9 +605,28 @@ function HanchanEntryForm({
                   <TableBody>
                     <TableRow>
                       <TableCell className="font-medium">着順</TableCell>
-                      {liveResults.map((r) => (
-                        <TableCell key={r.userId}>{r.rank}位</TableCell>
-                      ))}
+                      {liveResults.map((r, i) => {
+                        const nextTied = liveResults[i + 1]?.score === r.score;
+                        return (
+                          <TableCell key={r.userId}>
+                            <div className="flex items-center gap-1">
+                              <span>{r.rank}位</span>
+                              {nextTied && (
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground text-xs underline"
+                                  title="同点者の順位を入れ替える"
+                                  onClick={() =>
+                                    swapTieOrder(r.userId, liveResults[i + 1].userId)
+                                  }
+                                >
+                                  ⇄
+                                </button>
+                              )}
+                            </div>
+                          </TableCell>
+                        );
+                      })}
                     </TableRow>
                     <TableRow>
                       <TableCell className="font-medium">ポイント</TableCell>
@@ -630,11 +676,9 @@ function HanchanEntryForm({
             </div>
           )}
 
-          {isAdmin && (
-            <Button type="submit" disabled={mutation.isPending}>
-              この半荘を登録する
-            </Button>
-          )}
+          <Button type="submit" disabled={mutation.isPending}>
+            この半荘を登録する
+          </Button>
         </form>
       </Form>
     </div>
@@ -696,6 +740,18 @@ function SessionEditForm({
       })),
     },
   });
+  /** 点数が同点になった場合の並び順（先頭ほど上位）。既定は参加者一覧の並び順。 */
+  const [tieOrder, setTieOrder] = useState<string[]>(() => rows.map((r) => r.userId));
+  const swapTieOrder = (userIdA: string, userIdB: string) => {
+    setTieOrder((prev) => {
+      const next = [...prev];
+      const ia = next.indexOf(userIdA);
+      const ib = next.indexOf(userIdB);
+      if (ia === -1 || ib === -1) return prev;
+      [next[ia], next[ib]] = [next[ib], next[ia]];
+      return next;
+    });
+  };
 
   const calcMode = form.watch("calcMode");
   const watchedRows = form.watch("rows");
@@ -709,6 +765,7 @@ function SessionEditForm({
     numeric(startingPoints),
     numeric(returnPoints),
     umaByRank.map(numeric),
+    tieOrder,
   );
   const scoreMismatch =
     calcMode === "AUTO" &&
@@ -719,10 +776,14 @@ function SessionEditForm({
 
   const mutation = useMutation({
     mutationFn: (values: SessionEditFormValues) => {
+      const orderedResults = sortByTieOrder(
+        values.rows.map((r) => ({ userId: r.userId, score: r.score })),
+        tieOrder,
+      );
       const input = {
         gameType: values.gameType,
         calcMode: values.calcMode,
-        results: values.rows.map((r) => ({ userId: r.userId, score: r.score })),
+        results: orderedResults,
         chips: values.rows.map((r) => ({ userId: r.userId, chipCount: r.chipCount })),
         ...(values.calcMode === "AUTO"
           ? {
@@ -899,6 +960,11 @@ function SessionEditForm({
           {calcMode === "AUTO" && (
             <div>
               <p className="mb-2 text-sm font-medium">計算結果（プレビュー）</p>
+              {liveResults.some((r, i) => liveResults[i + 1]?.score === r.score) && (
+                <p className="text-muted-foreground mb-2 text-xs">
+                  同点の場合は「⇄」で順位を入れ替えられます。
+                </p>
+              )}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -914,9 +980,28 @@ function SessionEditForm({
                   <TableBody>
                     <TableRow>
                       <TableCell className="font-medium">着順</TableCell>
-                      {liveResults.map((r) => (
-                        <TableCell key={r.userId}>{r.rank}位</TableCell>
-                      ))}
+                      {liveResults.map((r, i) => {
+                        const nextTied = liveResults[i + 1]?.score === r.score;
+                        return (
+                          <TableCell key={r.userId}>
+                            <div className="flex items-center gap-1">
+                              <span>{r.rank}位</span>
+                              {nextTied && (
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground text-xs underline"
+                                  title="同点者の順位を入れ替える"
+                                  onClick={() =>
+                                    swapTieOrder(r.userId, liveResults[i + 1].userId)
+                                  }
+                                >
+                                  ⇄
+                                </button>
+                              )}
+                            </div>
+                          </TableCell>
+                        );
+                      })}
                     </TableRow>
                     <TableRow>
                       <TableCell className="font-medium">ポイント</TableCell>

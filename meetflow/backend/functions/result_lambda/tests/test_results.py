@@ -111,8 +111,20 @@ def test_create_session_event_not_found(table):
     assert body_of(response)["error"]["code"] == "EVENT_NOT_FOUND"
 
 
-def test_create_session_requires_admin_role(table):
+def test_create_session_allows_member_role(table):
+    """OWNER/ADMINに限らず、アクティブなMEMBERも半荘の登録（確定）ができる。"""
     put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_manual_body()),
+    )
+
+    assert response["statusCode"] == 201
+
+
+def test_create_session_requires_membership(table):
     put_event(table, "event-1", "community-1")
 
     with pytest.raises(AuthError) as exc_info:
@@ -360,9 +372,11 @@ def test_get_user_results_success(table):
 
     assert response["statusCode"] == 200
     data = body_of(response)["data"]
-    assert data["totalGames"] == 1
-    assert data["averageRank"] == 1
-    assert data["firstPlaceRate"] == 1
+    mahjong4 = data["byGameType"]["MAHJONG4"]
+    assert mahjong4["totalGames"] == 1
+    assert mahjong4["averageRank"] == 1
+    assert mahjong4["firstPlaceRate"] == 1
+    assert data["byGameType"]["MAHJONG3"]["totalGames"] == 0
 
 
 def test_get_user_results_excludes_chip_rows_from_stats(table):
@@ -384,10 +398,93 @@ def test_get_user_results_excludes_chip_rows_from_stats(table):
         ),
     )
 
-    data = body_of(response)["data"]
+    data = body_of(response)["data"]["byGameType"]["MAHJONG4"]
     # Chip行が幻の対局としてtotalGamesに混入していないこと
     assert data["totalGames"] == 1
     assert data["totalChips"] == 7
+
+
+def test_get_user_results_excludes_not_yet_completed_events(table):
+    """管理者が「本日の対局を終了する」（Event.status→COMPLETED）を押すまでは、
+    その対局の成績はコミュニティの通算成績（＝ランキングの原資）に反映されない。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_event(table, "event-completed", "community-1", status="COMPLETED")
+    put_event(table, "event-confirmed", "community-1", status="CONFIRMED")
+    results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-completed"},
+            body=_manual_body(results_list=[{"userId": "user-2", "score": 45000}]),
+        ),
+    )
+    body = _manual_body(results_list=[{"userId": "user-2", "score": 10000}])
+    body["chips"] = [{"userId": "user-2", "chipCount": 3}]
+    results.create_session(
+        "user-1", api_event(path_params={"eventId": "event-confirmed"}, body=body)
+    )
+
+    response = results.get_user_results(
+        "user-1",
+        api_event(
+            path_params={"userId": "user-2"}, query={"communityId": "community-1"}
+        ),
+    )
+
+    data = body_of(response)["data"]["byGameType"]["MAHJONG4"]
+    # CONFIRMEDのまま終了していないevent-confirmedの1半荘・チップは集計対象外
+    assert data["totalGames"] == 1
+    assert data["totalChips"] == 0
+
+
+def test_get_user_results_separates_by_game_type(table):
+    """四麻と三麻は着順のスケールが異なるため、averageRank等を混ぜて集計しない。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_event(table, "event-1", "community-1")
+    results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_manual_body(
+                gameType="MAHJONG4",
+                results_list=[
+                    {"userId": "user-2", "score": 10000},
+                    {"userId": "user-3", "score": 45000},
+                    {"userId": "user-4", "score": 25000},
+                    {"userId": "user-5", "score": 20000},
+                ],
+            ),
+        ),
+    )
+    results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_manual_body(
+                gameType="MAHJONG3",
+                results_list=[
+                    {"userId": "user-2", "score": 45000},
+                    {"userId": "user-3", "score": 30000},
+                    {"userId": "user-4", "score": 25000},
+                ],
+            ),
+        ),
+    )
+
+    response = results.get_user_results(
+        "user-1",
+        api_event(
+            path_params={"userId": "user-2"}, query={"communityId": "community-1"}
+        ),
+    )
+
+    data = body_of(response)["data"]["byGameType"]
+    assert data["MAHJONG4"]["totalGames"] == 1
+    assert data["MAHJONG4"]["averageRank"] == 4
+    assert data["MAHJONG3"]["totalGames"] == 1
+    assert data["MAHJONG3"]["averageRank"] == 1
 
 
 def test_get_user_results_missing_community_id(table):
@@ -425,4 +522,6 @@ def test_get_user_results_no_games_returns_zeroed_stats(table):
     )
 
     assert response["statusCode"] == 200
-    assert body_of(response)["data"]["totalGames"] == 0
+    data = body_of(response)["data"]
+    assert data["byGameType"]["MAHJONG4"]["totalGames"] == 0
+    assert data["byGameType"]["MAHJONG3"]["totalGames"] == 0
