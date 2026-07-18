@@ -7,9 +7,9 @@ import { createFeedback } from "@/features/feedback/api";
 import type { FeedbackRating } from "@/features/feedback/types";
 
 const RATINGS: { value: FeedbackRating; emoji: string; label: string }[] = [
-  { value: "BAD", emoji: "😞", label: "不満" },
-  { value: "NEUTRAL", emoji: "😐", label: "ふつう" },
   { value: "GOOD", emoji: "😊", label: "満足" },
+  { value: "NEUTRAL", emoji: "😐", label: "ふつう" },
+  { value: "BAD", emoji: "😞", label: "不満" },
 ];
 
 /**
