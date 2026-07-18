@@ -156,6 +156,10 @@ export function CommunityDetailPage() {
                     to={paths.matchingCandidateList(community.communityId)}
                     label="マッチング候補"
                   />
+                  <NavCard
+                    to={paths.manualCandidateNew(community.communityId)}
+                    label="今すぐイベントを作成"
+                  />
                 </>
               )}
             </div>

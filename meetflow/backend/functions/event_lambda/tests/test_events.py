@@ -121,10 +121,10 @@ def test_get_event_not_found(table):
     assert body_of(response)["error"]["code"] == "EVENT_NOT_FOUND"
 
 
-def _create_pending_event(table, community_id="community-1", member_ids=None):
+def _create_pending_event(table, community_id="community-1", member_ids=None, template_id="template-1"):
     member_ids = member_ids or ["user-1", "user-2", "user-3", "user-4"]
     put_membership(table, community_id, "user-1", role="OWNER")
-    put_candidate(table, community_id, "candidate-1", member_ids)
+    put_candidate(table, community_id, "candidate-1", member_ids, template_id=template_id)
     create_response = events.create_event(
         "user-1", api_event(body={"candidateId": "candidate-1"})
     )
@@ -150,6 +150,35 @@ def test_confirm_event_success(table):
             Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}
         )["Item"]
         assert participant["status"] == "AWAITING_APPROVAL"
+
+
+def test_confirm_event_manual_candidate_skips_approval_flow(table):
+    """Issue #56: 手動作成イベント（templateId無しのMatchCandidate由来）は、
+    候補メンバーの自動承認設定を一切見ずに、confirm_event一発で全員即
+    CONFIRMEDになる（AWAITING_MEMBER_APPROVALを経由しない）。put_profileで
+    auto_approveを明示的にセットしていない（＝既定false）ことがポイント
+    -- 通常フローなら test_confirm_event_success と同じ入力で
+    AWAITING_MEMBER_APPROVALになるはずの状況。
+    """
+    event_id = _create_pending_event(table, template_id=None)
+
+    with patch.object(events, "put_event") as mock_put_event:
+        response = events.confirm_event(
+            "user-1", api_event(path_params={"eventId": event_id})
+        )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["status"] == "CONFIRMED"
+    for uid in ("user-1", "user-2", "user-3", "user-4"):
+        participant = table.get_item(
+            Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}
+        )["Item"]
+        assert participant["status"] == "CONFIRMED"
+        assert participant["autoApproved"] is True
+
+    mock_put_event.assert_called_once()
+    detail_type = mock_put_event.call_args[0][0]
+    assert detail_type == EVENT_CONFIRMED
 
 
 def test_confirm_event_all_auto_approve_finalizes_immediately(table):

@@ -19,7 +19,9 @@ export function CandidateCard({
       <Card>
         <CardContent className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-lg font-semibold">{candidate.score}点</span>
+            <span className="text-lg font-semibold">
+              {candidate.score !== null ? `${candidate.score}点` : "手動作成"}
+            </span>
             {candidate.startTime && (
               <span className="text-muted-foreground text-sm">
                 {format(parseISO(candidate.startTime), "M月d日 HH:mm")}

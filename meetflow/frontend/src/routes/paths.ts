@@ -32,6 +32,7 @@ export const paths = {
     `/communities/${communityId}/event-templates/${templateId}/edit`,
   matchingCandidateList: (communityId: string) =>
     `/communities/${communityId}/matching/candidates`,
+  manualCandidateNew: (communityId: string) => `/communities/${communityId}/matching/manual`,
   matchingCandidateDetail: (communityId: string, candidateId: string) =>
     `/communities/${communityId}/matching/candidates/${candidateId}`,
 

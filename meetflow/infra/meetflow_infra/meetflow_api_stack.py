@@ -103,6 +103,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("PUT", "/communities/{communityId}/event-templates/{templateId}", "matching"),
     ("DELETE", "/communities/{communityId}/event-templates/{templateId}", "matching"),
     ("POST", "/communities/{communityId}/matching", "matching"),
+    ("POST", "/communities/{communityId}/matching/candidates/manual", "matching"),
     ("GET", "/communities/{communityId}/matching/candidates", "matching"),
     ("GET", "/matching/candidates/{candidateId}", "matching"),
     # EventLambda

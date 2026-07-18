@@ -32,15 +32,16 @@ from ._shared import (
 def create_event(user_id, event):
     """F-501 (API設計書v1.4 §8.1)。
 
-    候補ベースの作成のみを実装している。機能要件書 F-501は代替案として
-    手動作成（「手動作成」）に言及しているが、DynamoDB物理設計書v1.3
-    §3.10のEventエンティティには、承認前の参加予定者リストを保持する属性
-    が無い（候補ベースの作成ではMatchCandidate.membersが既に存在するのと
-    対照的）-- `confirm_event`がParticipant行を作成する前に、手動作成
-    イベントの「誰が参加するか」を永続化する場所がドキュメント上定義され
-    ていない。これを実装するには物理設計の外側に属性を作ることになって
-    しまう（CLAUDE.md: 絶対に逸脱しないこと）ため、このギャップがドキュ
-    メント側で解消されるまで未対応のままとする。
+    候補ベースの作成のみを実装している。承認前の参加予定者リストは
+    MatchCandidate.membersに永続化されるため、このEndpoint自体はEvent
+    エンティティの物理設計に手を加える必要が無い。
+
+    Issue #56: 管理者がスコアリングを経ずにメンバー・日時を直接指定する
+    「手動作成」（機能要件書 F-501の代替案）も、matching_lambdaの
+    create_manual_candidateが作るMatchCandidate（templateId無し）を
+    経由することでこの同じEndpointに乗る -- 候補ベースの作成という
+    構造自体は変えず、confirm_event側で手動作成イベント向けの承認スキップ
+    分岐を追加することで実現している。
     """
     body = parse_body(event)
     candidate_id = body.get("candidateId")
@@ -264,9 +265,18 @@ def confirm_event(user_id, event):
     # 候補メンバーごとに実効自動承認設定を解決し、仮確定の目標状態を決める。
     # 全員が自動承認ONの場合は、承認待ちを経由せず直接CONFIRMEDにする
     # （不要な中間状態・中間通知を作らない）。
-    auto_approved_uids = {
-        uid for uid in member_ids if get_auto_approve(table, community_id, uid)
-    }
+    # Issue #56: 手動作成イベント（管理者がその場でメンバーを指定して作った
+    # MatchCandidate。`templateId`が無いことが目印 -- matching_lambdaの
+    # create_manual_candidate参照）は、管理者が招集した時点で全員合意済み
+    # という前提のため、メンバーごとの自動承認設定を見ずに全員即CONFIRMED
+    # にする（承認待ちを経由しない）。
+    is_manual_event = bool(candidate_items) and candidate_items[0].get("templateId") is None
+    if is_manual_event:
+        auto_approved_uids = set(member_ids)
+    else:
+        auto_approved_uids = {
+            uid for uid in member_ids if get_auto_approve(table, community_id, uid)
+        }
     awaiting_uids = [uid for uid in member_ids if uid not in auto_approved_uids]
     target_event_status = (
         "CONFIRMED" if not awaiting_uids else EVENT_STATUS_AWAITING_MEMBER_APPROVAL

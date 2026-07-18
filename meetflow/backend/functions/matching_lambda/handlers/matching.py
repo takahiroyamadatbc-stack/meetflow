@@ -16,6 +16,7 @@ from meetflow_common import (
     require_membership,
     success_response,
     transact_write,
+    write_operation_log,
 )
 
 from .scoring import calculate_score
@@ -56,6 +57,110 @@ def generate_candidates(user_id, event):
     candidate_items = _run_matching(table, community_id, template_id, template)
     candidates = [_to_api_candidate(table, community_id, item) for item in candidate_items]
     return success_response({"candidates": candidates}, status_code=201)
+
+
+def create_manual_candidate(user_id, event):
+    """POST /communities/{communityId}/matching/candidates/manual（Issue #56）。
+
+    「急遽今から麻雀やろう」等、通常のマッチングフロー（開催条件登録→空き
+    予定収集→候補生成）を経ずに、管理者がメンバー・日時を直接指定して
+    MatchCandidateを作成する。スコアリング（scoring.calculate_score）は
+    通さず、開催条件（EventTemplate）にも紐付けない
+    -- `templateId`を省略する（＝取得時None）ことがこの候補が手動作成で
+    あることの目印になり、`event_lambda`の`confirm_event`はこれを見て
+    承認フローを完全スキップする分岐に入る。以降は既存の
+    `create_event`（候補ベース作成）にそのまま乗せるため、Event/
+    MatchCandidateの物理設計（キー構造）は変更しない。
+
+    ゲーム種別は開催条件を経由しないためテンプレートには存在せず、
+    その場の自由入力をMatchCandidate自体に`gameType`属性として直接
+    保存する（DynamoDB物理設計書には無い新規のオプショナル属性。通常の
+    候補生成では書き込まない）。ダブルブッキングの同期ハードチェック
+    （PARTICIPANT_SCHEDULE_CONFLICT）は候補作成時点ではなくconfirm_event
+    側にあるため、ここでは通常の候補生成同様に行わない。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    body = parse_body(event)
+    member_ids = body.get("memberIds")
+    if (
+        not isinstance(member_ids, list)
+        or not member_ids
+        or not all(isinstance(m, str) for m in member_ids)
+    ):
+        return error_response("INVALID_PARAMETER", "memberIdsが不正です")
+    member_ids = sorted(set(member_ids))
+
+    start_time = body.get("startTime")
+    end_time = body.get("endTime")
+    if (
+        not isinstance(start_time, str)
+        or not isinstance(end_time, str)
+        or not start_time
+        or end_time <= start_time
+    ):
+        return error_response("INVALID_TIME_RANGE", "開始・終了日時が不正です")
+
+    game_type = body.get("gameType")
+    if game_type is not None and not isinstance(game_type, str):
+        return error_response("INVALID_PARAMETER", "gameTypeが不正です")
+
+    for uid in member_ids:
+        membership = table.get_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{uid}"}
+        ).get("Item")
+        if membership is None or membership.get("status") != "ACTIVE":
+            return error_response(
+                "INVALID_PARAMETER",
+                "メンバーの中にアクティブでないユーザーが含まれています",
+            )
+
+    candidate_id = generate_id()
+    created_at = now_iso_ms()
+    candidate_item = {
+        "PK": f"COMMUNITY#{community_id}",
+        "SK": f"CANDIDATE#{created_at}#{candidate_id}",
+        "GSI2PK": f"CANDIDATE#{candidate_id}",
+        "GSI2SK": "METADATA",
+        "members": set(member_ids),
+        # DynamoDBの文字列セット(SS)は空集合を許容しないため、必ず1件以上
+        # 入る固定文言にする（通常の候補生成のスコア理由と役割を揃える）。
+        "reasons": {"手動作成"},
+        "status": "PENDING",
+        "createdAt": created_at,
+    }
+    if game_type:
+        candidate_item["gameType"] = game_type
+    table.put_item(Item=candidate_item)
+
+    for uid in member_ids:
+        table.put_item(
+            Item={
+                "PK": f"COMMUNITY#{community_id}",
+                "SK": f"CANDIDATE#{candidate_id}#MEMBER#{uid}",
+                "GSI1PK": f"USER#{uid}",
+                "GSI1SK": f"CANDIDATE#{start_time}#{candidate_id}",
+                "candidateId": candidate_id,
+                "startTime": start_time,
+                "endTime": end_time,
+                "status": "PENDING",
+                "conflictWarning": False,
+                "createdAt": created_at,
+            }
+        )
+
+    write_operation_log(
+        action="CREATE_MANUAL_CANDIDATE",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="MatchCandidate",
+        target_id=candidate_id,
+    )
+    return success_response(
+        _to_api_candidate(table, community_id, candidate_item), status_code=201
+    )
 
 
 def list_candidates(user_id, event):
@@ -374,6 +479,9 @@ def _to_api_candidate(table, community_id, item):
         "startTime": start_time,
         "endTime": end_time,
         "members": members,
+        # Issue #56: 手動作成候補のみ持つ、その場で自由入力したゲーム種別
+        # （通常の候補生成はEventTemplate.gameTypeをそのまま使うため無し）。
+        "gameType": item.get("gameType"),
         # 候補の生成日時（Issue #28）。管理者が古い候補を選んでしまうと選定〜
         # 全員承認完了までの間にAvailabilityが変わっている可能性が上がるため、
         # 一覧・詳細画面で「新しさ」を認識できるようにする。
