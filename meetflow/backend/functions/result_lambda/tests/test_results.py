@@ -297,6 +297,100 @@ def test_update_session_requires_admin_role(table):
     assert exc_info.value.code == "FORBIDDEN"
 
 
+def test_delete_session_removes_session_result_and_chip_items(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+    body = _manual_body()
+    body["chips"] = [{"userId": "user-1", "chipCount": 2}]
+    results.create_session(
+        "user-1", api_event(path_params={"eventId": "event-1"}, body=body)
+    )
+
+    response = results.delete_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1", "sessionNo": "0001"}),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data == {"eventId": "event-1", "sessionNo": "0001"}
+    assert (
+        table.get_item(Key={"PK": "EVENT#event-1", "SK": "SESSION#0001"}).get("Item")
+        is None
+    )
+    assert (
+        table.get_item(
+            Key={"PK": "EVENT#event-1", "SK": "SESSION#0001#RESULT#user-1"}
+        ).get("Item")
+        is None
+    )
+    assert (
+        table.get_item(
+            Key={"PK": "EVENT#event-1", "SK": "SESSION#0001#CHIP#user-1"}
+        ).get("Item")
+        is None
+    )
+    remaining = results.list_event_sessions(
+        "user-1", api_event(path_params={"eventId": "event-1"})
+    )
+    assert body_of(remaining)["data"]["sessions"] == []
+
+
+def test_delete_session_not_found(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.delete_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1", "sessionNo": "9999"}),
+    )
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "GAME_SESSION_NOT_FOUND"
+
+
+def test_delete_session_requires_admin_role(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_event(table, "event-1", "community-1")
+    results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_manual_body()),
+    )
+
+    with pytest.raises(AuthError) as exc_info:
+        results.delete_session(
+            "user-2",
+            api_event(path_params={"eventId": "event-1", "sessionNo": "0001"}),
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_delete_session_leaves_other_sessions_intact(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+    results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_manual_body()),
+    )
+    results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_manual_body()),
+    )
+
+    response = results.delete_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1", "sessionNo": "0001"}),
+    )
+
+    assert response["statusCode"] == 200
+    remaining = results.list_event_sessions(
+        "user-1", api_event(path_params={"eventId": "event-1"})
+    )
+    sessions = body_of(remaining)["data"]["sessions"]
+    assert [s["sessionNo"] for s in sessions] == ["0002"]
+
+
 def test_list_event_sessions_returns_grouped_data(table):
     put_membership(table, "community-1", "user-1", role="OWNER")
     put_membership(table, "community-1", "user-2", role="MEMBER")

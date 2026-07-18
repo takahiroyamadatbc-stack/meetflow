@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.13
+# MeetFlow DynamoDB 物理テーブル設計書 v1.14
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -690,6 +690,7 @@ GSI2SK:  {createdAt}#{announcementId}
 | **イベント仮確定時のダブルブッキング事前チェック** [v1.3、v1.10で判定対象statusを拡張] | Participant一括作成の**前**に、候補メンバー全員分についてGSI1（`PARTICIPANT#{startTime}#{eventId}`）を時間範囲でQueryし、`status`が`CONFIRMED`または`AWAITING_APPROVAL`（承認待ち＝事実上予約済み）の既存行と重複がないか確認。重複があれば`TransactWriteItems`を実行せず`PARTICIPANT_SCHEDULE_CONFLICT`エラーで中断する |
 | **参加者個別承認の二重実行防止** [v1.10] | `UpdateItem`に`ConditionExpression: status = AWAITING_APPROVAL`を付与（承認・拒否のいずれも同じ形） |
 | **イベント本確定（全員承認完了時のAWAITING_MEMBER_APPROVAL→CONFIRMED）** [v1.10] | `UpdateItem`に`ConditionExpression: status = AWAITING_MEMBER_APPROVAL`を付与。競合時（既に本確定済み、または承認待ち中に管理者がイベント全体を中止済み）は現在のstatusを再取得し、`CONFIRMED`以外の場合はEventConfirmedを発行しない |
+| **登録済み対局セッションの削除**（GameSession本体＋全参加者分のGameResult＋GameResultChip） [v1.14新規、Issue #42] | `TransactWriteItems`で対象PK/SK配下の全アイテムをまとめて削除し、途中まで削除された不整合状態を防ぐ |
 
 ---
 
@@ -878,3 +879,11 @@ GSI2SK:  {createdAt}#{announcementId}
 | 1 | 3.13 GameSessionの属性表に`calcMode`/`startingPoints`/`returnPoints`/`umaByRank`を追加（新規属性ではなく、既に実装済みだったが本書に未反映だった属性の反映） | 実装（ResultLambda）と設計書の食い違いの解消。自動計算（ウマ・オカ）機能追加時に本書側の更新が漏れていた |
 | 2 | 3.13にGameResultChild（`GameResultChip`、SK=`SESSION#{sessionNo}#CHIP#{userId}`）を新規追加 | 同上。チップ集計機能追加時に本書側の更新が漏れていた |
 | 3 | 3.13 GameResult/GameResultChipに`gameType`属性を追加（書き込み時にGameSessionから非正規化） | Issue #20派生：四麻/三麻混在ユーザーの平均着順が意味を持たなくなる問題の解消。ResultLambda `_aggregate`をゲーム種別ごとに集計できるようにするため |
+
+---
+
+## 22. v1.13 → v1.14 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | §5トランザクション・冪等性の設計方針に「登録済み対局セッションの削除」を追加。GameSession本体＋全参加者分のGameResult＋GameResultChipを`TransactWriteItems`でまとめて削除する方針を明記 | Issue #42：登録済み半荘の削除機能追加。既存のキー設計（PK/SK）自体は変更せず、削除時の操作方針のみ新規追加 |

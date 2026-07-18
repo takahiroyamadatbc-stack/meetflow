@@ -9,6 +9,7 @@ from meetflow_common import (
     parse_body,
     require_membership,
     success_response,
+    transact_write,
     write_operation_log,
 )
 
@@ -121,6 +122,52 @@ def update_session(user_id, event):
     return success_response(
         _build_session_response(session_no, new_session_item, computed, chips)
     )
+
+
+def delete_session(user_id, event):
+    """登録済み対局セッションの削除（Issue #42）。OWNER/ADMINのみ実行可能
+    （update_sessionと同じ権限方針）。GameSession本体・全参加者分の
+    GameResult・GameResultChipを1回のTransactWriteItemsでまとめて削除する
+    （途中で一部だけ消えた状態が残らないようにするため）。
+    """
+    event_id = event["pathParameters"]["eventId"]
+    session_no = event["pathParameters"]["sessionNo"]
+    table = get_table()
+
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+        "Item"
+    )
+    if event_item is None:
+        return error_response("EVENT_NOT_FOUND", "指定したイベントが見つかりません")
+    community_id = event_item["GSI1PK"].split("#", 1)[1]
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"EVENT#{event_id}")
+        & Key("SK").begins_with(f"SESSION#{session_no}")
+    )
+    items = resp.get("Items", [])
+    session_item = next(
+        (item for item in items if item["SK"] == f"SESSION#{session_no}"), None
+    )
+    if session_item is None:
+        return error_response("GAME_SESSION_NOT_FOUND", "指定した対局が見つかりません")
+
+    transact_write(
+        [
+            {"Delete": {"Key": {"PK": item["PK"], "SK": item["SK"]}}}
+            for item in items
+        ]
+    )
+
+    write_operation_log(
+        action="DELETE_GAME_SESSION",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="GameSession",
+        target_id=session_no,
+    )
+    return success_response({"eventId": event_id, "sessionNo": session_no})
 
 
 def list_event_sessions(user_id, event):

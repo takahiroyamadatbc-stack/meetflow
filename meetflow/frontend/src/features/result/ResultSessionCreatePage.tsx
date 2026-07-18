@@ -24,11 +24,22 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { communityKeys, getCommunity } from "@/features/community/api";
 import { eventKeys, getEvent, listParticipants } from "@/features/event/api";
 import {
   createSession,
+  deleteSession,
   getLastGameSettings,
   listEventSessions,
   resultKeys,
@@ -244,19 +255,7 @@ function EventResultsPage({
           <h2 className="mb-2 text-base font-semibold">登録済みの半荘</h2>
           <div className="flex flex-col gap-1">
             {orderedSessions.map((s) => (
-              <div key={s.sessionNo} className="flex items-center justify-between text-sm">
-                <span>
-                  対局{Number(s.sessionNo)}（{GAME_TYPE_LABELS[s.gameType]}）
-                </span>
-                {isAdmin && (
-                  <Link
-                    to={paths.resultSessionEdit(eventId, s.sessionNo)}
-                    className="underline"
-                  >
-                    編集
-                  </Link>
-                )}
-              </div>
+              <SessionListRow key={s.sessionNo} eventId={eventId} session={s} isAdmin={isAdmin} />
             ))}
           </div>
         </div>
@@ -266,6 +265,76 @@ function EventResultsPage({
         <h2 className="mb-2 text-base font-semibold">半荘を追加</h2>
         <HanchanEntryForm eventId={eventId} rows={rows} lastSettings={lastSettings} />
       </div>
+    </div>
+  );
+}
+
+/** 登録済み半荘一覧の1行。OWNER/ADMINには編集・削除の導線を出す（削除は確認ダイアログ経由）。 */
+function SessionListRow({
+  eventId,
+  session,
+  isAdmin,
+}: {
+  eventId: string;
+  session: GameSessionDetail;
+  isAdmin: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const handleApiError = useApiErrorToast();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteSession(eventId, session.sessionNo),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: resultKeys.eventSessions(eventId) });
+      toast.success("半荘の記録を削除しました");
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && getErrorDisplay(err.code) === "inline") {
+        toast.error(err.message);
+        return;
+      }
+      handleApiError(err);
+    },
+  });
+
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span>
+        対局{Number(session.sessionNo)}（{GAME_TYPE_LABELS[session.gameType]}）
+      </span>
+      {isAdmin && (
+        <div className="flex items-center gap-3">
+          <Link to={paths.resultSessionEdit(eventId, session.sessionNo)} className="underline">
+            編集
+          </Link>
+          <button
+            type="button"
+            className="text-destructive underline"
+            onClick={() => setConfirmOpen(true)}
+          >
+            削除
+          </button>
+        </div>
+      )}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              対局{Number(session.sessionNo)}の記録を削除しますか？
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              この半荘の点数・チップの記録が削除されます。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteMutation.mutate()}>
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

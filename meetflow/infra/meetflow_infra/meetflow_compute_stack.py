@@ -393,11 +393,17 @@ class MeetFlowComputeStack(Stack):
         # Lambda設計書v1.1 §8.4: PutItem/Query(GameSession, GameResult、
         # GSI1含む)。権限チェック用にEvent/Membershipのコンテキストを
         # 参照するため、GetItemも必要(§8.4には挙げられていない)。
+        # DeleteItem/TransactWriteItemsは、登録済み対局の削除機能
+        # (Issue #42)でGameSession本体+GameResult+GameResultChipを
+        # まとめて消すために追加(TransactWriteItems内のDelete操作には
+        # dynamodb:DeleteItemも別途必要、他ドメインLambdaと同じ理由)。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
             "dynamodb:PutItem",
+            "dynamodb:DeleteItem",
             "dynamodb:Query",
+            "dynamodb:TransactWriteItems",
         )
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
