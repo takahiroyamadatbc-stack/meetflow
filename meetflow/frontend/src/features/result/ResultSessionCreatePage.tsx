@@ -50,7 +50,8 @@ import {
   aggregateSessionTotals,
   computeLiveResults,
   expectedPlayerCount,
-  hasScoreMismatch,
+  formatScoreMismatch,
+  scoreMismatchDiff,
   sortByTieOrder,
 } from "@/features/result/calc";
 import type {
@@ -62,6 +63,19 @@ import { GAME_TYPE_LABELS, type GameType } from "@/features/user/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { getErrorDisplay, ApiError } from "@/api/errors";
 import { paths } from "@/routes/paths";
+import { cn } from "@/lib/utils";
+
+/** 着順ごとのバッジ配色（色だけに頼らず数字自体も表示する）。 */
+const RANK_BADGE_STYLES: Record<number, string> = {
+  1: "border-amber-300 bg-amber-100 text-amber-800",
+  2: "border-slate-300 bg-slate-100 text-slate-700",
+  3: "border-orange-300 bg-orange-100 text-orange-800",
+};
+const RANK_BADGE_FALLBACK = "border-blue-200 bg-blue-50 text-blue-700";
+
+function rankBadgeClass(rank: number): string {
+  return RANK_BADGE_STYLES[rank] ?? RANK_BADGE_FALLBACK;
+}
 
 const GAME_TYPES: GameType[] = ["MAHJONG4", "MAHJONG3"];
 const CALC_MODES: { value: CalcMode; label: string }[] = [
@@ -256,7 +270,13 @@ function EventResultsPage({
           <h2 className="mb-2 text-base font-semibold">登録済みの半荘</h2>
           <div className="flex flex-col gap-1">
             {orderedSessions.map((s) => (
-              <SessionListRow key={s.sessionNo} eventId={eventId} session={s} isAdmin={isAdmin} />
+              <SessionListRow
+                key={s.sessionNo}
+                eventId={eventId}
+                session={s}
+                isAdmin={isAdmin}
+                nicknameByUserId={nicknameByUserId}
+              />
             ))}
           </div>
         </div>
@@ -270,15 +290,21 @@ function EventResultsPage({
   );
 }
 
-/** 登録済み半荘一覧の1行。OWNER/ADMINには編集・削除の導線を出す（削除は確認ダイアログ経由）。 */
+/**
+ * 登録済み半荘一覧の1行。1半荘=1行で、参加者ごとに着順バッジ＋ポイントを
+ * 表示する（着順はサーバー側でscore降順に確定済みのresults配列の並び順）。
+ * OWNER/ADMINには編集・削除の導線を出す（削除は確認ダイアログ経由）。
+ */
 function SessionListRow({
   eventId,
   session,
   isAdmin,
+  nicknameByUserId,
 }: {
   eventId: string;
   session: GameSessionDetail;
   isAdmin: boolean;
+  nicknameByUserId: Map<string, string>;
 }) {
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
@@ -300,24 +326,45 @@ function SessionListRow({
   });
 
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span>
-        対局{Number(session.sessionNo)}（{GAME_TYPE_LABELS[session.gameType]}）
-      </span>
-      {isAdmin && (
-        <div className="flex items-center gap-3">
-          <Link to={paths.resultSessionEdit(eventId, session.sessionNo)} className="underline">
-            編集
-          </Link>
-          <button
-            type="button"
-            className="text-destructive underline"
-            onClick={() => setConfirmOpen(true)}
+    <div className="flex flex-col gap-1.5 border-b pb-2 last:border-b-0 last:pb-0">
+      <div className="flex items-center justify-between text-sm">
+        <span>
+          対局{Number(session.sessionNo)}（{GAME_TYPE_LABELS[session.gameType]}）
+        </span>
+        {isAdmin && (
+          <div className="flex items-center gap-3">
+            <Link to={paths.resultSessionEdit(eventId, session.sessionNo)} className="underline">
+              編集
+            </Link>
+            <button
+              type="button"
+              className="text-destructive underline"
+              onClick={() => setConfirmOpen(true)}
+            >
+              削除
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto">
+        {session.results.map((r) => (
+          <div
+            key={r.userId}
+            className={cn(
+              "flex min-w-16 shrink-0 flex-col items-center gap-0.5 rounded-md border px-2 py-1",
+              rankBadgeClass(r.rank),
+            )}
           >
-            削除
-          </button>
-        </div>
-      )}
+            <span className="max-w-16 truncate text-[11px]">
+              {nicknameByUserId.get(r.userId) ?? r.userId}
+            </span>
+            <span className="text-sm font-semibold">{r.rank}位</span>
+            {session.calcMode === "AUTO" && (
+              <span className="text-[11px]">{r.rankPoints}pt</span>
+            )}
+          </div>
+        ))}
+      </div>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -502,13 +549,15 @@ function HanchanEntryForm({
     umaByRank.map(numeric),
     tieOrder,
   );
-  const scoreMismatch =
-    calcMode === "AUTO" &&
-    filled.length > 0 &&
-    hasScoreMismatch(
-      filled.map((r) => ({ score: numeric(r.score) })),
-      numeric(startingPoints),
-    );
+  const scoreMismatchAmount =
+    calcMode === "AUTO" && filled.length > 0
+      ? scoreMismatchDiff(
+          filled.map((r) => ({ score: numeric(r.score) })),
+          numeric(startingPoints),
+        )
+      : 0;
+  /** 登録直前の確認ダイアログで使う、確定待ちの送信値（不一致が無ければ常にnull）。 */
+  const [pendingValues, setPendingValues] = useState<HanchanFormValues | null>(null);
 
   const mutation = useMutation({
     mutationFn: (values: HanchanFormValues) => {
@@ -577,6 +626,10 @@ function HanchanEntryForm({
     );
     if (missingScore) {
       toast.error("参加者として選ばれている人の点数が未入力です");
+      return;
+    }
+    if (scoreMismatchAmount !== 0) {
+      setPendingValues(values);
       return;
     }
     mutation.mutate(values);
@@ -753,9 +806,9 @@ function HanchanEntryForm({
                   : `この半荘の参加者が${filled.length}人です（${GAME_TYPE_LABELS[gameType]}は${expectedCount}人必要です）。入力内容をご確認ください（登録は可能です）。`}
               </p>
             )}
-            {scoreMismatch && (
+            {scoreMismatchAmount !== 0 && (
               <p className="mt-2 text-sm text-amber-600">
-                点数の合計が配給原点×人数と一致していません。入力内容をご確認ください（登録は可能です）。
+                点数の合計が配給原点×人数と{formatScoreMismatch(scoreMismatchAmount)}です。入力内容をご確認ください（登録は可能です）。
               </p>
             )}
           </div>
@@ -859,6 +912,35 @@ function HanchanEntryForm({
           </Button>
         </form>
       </Form>
+
+      <AlertDialog
+        open={pendingValues !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingValues(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>点数の合計が配給原点と一致していません</AlertDialogTitle>
+            <AlertDialogDescription>
+              点数の合計が配給原点×人数と
+              {pendingValues && formatScoreMismatch(scoreMismatchAmount)}
+              です。本当によろしいですか？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingValues) mutation.mutate(pendingValues);
+                setPendingValues(null);
+              }}
+            >
+              登録する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -945,12 +1027,15 @@ function SessionEditForm({
     umaByRank.map(numeric),
     tieOrder,
   );
-  const scoreMismatch =
-    calcMode === "AUTO" &&
-    hasScoreMismatch(
-      watchedRows.map((r) => ({ score: numeric(r.score) })),
-      numeric(startingPoints),
-    );
+  const scoreMismatchAmount =
+    calcMode === "AUTO"
+      ? scoreMismatchDiff(
+          watchedRows.map((r) => ({ score: numeric(r.score) })),
+          numeric(startingPoints),
+        )
+      : 0;
+  /** 登録直前の確認ダイアログで使う、確定待ちの送信値（不一致が無ければ常にnull）。 */
+  const [pendingValues, setPendingValues] = useState<SessionEditFormValues | null>(null);
 
   const mutation = useMutation({
     mutationFn: (values: SessionEditFormValues) => {
@@ -987,6 +1072,14 @@ function SessionEditForm({
     },
   });
 
+  const onSubmit = (values: SessionEditFormValues) => {
+    if (scoreMismatchAmount !== 0) {
+      setPendingValues(values);
+      return;
+    }
+    mutation.mutate(values);
+  };
+
   return (
     <div>
       {!isAdmin && (
@@ -995,10 +1088,7 @@ function SessionEditForm({
         </p>
       )}
       <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
-          className="grid gap-6"
-        >
+        <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-6">
           <FormField
             control={form.control}
             name="gameType"
@@ -1128,9 +1218,9 @@ function SessionEditForm({
                 </TableBody>
               </Table>
             </div>
-            {scoreMismatch && (
+            {scoreMismatchAmount !== 0 && (
               <p className="mt-2 text-sm text-amber-600">
-                点数の合計が配給原点×人数と一致していません。入力内容をご確認ください（登録は可能です）。
+                点数の合計が配給原点×人数と{formatScoreMismatch(scoreMismatchAmount)}です。入力内容をご確認ください（登録は可能です）。
               </p>
             )}
           </div>
@@ -1234,6 +1324,35 @@ function SessionEditForm({
           )}
         </form>
       </Form>
+
+      <AlertDialog
+        open={pendingValues !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingValues(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>点数の合計が配給原点と一致していません</AlertDialogTitle>
+            <AlertDialogDescription>
+              点数の合計が配給原点×人数と
+              {pendingValues && formatScoreMismatch(scoreMismatchAmount)}
+              です。本当によろしいですか？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingValues) mutation.mutate(pendingValues);
+                setPendingValues(null);
+              }}
+            >
+              更新する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

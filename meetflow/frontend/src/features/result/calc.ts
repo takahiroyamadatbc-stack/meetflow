@@ -66,13 +66,18 @@ export function sortByTieOrder<T extends { userId: string; score: number }>(
   });
 }
 
-/** AUTO時の点数合計チェック（非ブロッキングの警告表示専用）。 */
-export function hasScoreMismatch(
-  rows: { score: number }[],
-  startingPoints: number,
-): boolean {
+/**
+ * AUTO時の点数合計チェック。点数合計と「配給原点×人数」の差分を返す
+ * （0なら一致。正の値は超過、負の値は不足）。
+ */
+export function scoreMismatchDiff(rows: { score: number }[], startingPoints: number): number {
   const total = rows.reduce((sum, r) => sum + r.score, 0);
-  return total !== startingPoints * rows.length;
+  return total - startingPoints * rows.length;
+}
+
+/** 点数合計の不一致を人が読める文言にする（例：「20点多い」「30点足りない」）。 */
+export function formatScoreMismatch(diff: number): string {
+  return diff > 0 ? `${diff}点多い` : `${Math.abs(diff)}点足りない`;
 }
 
 /** ゲーム種別ごとの本来の対局人数（四麻=4人・三麻=3人）。 */
