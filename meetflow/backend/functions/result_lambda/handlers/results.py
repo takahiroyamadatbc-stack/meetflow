@@ -21,11 +21,15 @@ def create_session(user_id, event):
     （「実装方針次第で許可する場合は不要。要検討」）-- ドキュメントが
     まだ確定していない方針を先に決め打ちするのではなく、イベント進行中の
     セッションごとのスコア入力がブロックされないよう、ここでは強制しない
-    ことにしている。
+    ことにしている（COMPLETED後の新規登録も引き続き許可する。管理者が
+    「本日の対局を終了する」を押し忘れたまま次の対局が始まるケースを
+    考慮し、書き込みを機械的にロックすることはしない）。
 
-    登録（POST）を実行できるのはOWNER/ADMINのみ。入力フォームへのアクセス
-    自体はイベント参加者全員に開放するが、それはフロントエンド側の表示
-    制御であり、実際にデータを書き込む権限はここで管理者に絞る。
+    登録（POST）はコミュニティのアクティブなメンバーであれば誰でも実行
+    できる（当初はOWNER/ADMIN限定だったが、対局を打った本人・記録係が
+    その場で確定できないのは不便という要望を受けて緩和した）。登録済み
+    セッションの編集（update_session）は、確定済みの記録を後から書き換える
+    操作のためOWNER/ADMIN限定のまま据え置く。
     """
     event_id = event["pathParameters"]["eventId"]
     table = get_table()
@@ -35,7 +39,7 @@ def create_session(user_id, event):
     if event_item is None:
         return error_response("EVENT_NOT_FOUND", "指定したイベントが見つかりません")
     community_id = event_item["GSI1PK"].split("#", 1)[1]
-    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+    require_membership(table, community_id, user_id)
 
     body = parse_body(event)
     validation_error = _validate_session_body(body)
@@ -206,6 +210,11 @@ def get_user_results(user_id, event):
     累計値を保持する集計/統計エンティティが定義されていない -- 物理設計の
     外側に属性を作るのではなく、読み取り時に計算することで整合を取って
     いる。
+
+    レスポンスはゲーム種別（四麻/三麻）ごとに分けて返す（`byGameType`）。
+    四麻と三麻では着順のスケール（1〜4位 / 1〜3位）が異なり、合算した
+    averageRank等は指標として意味を持たなくなるため（DynamoDB物理設計書
+    v1.13 §3.13）。
     """
     target_user_id = event["pathParameters"]["userId"]
     table = get_table()
@@ -252,9 +261,51 @@ def get_user_results(user_id, event):
         for item in items
         if item["PK"].startswith("EVENT#") and "#CHIP#" in item["SK"]
     ]
-    stats = _aggregate(game_results)
-    stats["totalChips"] = sum(_as_int(c.get("chipCount", 0)) for c in chip_results)
-    return success_response({"userId": target_user_id, "communityId": community_id, **stats})
+    # コミュニティの通算成績（＝実質的なランキングの原資）に反映されるのは、
+    # 管理者/OWNERが「本日の対局を終了する」（events.complete_event、
+    # CONFIRMED→COMPLETED）を実行してイベントを終了させた対局のみ。
+    # 終了前（進行中）のセッションはEventResultsPage上の「当日の累計成績」
+    # では見えるが、ここでは確定した記録として扱わない。
+    completed_event_ids = _completed_event_ids(
+        table, {item["PK"].split("#", 1)[1] for item in game_results + chip_results}
+    )
+    game_results = [
+        r for r in game_results if r["PK"].split("#", 1)[1] in completed_event_ids
+    ]
+    chip_results = [
+        c for c in chip_results if c["PK"].split("#", 1)[1] in completed_event_ids
+    ]
+
+    by_game_type = {}
+    for game_type in ("MAHJONG4", "MAHJONG3"):
+        gt_game_results = [r for r in game_results if r.get("gameType") == game_type]
+        gt_chip_results = [c for c in chip_results if c.get("gameType") == game_type]
+        stats = _aggregate(gt_game_results)
+        stats["totalChips"] = sum(_as_int(c.get("chipCount", 0)) for c in gt_chip_results)
+        by_game_type[game_type] = stats
+
+    return success_response(
+        {
+            "userId": target_user_id,
+            "communityId": community_id,
+            "byGameType": by_game_type,
+        }
+    )
+
+
+def _completed_event_ids(table, event_ids):
+    """引数のイベントIDのうち、既にCOMPLETED（本日の対局終了済み）になって
+    いるものだけを返す。GameResult/GameResultChipにはイベントの状態が
+    非正規化されていないため、都度Eventメタデータを引いて判定する。
+    """
+    completed = set()
+    for event_id in event_ids:
+        item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+            "Item"
+        )
+        if item is not None and item.get("status") == "COMPLETED":
+            completed.add(event_id)
+    return completed
 
 
 def _next_session_no(table, event_id):
@@ -413,6 +464,9 @@ def _write_session_items(table, event_id, community_id, session_no, body):
                 "score": r["score"],
                 "rankPoints": _to_decimal(r["rankPoints"]),
                 "playedAt": played_at,
+                # GameSessionから非正規化（DynamoDB物理設計書v1.13 §3.13）。
+                # 四麻/三麻を分けて集計するため（_aggregate参照）。
+                "gameType": game_type,
             }
         )
 
@@ -425,6 +479,7 @@ def _write_session_items(table, event_id, community_id, session_no, body):
                 "GSI1SK": f"COMMUNITY#{community_id}#{played_at}",
                 "chipCount": c["chipCount"],
                 "playedAt": played_at,
+                "gameType": game_type,
             }
         )
 

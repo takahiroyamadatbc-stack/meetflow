@@ -21,6 +21,7 @@ import { communityKeys, getCommunity } from "@/features/community/api";
 import {
   approveParticipation,
   cancelEvent,
+  completeEvent,
   confirmEvent,
   eventKeys,
   getEvent,
@@ -44,6 +45,7 @@ export function EventDetailPage() {
   const { userId } = useAuthUser();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
   const { data: event, isLoading } = useQuery({
@@ -104,6 +106,16 @@ export function EventDetailPage() {
     },
     onError: handleApiError,
     onSettled: () => setShowCancelConfirm(false),
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: () => completeEvent(eventId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId!) });
+      toast.success("本日の対局を終了しました。成績がコミュニティの通算成績に反映されます");
+    },
+    onError: handleApiError,
+    onSettled: () => setShowCompleteConfirm(false),
   });
 
   const approveParticipationMutation = useMutation({
@@ -252,6 +264,9 @@ export function EventDetailPage() {
               )}
             </Button>
           </Link>
+          <Button onClick={() => setShowCompleteConfirm(true)} disabled={completeMutation.isPending}>
+            本日の対局を終了する
+          </Button>
           <Button variant="destructive" onClick={() => setShowCancelConfirm(true)}>
             イベントを中止する
           </Button>
@@ -291,6 +306,23 @@ export function EventDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={showCompleteConfirm} onOpenChange={setShowCompleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>本日の対局を終了しますか？</AlertDialogTitle>
+          </AlertDialogHeader>
+          <p className="text-muted-foreground px-4 text-sm">
+            終了すると元に戻せません。ここまでに登録された対局成績が、コミュニティの通算成績に反映されます。
+          </p>
+          <div className="flex justify-end gap-2 px-4 pb-4">
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => completeMutation.mutate()}>
+              終了する
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
         <AlertDialogContent>

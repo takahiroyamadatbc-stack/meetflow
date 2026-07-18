@@ -5,6 +5,7 @@ from meetflow_common import (
     EVENT_CANCELLED,
     EVENT_CONFIRMED,
     EVENT_STATUS_AWAITING_MEMBER_APPROVAL,
+    EVENT_STATUS_CHANGED,
     PARTICIPANT_STATUS_AWAITING_APPROVAL,
     RESERVED_PARTICIPANT_STATUSES,
     error_response,
@@ -448,6 +449,64 @@ def cancel_event(user_id, event):
         },
     )
     return success_response({"eventId": event_id, "status": "CANCELLED"})
+
+
+def complete_event(user_id, event):
+    """本日の対局を終了する（新規追加）。CONFIRMED状態のイベントを
+    COMPLETEDへ遷移させ、この時点までに登録された対局成績を確定させる。
+
+    要件定義書・DynamoDB物理設計書・画面設計書はいずれもCOMPLETEDを
+    ライフサイクルの一部として定義済みだが、実際にこの状態へ遷移させる
+    処理がこれまで存在しなかった（Issue #20）。ResultLambda側の集計
+    （`_aggregate`/`get_user_results`）は、対局の成績がコミュニティの
+    通算成績・平均着順に反映されるのをこの遷移が起きた後に限定する
+    （EVENT#{eventId}のstatusを都度参照する）。中止（cancel_event）と
+    同じくOWNER/ADMINのみが実行できる。
+    """
+    event_id = event["pathParameters"]["eventId"]
+    table = get_table()
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+        "Item"
+    )
+    if event_item is None:
+        return error_response("EVENT_NOT_FOUND", "指定したイベントが見つかりません")
+
+    community_id = event_item["GSI1PK"].split("#", 1)[1]
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    status = event_item.get("status")
+    if status not in ("CONFIRMED", "IN_PROGRESS"):
+        return error_response(
+            "INVALID_STATUS_TRANSITION",
+            "確定済み・進行中のイベントのみ終了できます",
+            status_code=409,
+        )
+
+    table.update_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"},
+        UpdateExpression="SET #status = :completed",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={":completed": "COMPLETED"},
+    )
+    write_status_history(table, event_id, status, "COMPLETED", user_id)
+    write_operation_log(
+        action="COMPLETE_EVENT",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Event",
+        target_id=event_id,
+    )
+
+    put_event(
+        EVENT_STATUS_CHANGED,
+        {
+            "eventId": event_id,
+            "communityId": community_id,
+            "fromStatus": status,
+            "toStatus": "COMPLETED",
+        },
+    )
+    return success_response({"eventId": event_id, "status": "COMPLETED"})
 
 
 def _reopen_candidate(table, community_id, candidate_id):
