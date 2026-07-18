@@ -80,6 +80,9 @@ def put_profile(
     user_id,
     *,
     nickname="ぷれいやー",
+    icon="",
+    bio="",
+    game_types=None,
     auto_approve=None,
     frequency_limit_count=None,
     frequency_limit_period=None,
@@ -88,8 +91,9 @@ def put_profile(
         "PK": f"USER#{user_id}",
         "SK": "PROFILE",
         "nickname": nickname,
-        "bio": "",
-        "gameTypes": [],
+        "icon": icon,
+        "bio": bio,
+        "gameTypes": game_types or [],
         "beginnerOk": False,
     }
     if auto_approve is not None:

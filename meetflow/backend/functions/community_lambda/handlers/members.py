@@ -42,6 +42,14 @@ def list_members(user_id, event):
                 "role": item.get("role"),
                 "status": item.get("status"),
                 "joinedAt": item.get("joinedAt"),
+                # Issue #48: 一覧の簡易表示（アイコン）と、タップ時の詳細表示
+                # （自己紹介・プレイするゲーム）の両方に使う。プロフィールは
+                # 上ですでにget_item済みのため追加クエリは発生しない。
+                "icon": profile.get("icon", ""),
+                "bio": profile.get("bio", ""),
+                "gameTypes": sorted(profile["gameTypes"])
+                if profile.get("gameTypes")
+                else [],
             }
         )
     return success_response({"members": members})

@@ -64,6 +64,10 @@ export type CommunityMember = {
   role: MembershipRole;
   status: "ACTIVE" | "SUSPENDED";
   joinedAt: string;
+  /** Issue #48: 一覧の簡易表示（アイコン）・タップ時の詳細表示に使う */
+  icon: string;
+  bio: string;
+  gameTypes: GameType[];
 };
 
 export type UpdateMemberInput = {

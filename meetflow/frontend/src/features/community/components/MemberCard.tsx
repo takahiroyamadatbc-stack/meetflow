@@ -1,9 +1,15 @@
 import { useState } from "react";
 import { MoreVertical } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { RoleBadge } from "@/features/community/components/RoleBadge";
+import { ProfileCard } from "@/features/user/components/ProfileCard";
 import type { CommunityMember } from "@/features/community/types";
 
 type MemberCardProps = {
@@ -45,21 +52,29 @@ export function MemberCard({
 }: MemberCardProps) {
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [confirmTransferOpen, setConfirmTransferOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const isOwner = member.role === "OWNER";
 
   return (
     <Card>
       <CardContent className="flex items-center gap-3">
-        <Avatar>
-          <AvatarFallback>{member.nickname.slice(0, 1)}</AvatarFallback>
-        </Avatar>
-        <div className="flex flex-1 flex-col">
-          <p className="text-sm font-medium">{member.nickname}</p>
-          <div className="mt-1 flex items-center gap-1">
-            <RoleBadge role={member.role} />
-            {member.status === "SUSPENDED" && <Badge variant="destructive">一時停止中</Badge>}
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-3 text-left"
+          onClick={() => setDetailOpen(true)}
+        >
+          <Avatar>
+            {member.icon && <AvatarImage src={member.icon} alt={member.nickname} />}
+            <AvatarFallback>{member.nickname.slice(0, 1)}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-1 flex-col">
+            <p className="text-sm font-medium">{member.nickname}</p>
+            <div className="mt-1 flex items-center gap-1">
+              <RoleBadge role={member.role} />
+              {member.status === "SUSPENDED" && <Badge variant="destructive">一時停止中</Badge>}
+            </div>
           </div>
-        </div>
+        </button>
 
         {canManage && !isOwner && (
           <DropdownMenu>
@@ -132,6 +147,22 @@ export function MemberCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="sr-only">{member.nickname}さんのプロフィール</DialogTitle>
+          </DialogHeader>
+          <ProfileCard
+            nickname={member.nickname}
+            icon={member.icon}
+            bio={member.bio}
+            gameTypes={member.gameTypes}
+            bioClamp={false}
+            className="border-none shadow-none"
+          />
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

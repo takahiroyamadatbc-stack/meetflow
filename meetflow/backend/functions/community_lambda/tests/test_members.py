@@ -52,6 +52,31 @@ def test_list_members_success(table):
     assert members_list[0]["role"] == "OWNER"
 
 
+def test_list_members_includes_icon_bio_and_game_types(table):
+    """Issue #48: メンバー一覧の簡易表示(アイコン)・詳細表示(自己紹介等)の
+    両方に使うプロフィール項目を返すこと。
+    """
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_profile(
+        table,
+        "user-1",
+        nickname="オーナー太郎",
+        icon="https://avatars.example.com/user-1.webp",
+        bio="麻雀が好きです",
+        game_types=["MAHJONG4"],
+    )
+
+    response = members.list_members(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    member = body_of(response)["data"]["members"][0]
+    assert member["icon"] == "https://avatars.example.com/user-1.webp"
+    assert member["bio"] == "麻雀が好きです"
+    assert member["gameTypes"] == ["MAHJONG4"]
+
+
 def test_list_members_uses_display_name_when_set(table):
     put_community(table, "community-1", owner_id="user-1")
     put_membership(table, "community-1", "user-1", role="OWNER", display_name="たか")
