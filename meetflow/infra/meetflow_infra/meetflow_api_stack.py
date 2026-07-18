@@ -49,6 +49,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     # UserLambda
     ("GET", "/users/me", "user"),
     ("PUT", "/users/me", "user"),
+    ("POST", "/users/me/avatar/upload-url", "user"),
     # CommunityLambda
     ("POST", "/communities", "community"),
     ("GET", "/communities", "community"),

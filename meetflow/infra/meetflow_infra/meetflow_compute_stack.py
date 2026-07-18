@@ -7,6 +7,8 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as origins,
     aws_cognito as cognito,
     aws_dynamodb as dynamodb,
     aws_events as events,
@@ -134,6 +136,39 @@ class MeetFlowComputeStack(Stack):
         )
 
     def _build_user_lambda(self) -> lambda_.Function:
+        is_prod = self.env_name == "prod"
+
+        # Issue #47: プロフィール画像(アバター)用バケット。FeedbackAttachments
+        # Bucketとはアクセスパターンが違うため専用に新設する -- アバターは
+        # ホーム/メンバー一覧など多数のユーザーが高頻度に閲覧するため、都度
+        # 署名付きGET URLを発行するのではなく、CloudFront(OAC)経由の公開
+        # 読み取り+長めのキャッシュとする(バケット自体はフロントエンド配信
+        # バケット同様BLOCK_ALLのまま、CloudFrontのみが読める)。書き込み
+        # (アップロード)側は引き続き署名付きPUT URL(UserLambdaが発行)。
+        avatar_bucket = s3.Bucket(
+            self,
+            "AvatarBucket",
+            bucket_name=f"{self.env_name}-meetflow-avatars",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
+            auto_delete_objects=not is_prod,
+        )
+        avatar_distribution = cloudfront.Distribution(
+            self,
+            "AvatarDistribution",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=origins.S3BucketOrigin.with_origin_access_control(
+                    avatar_bucket
+                ),
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED,
+            ),
+            # MeetFlowFrontendStackと同じ判断(MVP規模・日本国内ユーザー
+            # 想定): 北米・欧州のみのPRICE_CLASS_100で十分。
+            price_class=cloudfront.PriceClass.PRICE_CLASS_100,
+        )
+
         fn = self._build_function(
             "UserLambda",
             # 明示的で予測可能な名前にする: MeetFlowAuthStackのPost
@@ -143,6 +178,10 @@ class MeetFlowComputeStack(Stack):
             # add_post_confirmation_triggerを参照)。
             function_name=user_lambda_function_name(self.env_name),
             code_subdir="user_lambda",
+            extra_environment={
+                "AVATAR_BUCKET_NAME": avatar_bucket.bucket_name,
+                "AVATAR_CLOUDFRONT_DOMAIN": avatar_distribution.domain_name,
+            },
         )
 
         # Lambda設計書v1.1 §3.3: PutItem(プロフィール作成のみ)、GetItem、
@@ -161,11 +200,28 @@ class MeetFlowComputeStack(Stack):
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
+        # Issue #47: アバター署名付きPUT URL発行用。閲覧はCloudFrontが
+        # バケットから直接読むため、FeedbackAttachmentsBucketと異なりLambda
+        # 自身に読み取り権限は不要(grant_putのみ)。
+        avatar_bucket.grant_put(fn)
+
         CfnOutput(
             self,
             "UserLambdaArn",
             value=fn.function_arn,
             description="UserLambda function ARN",
+        )
+        CfnOutput(
+            self,
+            "AvatarBucketName",
+            value=avatar_bucket.bucket_name,
+            description="プロフィール画像(アバター)用S3バケット名",
+        )
+        CfnOutput(
+            self,
+            "AvatarCloudFrontDomainName",
+            value=f"https://{avatar_distribution.domain_name}",
+            description="アバター画像配信用CloudFrontドメイン",
         )
         return fn
 

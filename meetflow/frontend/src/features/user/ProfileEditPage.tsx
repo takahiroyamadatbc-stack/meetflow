@@ -1,9 +1,11 @@
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +28,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { getMyProfile, updateMyProfile, userKeys } from "@/features/user/api";
+import { resizeAndUploadAvatar } from "@/features/user/avatarUpload";
 import { GAME_TYPE_LABELS, type GameType, type UserProfile } from "@/features/user/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { getErrorDisplay, ApiError } from "@/api/errors";
@@ -69,6 +72,24 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [iconUrl, setIconUrl] = useState(profile.icon);
+  const [isUploadingIcon, setIsUploadingIcon] = useState(false);
+
+  async function handleIconSelected(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setIsUploadingIcon(true);
+    try {
+      const avatarUrl = await resizeAndUploadAvatar(file);
+      setIconUrl(avatarUrl);
+    } catch {
+      toast.error("プロフィール画像のアップロードに失敗しました");
+    } finally {
+      setIsUploadingIcon(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -110,6 +131,7 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
     }
     mutation.mutate({
       ...rest,
+      icon: iconUrl,
       frequencyLimitCount: enabled ? (values.frequencyLimitCount ?? null) : null,
       frequencyLimitPeriod: enabled ? (values.frequencyLimitPeriod ?? null) : null,
     });
@@ -119,6 +141,23 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
     <div className="p-4">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
+          <div className="flex flex-col items-center gap-2">
+            <Avatar size="lg" className="size-20">
+              {iconUrl && <AvatarImage src={iconUrl} alt="プロフィール画像" />}
+              <AvatarFallback>{profile.nickname.slice(0, 1)}</AvatarFallback>
+            </Avatar>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              disabled={isUploadingIcon}
+              onChange={(e) => handleIconSelected(e.target.files)}
+              className="text-sm"
+            />
+            {isUploadingIcon && (
+              <p className="text-muted-foreground text-xs">アップロード中...</p>
+            )}
+          </div>
           <FormField
             control={form.control}
             name="nickname"

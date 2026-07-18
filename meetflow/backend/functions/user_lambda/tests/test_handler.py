@@ -202,6 +202,32 @@ def test_update_profile_clears_game_types_with_empty_list(table):
     assert body_of(response)["data"]["gameTypes"] == []
 
 
+def test_create_avatar_upload_url_success(table):
+    put_profile(table, "user-1")
+
+    response = handler._create_avatar_upload_url(
+        "user-1", api_event(body={"contentType": "image/webp"})
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["uploadUrl"].startswith("https://")
+    assert data["avatarUrl"].startswith(
+        "https://avatars.test.cloudfront.net/avatars/user-1/"
+    )
+    assert data["avatarUrl"].endswith(".webp")
+    assert data["expiresIn"] == 300
+
+
+def test_create_avatar_upload_url_rejects_unsupported_content_type(table):
+    response = handler._create_avatar_upload_url(
+        "user-1", api_event(body={"contentType": "application/pdf"})
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "PROFILE_VALIDATION_ERROR"
+
+
 def test_post_confirmation_creates_profile_with_nickname_from_client_metadata(table):
     event = cognito_post_confirmation_event(
         user_id="user-1", email="taro@example.com", nickname="たろちゃん"
