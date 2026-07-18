@@ -27,11 +27,23 @@ self.addEventListener("push", (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || "MeetFlow", {
-      body: payload.body || "",
-      icon: "/icon-192x192.png",
-      badge: "/favicon-32x32.png",
-    }),
+    (async () => {
+      await self.registration.showNotification(payload.title || "MeetFlow", {
+        body: payload.body || "",
+        icon: "/icon-192x192.png",
+        badge: "/favicon-32x32.png",
+      });
+      // Issue #50: ホーム画面アイコンのOSレベルバッジを、現在表示中の
+      // 通知件数で更新する（未対応環境ではsetAppBadge自体が存在しない）。
+      if ("setAppBadge" in navigator) {
+        const notifications = await self.registration.getNotifications();
+        try {
+          await navigator.setAppBadge(notifications.length);
+        } catch {
+          // Badging API非対応環境（iOS Safari等）では何もしない
+        }
+      }
+    })(),
   );
 });
 
