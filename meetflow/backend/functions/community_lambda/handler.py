@@ -11,6 +11,10 @@ _ROUTES = {
     ("PUT", "/communities/{communityId}"): communities.update_community,
     ("DELETE", "/communities/{communityId}"): communities.delete_community,
     ("PUT", "/communities/{communityId}/theme-color"): communities.update_theme_color,
+    (
+        "POST",
+        "/communities/{communityId}/icon/upload-url",
+    ): communities.create_icon_upload_url,
     ("POST", "/communities/{communityId}/owner-transfer"): communities.transfer_owner,
     ("POST", "/communities/{communityId}/invite"): invites.create_invite,
     ("GET", "/invites/{token}"): invites.get_invite_preview,

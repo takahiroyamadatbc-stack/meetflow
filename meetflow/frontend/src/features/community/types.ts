@@ -32,11 +32,14 @@ export type CommunityMutationResult = {
   genre: string;
   memberApprovalRequired: boolean;
   themeColor?: string | null;
+  /** Issue #52: コミュニティアイコン画像の公開URL */
+  icon?: string | null;
 };
 
 /** get_community() のレスポンス実体（一覧・作成/更新の両方のフィールドを含む） */
 export type CommunityDetail = CommunityMutationResult & {
   themeColor: string | null;
+  icon: string | null;
   role: MembershipRole;
   /** 未処理（PENDING）JoinRequest件数（Issue #29）。管理者向けバッジ表示用 */
   pendingRequestCount: number;
@@ -55,6 +58,8 @@ export type CreateCommunityInput = {
   genre?: string;
   memberApprovalRequired?: boolean;
   themeColor?: string;
+  /** Issue #52: updateCommunity()経由でのみ使う（作成時は未対応） */
+  icon?: string | null;
 };
 
 /** members.py list_members() のレスポンス実体 */

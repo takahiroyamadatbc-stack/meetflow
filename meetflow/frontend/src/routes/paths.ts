@@ -13,7 +13,7 @@ export const paths = {
   communityJoinRequests: (communityId: string) => `/communities/${communityId}/join-requests`,
   communityMembers: (communityId: string) => `/communities/${communityId}/members`,
   communityDisplayNameEdit: (communityId: string) => `/communities/${communityId}/display-name`,
-  communityThemeColorEdit: (communityId: string) => `/communities/${communityId}/theme-color`,
+  communityProfileEdit: (communityId: string) => `/communities/${communityId}/profile-edit`,
   communityAutoApproveEdit: (communityId: string) => `/communities/${communityId}/auto-approve`,
   communityFrequencyLimitEdit: (communityId: string) =>
     `/communities/${communityId}/frequency-limit`,

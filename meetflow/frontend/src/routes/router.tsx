@@ -15,7 +15,7 @@ import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
 import { DisplayNameEditPage } from "@/features/community/DisplayNameEditPage";
 import { AutoApproveEditPage } from "@/features/community/AutoApproveEditPage";
 import { FrequencyLimitEditPage } from "@/features/community/FrequencyLimitEditPage";
-import { ThemeColorEditPage } from "@/features/community/ThemeColorEditPage";
+import { CommunityProfileEditPage } from "@/features/community/CommunityProfileEditPage";
 import { InvitePage } from "@/features/community/InvitePage";
 import { InviteAcceptPage } from "@/features/community/InviteAcceptPage";
 import { JoinRequestListPage } from "@/features/community/JoinRequestListPage";
@@ -126,9 +126,9 @@ export const router = createBrowserRouter([
         handle: { title: "表示名を変更" },
       },
       {
-        path: "/communities/:communityId/theme-color",
-        element: <ThemeColorEditPage />,
-        handle: { title: "テーマカラーを変更" },
+        path: "/communities/:communityId/profile-edit",
+        element: <CommunityProfileEditPage />,
+        handle: { title: "コミュニティプロフィール編集" },
       },
       {
         path: "/communities/:communityId/auto-approve",

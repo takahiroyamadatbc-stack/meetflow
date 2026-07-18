@@ -118,8 +118,8 @@ export function CommunityDetailPage() {
                   label="空き予定提出リクエスト"
                 />
                 <NavCard
-                  to={paths.communityThemeColorEdit(community.communityId)}
-                  label="テーマカラーを変更"
+                  to={paths.communityProfileEdit(community.communityId)}
+                  label="コミュニティプロフィールを編集"
                 />
               </div>
             </AccordionContent>

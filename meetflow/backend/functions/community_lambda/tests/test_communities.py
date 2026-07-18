@@ -62,6 +62,7 @@ def test_get_community_success(table):
         "genre": "麻雀",
         "memberApprovalRequired": True,
         "themeColor": None,
+        "icon": None,
         "role": "OWNER",
         "pendingRequestCount": 0,
     }
@@ -352,6 +353,81 @@ def test_update_theme_color_forbidden_for_plain_member(table):
             "user-2",
             api_event(
                 path_params={"communityId": "community-1"}, body={"themeColor": "#22C55E"}
+            ),
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_update_community_icon_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_community(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"icon": "https://avatars.test.cloudfront.net/communities/community-1/x.png"},
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["icon"] == (
+        "https://avatars.test.cloudfront.net/communities/community-1/x.png"
+    )
+
+    get_response = communities.get_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+    assert body_of(get_response)["data"]["icon"] == (
+        "https://avatars.test.cloudfront.net/communities/community-1/x.png"
+    )
+
+
+def test_create_icon_upload_url_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.create_icon_upload_url(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"contentType": "image/webp"}
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["uploadUrl"].startswith("https://")
+    assert data["iconUrl"].startswith(
+        "https://avatars.test.cloudfront.net/communities/community-1/"
+    )
+    assert data["iconUrl"].endswith(".webp")
+    assert data["expiresIn"] == 300
+
+
+def test_create_icon_upload_url_rejects_unsupported_content_type(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.create_icon_upload_url(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"contentType": "application/pdf"}
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_create_icon_upload_url_forbidden_for_plain_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    with pytest.raises(AuthError) as exc_info:
+        communities.create_icon_upload_url(
+            "user-2",
+            api_event(
+                path_params={"communityId": "community-1"}, body={"contentType": "image/png"}
             ),
         )
     assert exc_info.value.code == "FORBIDDEN"
