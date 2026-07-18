@@ -7,6 +7,8 @@ import { CommunityCard } from "@/features/community/components/CommunityCard";
 import { communityKeys, listCommunities } from "@/features/community/api";
 import { useUnreadNotificationCount } from "@/features/notification/api";
 import { AnnouncementCard } from "@/features/announcement/AnnouncementCard";
+import { getMyProfile, userKeys } from "@/features/user/api";
+import { ProfileCard } from "@/features/user/components/ProfileCard";
 import { paths } from "@/routes/paths";
 
 /** S-02 ホーム画面 */
@@ -14,6 +16,10 @@ export function HomePage() {
   const { data: communities, isLoading } = useQuery({
     queryKey: communityKeys.all,
     queryFn: listCommunities,
+  });
+  const { data: profile } = useQuery({
+    queryKey: userKeys.me,
+    queryFn: getMyProfile,
   });
   const unreadCount = useUnreadNotificationCount();
 
@@ -29,6 +35,15 @@ export function HomePage() {
       </div>
 
       <AnnouncementCard />
+
+      {profile && (
+        <ProfileCard
+          nickname={profile.nickname}
+          icon={profile.icon}
+          bio={profile.profile}
+          gameTypes={profile.gameTypes}
+        />
+      )}
 
       {isLoading && <Skeleton className="h-20 w-full" />}
 

@@ -3,13 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { getMyProfile, userKeys } from "@/features/user/api";
-import { GAME_TYPE_LABELS } from "@/features/user/types";
+import { ProfileCard } from "@/features/user/components/ProfileCard";
 import { signOutUser } from "@/features/auth/api";
 import { useIsOperator } from "@/features/auth/useIsOperator";
 import {
@@ -51,21 +50,14 @@ export function MyPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Card>
-        <CardContent className="flex items-center gap-4">
-          <Avatar className="size-14">
-            <AvatarFallback>{profile?.nickname?.slice(0, 1) ?? "?"}</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="text-base font-semibold">{profile?.nickname}</p>
-            {profile && profile.gameTypes.length > 0 && (
-              <p className="text-muted-foreground text-xs">
-                {profile.gameTypes.map((g) => GAME_TYPE_LABELS[g]).join(" / ")}
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {profile && (
+        <ProfileCard
+          nickname={profile.nickname}
+          icon={profile.icon}
+          bio={profile.profile}
+          gameTypes={profile.gameTypes}
+        />
+      )}
 
       <Link to={paths.profileEdit}>
         <Card>
