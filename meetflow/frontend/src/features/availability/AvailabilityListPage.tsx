@@ -125,7 +125,8 @@ export function AvailabilityListPage() {
         mode="single"
         selected={selectedDate}
         onSelect={setSelectedDate}
-        className="mx-auto"
+        className="w-full [--cell-size:--spacing(11)]"
+        classNames={{ root: "w-full" }}
         components={{
           DayButton: (props) => <ScheduleDayButton markersByDate={markersByDate} {...props} />,
         }}
