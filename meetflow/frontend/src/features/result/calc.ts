@@ -13,6 +13,11 @@ export type LiveResultRow = {
  * バックエンド（result_lambda/handlers/results.py の _compute_results()）と
  * 同じ計算式によるフロント側プレビュー実装。最終的な正の値はサーバー側の
  * 計算結果であり、ここでの計算はリアルタイム表示（プレビュー）専用。
+ *
+ * 点数が同点の場合、`tieOrder`（userIdの優先順リスト）内での並び順を
+ * 同点者間のタイブレークに使う。バックエンドの`_compute_results`も安定ソートで
+ * 送信順を維持するため、`sortByTieOrder`で送信直前に同じ順序を`results`に
+ * 反映することで、ここで決めた同点順位がそのまま登録される。
  */
 export function computeLiveResults(
   rows: { userId: string; nickname: string; score: number }[],
@@ -20,8 +25,15 @@ export function computeLiveResults(
   startingPoints: number,
   returnPoints: number,
   umaByRank: number[],
+  tieOrder?: string[],
 ): LiveResultRow[] {
-  const ordered = [...rows].sort((a, b) => b.score - a.score);
+  const orderIndex = new Map((tieOrder ?? []).map((userId, i) => [userId, i]));
+  const ordered = [...rows].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const ai = orderIndex.get(a.userId) ?? Number.MAX_SAFE_INTEGER;
+    const bi = orderIndex.get(b.userId) ?? Number.MAX_SAFE_INTEGER;
+    return ai - bi;
+  });
   const playerCount = rows.length;
 
   return ordered.map((row, index) => {
@@ -34,6 +46,23 @@ export function computeLiveResults(
       rankPoints = Math.round((base + uma + oka) * 10) / 10;
     }
     return { ...row, rank, rankPoints };
+  });
+}
+
+/**
+ * 同点タイブレークの並び替え結果（`tieOrder`）を、実際に送信する行配列に反映する。
+ * 点数降順は変えず、同点者同士だけを`tieOrder`内の順序に並び替える。
+ */
+export function sortByTieOrder<T extends { userId: string; score: number }>(
+  items: T[],
+  tieOrder: string[],
+): T[] {
+  const orderIndex = new Map(tieOrder.map((userId, i) => [userId, i]));
+  return [...items].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const ai = orderIndex.get(a.userId) ?? Number.MAX_SAFE_INTEGER;
+    const bi = orderIndex.get(b.userId) ?? Number.MAX_SAFE_INTEGER;
+    return ai - bi;
   });
 }
 

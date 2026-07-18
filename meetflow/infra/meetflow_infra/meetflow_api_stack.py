@@ -110,6 +110,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("GET", "/events/{eventId}", "event"),
     ("POST", "/events/{eventId}/confirm", "event"),
     ("POST", "/events/{eventId}/cancel", "event"),
+    ("POST", "/events/{eventId}/complete", "event"),
     ("GET", "/communities/{communityId}/events", "event"),
     ("GET", "/events/{eventId}/participants", "event"),
     ("GET", "/events/{eventId}/cancel-requests", "event"),

@@ -62,14 +62,23 @@ export type LastGameSettings =
       umaByRank?: number[];
     };
 
-/** results.py get_user_results() のレスポンス実体（_aggregate()の集計値） */
-export type ResultSummary = {
-  userId: string;
-  communityId: string;
+/** results.py get_user_results() の_aggregate()集計値（ゲーム種別ごと） */
+export type ResultSummaryStats = {
   totalGames: number;
   averageRank: number;
   firstPlaceRate: number;
   lastPlaceRate: number;
   totalPoints: number;
   totalChips: number;
+};
+
+/**
+ * results.py get_user_results() のレスポンス実体。四麻と三麻は着順の
+ * スケールが異なり平均着順を混ぜると意味を持たなくなるため、種別ごとに
+ * 分けて返す（DynamoDB物理設計書v1.13 §3.13）。
+ */
+export type ResultSummary = {
+  userId: string;
+  communityId: string;
+  byGameType: Record<GameType, ResultSummaryStats>;
 };
