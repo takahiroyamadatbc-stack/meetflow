@@ -99,22 +99,33 @@ export function CommunityDetailPage() {
         </CardContent>
       </Card>
 
-      {isAdmin && (
-        <NavCard
-          to={paths.communityThemeColorEdit(community.communityId)}
-          label="テーマカラーを変更"
-        />
-      )}
       <NavCard to={paths.communityInvite(community.communityId)} label="メンバーを招待する" />
-      {isAdmin && (
-        <NavCard
-          to={paths.communityJoinRequests(community.communityId)}
-          label="参加リクエスト一覧"
-          badgeCount={community.pendingRequestCount}
-        />
-      )}
+      <NavCard to={paths.eventList(community.communityId)} label="イベント一覧" />
 
       <Accordion className="flex flex-col gap-2">
+        {isAdmin && (
+          <AccordionItem value="admin">
+            <AccordionTrigger>管理者メニュー</AccordionTrigger>
+            <AccordionContent>
+              <div className="flex flex-col gap-3">
+                <NavCard
+                  to={paths.communityJoinRequests(community.communityId)}
+                  label="参加リクエスト一覧"
+                  badgeCount={community.pendingRequestCount}
+                />
+                <NavCard
+                  to={paths.availabilityRequestList(community.communityId)}
+                  label="空き予定提出リクエスト"
+                />
+                <NavCard
+                  to={paths.communityThemeColorEdit(community.communityId)}
+                  label="テーマカラーを変更"
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
         <AccordionItem value="member">
           <AccordionTrigger>メンバー</AccordionTrigger>
           <AccordionContent>
@@ -136,31 +147,24 @@ export function CommunityDetailPage() {
                 to={paths.availabilityCalendar(community.communityId)}
                 label="登録済みの空き予定を確認・編集する"
               />
-              <NavCard
-                to={paths.availabilityRequestList(community.communityId)}
-                label="空き予定提出リクエスト"
-              />
             </div>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="event">
-          <AccordionTrigger>イベント・マッチング</AccordionTrigger>
-          <AccordionContent>
-            <div className="flex flex-col gap-3">
-              <NavCard to={paths.eventList(community.communityId)} label="イベント一覧" />
-              {isAdmin && (
-                <>
-                  <NavCard to={paths.eventTemplateList(community.communityId)} label="開催条件" />
-                  <NavCard
-                    to={paths.matchingCandidateList(community.communityId)}
-                    label="マッチング候補"
-                  />
-                </>
-              )}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
+        {isAdmin && (
+          <AccordionItem value="matching">
+            <AccordionTrigger>マッチング</AccordionTrigger>
+            <AccordionContent>
+              <div className="flex flex-col gap-3">
+                <NavCard to={paths.eventTemplateList(community.communityId)} label="開催条件" />
+                <NavCard
+                  to={paths.matchingCandidateList(community.communityId)}
+                  label="マッチング候補"
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
         <AccordionItem value="settings">
           <AccordionTrigger>設定</AccordionTrigger>
