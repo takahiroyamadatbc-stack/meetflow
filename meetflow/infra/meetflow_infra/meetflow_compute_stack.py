@@ -97,7 +97,7 @@ class MeetFlowComputeStack(Stack):
         function_name: str,
         code_subdir: str,
         timeout: Duration = None,
-        memory_size: int = 256,
+        memory_size: int = 512,
         extra_layers: list = None,
         extra_environment: dict = None,
     ) -> lambda_.Function:
