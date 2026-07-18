@@ -32,6 +32,8 @@ for _name in list(sys.modules):
 
 os.environ.setdefault("AWS_DEFAULT_REGION", "ap-northeast-1")
 os.environ.setdefault("TABLE_NAME", "test-MeetFlowTable")
+os.environ.setdefault("AVATAR_BUCKET_NAME", "test-meetflow-avatars")
+os.environ.setdefault("AVATAR_CLOUDFRONT_DOMAIN", "avatars.test.cloudfront.net")
 
 
 @pytest.fixture

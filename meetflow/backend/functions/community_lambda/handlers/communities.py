@@ -1,5 +1,8 @@
+import os
 import re
+import uuid
 
+import boto3
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
@@ -16,6 +19,27 @@ from meetflow_common import (
 
 _MAX_NAME_LENGTH = 50  # 設計書には明記されていない、MVP向け保守的な上限値
 _THEME_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+# Issue #52: コミュニティアイコンアップロード。許可フォーマットはUserLambdaの
+# アバターアップロード（user_lambda/handler.py、Issue #47）と揃える。
+# 同じバケット/CloudFrontディストリビューションをキープレフィックスで
+# 分けて共用する（infra/meetflow_infra/meetflow_compute_stack.py
+# `_build_avatar_bucket`参照）。
+_ALLOWED_ICON_CONTENT_TYPES = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+}
+_ICON_UPLOAD_EXPIRES_IN_SECONDS = 300
+
+_s3_client = None
+
+
+def _get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client("s3")
+    return _s3_client
 
 
 def create_community(user_id, event):
@@ -133,6 +157,7 @@ def get_community(user_id, event):
             "genre": community.get("genre", ""),
             "memberApprovalRequired": community.get("memberApprovalRequired", False),
             "themeColor": community.get("themeColor"),
+            "icon": community.get("icon"),
             "role": membership.get("role"),
             "pendingRequestCount": pending_request_count,
         }
@@ -246,6 +271,13 @@ def update_community(user_id, event):
         names["#mar"] = "memberApprovalRequired"
         values[":mar"] = bool(body["memberApprovalRequired"])
         set_clauses.append("#mar = :mar")
+    if "icon" in body:
+        icon = body["icon"]
+        if icon is not None and not isinstance(icon, str):
+            return error_response("INVALID_PARAMETER", "iconが不正です")
+        names["#icon"] = "icon"
+        values[":icon"] = icon
+        set_clauses.append("#icon = :icon")
 
     if not set_clauses:
         return _no_fields_to_update()
@@ -275,6 +307,7 @@ def update_community(user_id, event):
             "description": community.get("description", ""),
             "genre": community.get("genre", ""),
             "memberApprovalRequired": community.get("memberApprovalRequired", False),
+            "icon": community.get("icon"),
         }
     )
 
@@ -395,6 +428,48 @@ def update_theme_color(user_id, event):
         after={"themeColor": theme_color or None},
     )
     return success_response({"communityId": community_id, "themeColor": theme_color or None})
+
+
+def create_icon_upload_url(user_id, event):
+    """POST /communities/{communityId}/icon/upload-url（Issue #52）。
+
+    コミュニティアイコン画像アップロード用の署名付きPUT URLを発行する。
+    UserLambdaのアバターアップロード（Issue #47、user_lambda/handler.py
+    `_create_avatar_upload_url`）と同じバケット・CloudFrontディストリ
+    ビューションを、キープレフィックス（`communities/{communityId}/...`）
+    で分けて共用する。OWNER/ADMIN限定（テーマカラー変更等と同じ権限）。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    body = parse_body(event)
+    content_type = body.get("contentType")
+    if content_type not in _ALLOWED_ICON_CONTENT_TYPES:
+        return error_response(
+            "INVALID_PARAMETER", "画像形式はPNG/JPEG/WebPのいずれかにしてください"
+        )
+
+    ext = _ALLOWED_ICON_CONTENT_TYPES[content_type]
+    icon_key = f"communities/{community_id}/{uuid.uuid4().hex}.{ext}"
+    upload_url = _get_s3_client().generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": os.environ["AVATAR_BUCKET_NAME"],
+            "Key": icon_key,
+            "ContentType": content_type,
+        },
+        ExpiresIn=_ICON_UPLOAD_EXPIRES_IN_SECONDS,
+    )
+    icon_url = f"https://{os.environ['AVATAR_CLOUDFRONT_DOMAIN']}/{icon_key}"
+
+    return success_response(
+        {
+            "uploadUrl": upload_url,
+            "iconUrl": icon_url,
+            "expiresIn": _ICON_UPLOAD_EXPIRES_IN_SECONDS,
+        }
+    )
 
 
 def delete_community(user_id, event):

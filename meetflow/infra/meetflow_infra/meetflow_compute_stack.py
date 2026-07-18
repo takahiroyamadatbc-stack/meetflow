@@ -79,6 +79,20 @@ class MeetFlowComputeStack(Stack):
             description="Shared DynamoDB/auth/OperationLog/error helpers for all domain Lambdas",
         )
 
+        # Issue #47: プロフィール画像(アバター)用バケット。FeedbackAttachments
+        # Bucketとはアクセスパターンが違うため専用に新設する -- アバターは
+        # ホーム/メンバー一覧など多数のユーザーが高頻度に閲覧するため、都度
+        # 署名付きGET URLを発行するのではなく、CloudFront(OAC)経由の公開
+        # 読み取り+長めのキャッシュとする(バケット自体はフロントエンド配信
+        # バケット同様BLOCK_ALLのまま、CloudFrontのみが読める)。書き込み
+        # (アップロード)側は引き続き署名付きPUT URL(発行元Lambdaが個別に持つ)。
+        # Issue #52: コミュニティアイコンもこのバケットを共用する(キーの
+        # プレフィックスで`avatars/{userId}/...`と`communities/{communityId}/...`
+        # を分ける)。アクセスパターンが同じ(ユーザー生成の小さい画像、高頻度
+        # 公開読み取り)なため、新規バケット・新規CloudFront Distributionは
+        # 追加コストに見合わないと判断した。
+        self.avatar_bucket, self.avatar_distribution = self._build_avatar_bucket()
+
         self.user_lambda = self._build_user_lambda()
         self._grant_cognito_invoke(user_pool)
 
@@ -135,16 +149,8 @@ class MeetFlowComputeStack(Stack):
             log_group=log_group,
         )
 
-    def _build_user_lambda(self) -> lambda_.Function:
+    def _build_avatar_bucket(self) -> tuple[s3.Bucket, cloudfront.Distribution]:
         is_prod = self.env_name == "prod"
-
-        # Issue #47: プロフィール画像(アバター)用バケット。FeedbackAttachments
-        # Bucketとはアクセスパターンが違うため専用に新設する -- アバターは
-        # ホーム/メンバー一覧など多数のユーザーが高頻度に閲覧するため、都度
-        # 署名付きGET URLを発行するのではなく、CloudFront(OAC)経由の公開
-        # 読み取り+長めのキャッシュとする(バケット自体はフロントエンド配信
-        # バケット同様BLOCK_ALLのまま、CloudFrontのみが読める)。書き込み
-        # (アップロード)側は引き続き署名付きPUT URL(UserLambdaが発行)。
         avatar_bucket = s3.Bucket(
             self,
             "AvatarBucket",
@@ -168,6 +174,11 @@ class MeetFlowComputeStack(Stack):
             # 想定): 北米・欧州のみのPRICE_CLASS_100で十分。
             price_class=cloudfront.PriceClass.PRICE_CLASS_100,
         )
+        return avatar_bucket, avatar_distribution
+
+    def _build_user_lambda(self) -> lambda_.Function:
+        avatar_bucket = self.avatar_bucket
+        avatar_distribution = self.avatar_distribution
 
         fn = self._build_function(
             "UserLambda",
@@ -236,9 +247,14 @@ class MeetFlowComputeStack(Stack):
         # 再デプロイする運用)。未指定時はLambda側のハードコードされた
         # デフォルトにフォールバックする(cdk synth --allが認証情報無しで
         # 動くinfra-synth CIジョブの挙動は変えない)。
-        community_extra_environment = (
-            {"INVITE_BASE_URL": self.invite_base_url} if self.invite_base_url else None
-        )
+        community_extra_environment = {
+            # Issue #52: コミュニティアイコンのアップロード先/配信ドメイン
+            # (UserLambdaのアバター用バケットを共用、_build_avatar_bucket参照)。
+            "AVATAR_BUCKET_NAME": self.avatar_bucket.bucket_name,
+            "AVATAR_CLOUDFRONT_DOMAIN": self.avatar_distribution.domain_name,
+        }
+        if self.invite_base_url:
+            community_extra_environment["INVITE_BASE_URL"] = self.invite_base_url
         fn = self._build_function(
             "CommunityLambda",
             function_name=f"{self.env_name}-meetflow-community-lambda",
@@ -266,6 +282,11 @@ class MeetFlowComputeStack(Stack):
         )
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
+
+        # Issue #52: コミュニティアイコン署名付きPUT URL発行用。閲覧は
+        # CloudFrontがバケットから直接読むため、grant_putのみで足りる
+        # (UserLambdaのアバターアップロードと同じ理由)。
+        self.avatar_bucket.grant_put(fn)
 
         CfnOutput(
             self,
