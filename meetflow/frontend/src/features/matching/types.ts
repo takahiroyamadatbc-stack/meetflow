@@ -35,8 +35,10 @@ export type CandidateMemberInfo = {
 /** matching.py _to_api_candidate() のレスポンス実体 */
 export type Candidate = {
   candidateId: string;
-  templateId: string;
-  score: number;
+  /** Issue #56: 手動作成候補（管理者が承認フロー無しで直接作成）はnull */
+  templateId: string | null;
+  /** Issue #56: 手動作成候補はスコアリングを経ないためnull */
+  score: number | null;
   status: "PENDING" | "CONFIRMED" | "DISCARDED";
   reasons: string[];
   startTime: string | null;
@@ -44,4 +46,14 @@ export type Candidate = {
   members: CandidateMemberInfo[];
   /** 候補の生成日時（ISO8601、Issue #28） */
   createdAt: string;
+  /** Issue #56: 手動作成候補のみ持つ、その場で自由入力したゲーム種別 */
+  gameType: GameType | null;
+};
+
+/** POST /communities/{communityId}/matching/candidates/manual のリクエスト実体（Issue #56） */
+export type CreateManualCandidateInput = {
+  memberIds: string[];
+  startTime: string;
+  endTime: string;
+  gameType?: GameType;
 };

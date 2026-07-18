@@ -519,3 +519,106 @@ def test_get_candidate_detail_not_found(table):
 
     assert response["statusCode"] == 404
     assert body_of(response)["error"]["code"] == "CANDIDATE_NOT_FOUND"
+
+
+def test_create_manual_candidate_success(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    response = matching.create_manual_candidate(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={
+                "memberIds": ["user-1", "user-2"],
+                "startTime": _START,
+                "endTime": _END,
+                "gameType": "MAHJONG4",
+            },
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    data = body_of(response)["data"]
+    assert data["templateId"] is None
+    assert data["score"] is None
+    assert data["status"] == "PENDING"
+    assert data["startTime"] == _START
+    assert data["endTime"] == _END
+    assert data["gameType"] == "MAHJONG4"
+    assert {m["userId"] for m in data["members"]} == {"user-1", "user-2"}
+
+    # 一覧・詳細取得の両方から手動作成候補が取得できること
+    list_response = matching.list_candidates(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+    assert len(body_of(list_response)["data"]["candidates"]) == 1
+
+    detail_response = matching.get_candidate_detail(
+        "user-1", api_event(path_params={"candidateId": data["candidateId"]})
+    )
+    assert body_of(detail_response)["data"]["templateId"] is None
+
+
+def test_create_manual_candidate_invalid_member_ids(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = matching.create_manual_candidate(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"memberIds": [], "startTime": _START, "endTime": _END},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_create_manual_candidate_rejects_non_active_member(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER", status="SUSPENDED")
+
+    response = matching.create_manual_candidate(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={
+                "memberIds": ["user-1", "user-2"],
+                "startTime": _START,
+                "endTime": _END,
+            },
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_create_manual_candidate_invalid_time_range(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = matching.create_manual_candidate(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"memberIds": ["user-1"], "startTime": _END, "endTime": _START},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_TIME_RANGE"
+
+
+def test_create_manual_candidate_forbidden_for_plain_member(table):
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+
+    with pytest.raises(AuthError) as exc_info:
+        matching.create_manual_candidate(
+            "user-1",
+            api_event(
+                path_params={"communityId": "community-1"},
+                body={"memberIds": ["user-1"], "startTime": _START, "endTime": _END},
+            ),
+        )
+    assert exc_info.value.code == "FORBIDDEN"

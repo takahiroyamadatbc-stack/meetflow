@@ -29,6 +29,7 @@ import { EventTemplateListPage } from "@/features/matching/EventTemplateListPage
 import { EventTemplateFormPage } from "@/features/matching/EventTemplateFormPage";
 import { MatchingCandidateListPage } from "@/features/matching/MatchingCandidateListPage";
 import { MatchingCandidateDetailPage } from "@/features/matching/MatchingCandidateDetailPage";
+import { ManualCandidateCreatePage } from "@/features/matching/ManualCandidateCreatePage";
 import { EventListPage } from "@/features/event/EventListPage";
 import { EventDetailPage } from "@/features/event/EventDetailPage";
 import { CancelRequestCreatePage } from "@/features/event/CancelRequestCreatePage";
@@ -189,6 +190,11 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/matching/candidates/:candidateId",
         element: <MatchingCandidateDetailPage />,
         handle: { title: "候補詳細" },
+      },
+      {
+        path: "/communities/:communityId/matching/manual",
+        element: <ManualCandidateCreatePage />,
+        handle: { title: "今すぐイベントを作成" },
       },
       {
         path: "/communities/:communityId/events",

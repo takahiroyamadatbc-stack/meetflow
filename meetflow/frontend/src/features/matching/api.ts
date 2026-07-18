@@ -1,5 +1,10 @@
 import { apiClient } from "@/api/client";
-import type { Candidate, EventTemplate, EventTemplateInput } from "@/features/matching/types";
+import type {
+  Candidate,
+  CreateManualCandidateInput,
+  EventTemplate,
+  EventTemplateInput,
+} from "@/features/matching/types";
 
 export const matchingKeys = {
   templates: (communityId: string) => ["communities", communityId, "event-templates"] as const,
@@ -41,6 +46,19 @@ export function generateCandidates(communityId: string, templateId: string) {
   return apiClient
     .post<{ candidates: Candidate[] }>(`/communities/${communityId}/matching`, { templateId })
     .then((data) => data.candidates);
+}
+
+/**
+ * POST /communities/{communityId}/matching/candidates/manual（Issue #56）。
+ * 開催条件・空き予定収集を経ずに、管理者がメンバー・日時を直接指定して
+ * 承認フロー無しの候補を作成する。以降は既存の候補詳細→会場選択→
+ * イベント作成のフロー（MatchingCandidateDetailPage）にそのまま乗る。
+ */
+export function createManualCandidate(communityId: string, input: CreateManualCandidateInput) {
+  return apiClient.post<Candidate>(
+    `/communities/${communityId}/matching/candidates/manual`,
+    input,
+  );
 }
 
 /** GET /communities/{communityId}/matching/candidates */

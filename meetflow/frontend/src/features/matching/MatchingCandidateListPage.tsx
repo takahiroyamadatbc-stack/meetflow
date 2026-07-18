@@ -102,7 +102,7 @@ export function MatchingCandidateListPage() {
         <div className="flex flex-col gap-3">
           {(candidates ?? [])
             .filter((c) => c.status === "PENDING")
-            .sort((a, b) => b.score - a.score)
+            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
             .map((candidate) => (
               <CandidateCard
                 key={candidate.candidateId}

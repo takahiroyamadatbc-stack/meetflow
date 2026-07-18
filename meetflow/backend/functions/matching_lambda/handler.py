@@ -26,6 +26,10 @@ _ROUTES = {
     ): event_templates.delete_template,
     ("POST", "/communities/{communityId}/matching"): matching.generate_candidates,
     (
+        "POST",
+        "/communities/{communityId}/matching/candidates/manual",
+    ): matching.create_manual_candidate,
+    (
         "GET",
         "/communities/{communityId}/matching/candidates",
     ): matching.list_candidates,
