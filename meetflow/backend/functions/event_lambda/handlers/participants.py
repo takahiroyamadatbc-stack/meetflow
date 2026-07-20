@@ -373,7 +373,19 @@ def _finalize_if_all_approved(table, event_id, community_id, approved_by):
     )
     items = resp.get("Items", [])
     if not items or any(p.get("status") != "CONFIRMED" for p in items):
-        return EVENT_STATUS_AWAITING_MEMBER_APPROVAL
+        # Issue #63: cancel_eventがCONFIRMED状態のParticipant行をCANCELLED
+        # へ更新するようになったため、承認待ち中にイベントが中止された場合、
+        # ここでの判定は「まだ全員承認済みではない」ではなく「一部が中止に
+        # よりCANCELLEDになった」ケースも通るようになった。いずれの場合も
+        # AWAITING_MEMBER_APPROVALと決め打ちにせず、Event側の実際の状態を
+        # 返す（中止済みならCANCELLEDを正しく返す）。
+        current = (
+            table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+                "Item"
+            )
+            or {}
+        )
+        return current.get("status", EVENT_STATUS_AWAITING_MEMBER_APPROVAL)
 
     member_ids = sorted(item["SK"].split("#", 1)[1] for item in items)
     try:

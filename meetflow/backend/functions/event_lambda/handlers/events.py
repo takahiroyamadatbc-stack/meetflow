@@ -252,10 +252,19 @@ def confirm_event(user_id, event):
                 f"PARTICIPANT#{start_time}", f"PARTICIPANT#{end_time}"
             ),
         )
-        if any(
-            p.get("status") in RESERVED_PARTICIPANT_STATUSES
-            for p in resp.get("Items", [])
-        ):
+        for p in resp.get("Items", []):
+            if p.get("status") not in RESERVED_PARTICIPANT_STATUSES:
+                continue
+            # Issue #63: cancel_event側の修正後もこのステータス残留は起こら
+            # ないはずだが、それより前に中止されたイベントのParticipant行
+            # （移行前のデータ）が万一残っていた場合に備え、親Eventが
+            # CANCELLEDでないことも確認する二重防御。
+            conflicting_event_id = p["PK"].split("#", 1)[1]
+            conflicting_event = table.get_item(
+                Key={"PK": f"EVENT#{conflicting_event_id}", "SK": "METADATA"}
+            ).get("Item")
+            if conflicting_event and conflicting_event.get("status") == "CANCELLED":
+                continue
             return error_response(
                 "PARTICIPANT_SCHEDULE_CONFLICT",
                 "参加者に、既に確定済みまたは承認待ちの別イベントと時間が重複するメンバーがいます",
@@ -440,6 +449,7 @@ def cancel_event(user_id, event):
         ExpressionAttributeNames={"#status": "status"},
         ExpressionAttributeValues={":cancelled": "CANCELLED"},
     )
+    _cancel_participants(table, event_id)
     _reopen_candidate(table, community_id, event_item.get("candidateId"))
     write_status_history(table, event_id, status, "CANCELLED", user_id)
     write_operation_log(
@@ -517,6 +527,38 @@ def complete_event(user_id, event):
         },
     )
     return success_response({"eventId": event_id, "status": "COMPLETED"})
+
+
+def _cancel_participants(table, event_id):
+    """Issue #63: イベント全体中止時、参加者のParticipant.statusが
+    CONFIRMEDのまま残留していた（cancel_eventがEvent側のstatusしか更新して
+    いなかった）ため、同じメンバー・同じ時間帯で新規イベントを確定しようと
+    すると、この残留行がconfirm_eventのダブルブッキング事前チェックに誤って
+    引っかかっていた。ここでCANCELLEDへ更新することで解消する。
+
+    AWAITING_APPROVAL（仮確定フローの承認待ち）の行はここでは更新しない
+    -- 承認待ち中に管理者がイベントを中止した場合でも、残りメンバーは自分の
+    承認自体を完了させられる（EVENT_CONFIRMEDは発行されずEventはCANCELLED
+    のままだが、本人の応答としては成功として扱う。
+    test_approve_participation_after_event_cancelled参照）という既存の
+    意図的な挙動を壊さないため。ダブルブッキング側は、この関数で更新するか
+    どうかによらず、confirm_event/has_upcoming_reserved_participationが
+    衝突相手の親Eventの状態を直接確認するようになった（同Issue）ため、
+    どちらの状態でも誤検知しない。
+    """
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"EVENT#{event_id}")
+        & Key("SK").begins_with("PARTICIPANT#")
+    )
+    for item in resp.get("Items", []):
+        if item.get("status") != "CONFIRMED":
+            continue
+        table.update_item(
+            Key={"PK": item["PK"], "SK": item["SK"]},
+            UpdateExpression="SET #status = :cancelled",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":cancelled": "CANCELLED"},
+        )
 
 
 def _reopen_candidate(table, community_id, candidate_id):
@@ -619,8 +661,9 @@ def list_my_events(user_id, event):
         event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
             "Item"
         )
-        # イベント全体が中止（cancel_event）された場合、Participant行自体は
-        # 更新されないため、Event側のstatusも合わせて確認する必要がある。
+        # cancel_event側でParticipant.statusもCANCELLEDへ更新するように
+        # なった（Issue #63）が、それ以前に中止されたイベントの残留データに
+        # 備え、Event側のstatusも合わせて確認する二重防御として残す。
         if event_item is None or event_item.get("status") != "CONFIRMED":
             continue
         community_id = event_item["GSI1PK"].split("#", 1)[1]

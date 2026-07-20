@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.14
+# MeetFlow DynamoDB 物理テーブル設計書 v1.15
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -339,7 +339,7 @@ GSI1SK:  PARTICIPANT#{startTime}#{eventId}
 
 **アクセスパターン**
 - ユーザーの確定済み参加イベントを時間帯で横断検索（ダブルブッキング検知用）：`GSI1PK=USER#{userId}, GSI1SK between PARTICIPANT#{from} and PARTICIPANT#{to}`
-- **[v1.8追加]** ユーザー自身が参加する確定イベントのコミュニティ横断一覧（予定タブのカレンダー表示用）：`GSI1PK=USER#{userId}, GSI1SK begins_with PARTICIPANT#`（`status=CONFIRMED`の行のみ抽出し、各行のEventも取得してEvent側の`status`もCONFIRMEDであることを確認する。イベント全体中止時はParticipant行自体は更新されないため）
+- **[v1.8追加、v1.15修正]** ユーザー自身が参加する確定イベントのコミュニティ横断一覧（予定タブのカレンダー表示用）：`GSI1PK=USER#{userId}, GSI1SK begins_with PARTICIPANT#`（`status=CONFIRMED`の行のみ抽出し、各行のEventも取得してEvent側の`status`もCONFIRMEDであることを確認する。v1.15でイベント全体中止時にParticipant.statusも`CANCELLED`へ更新するようになったが、それ以前に中止されたイベントの残留データに備え、Event側のstatus確認は二重防御として引き続き行う）
 - **[v1.9追加]** 参加頻度上限のコミュニティ横断カウント（マッチング処理F-401内部専用）：`GSI1PK=USER#{userId}, GSI1SK between PARTICIPANT#{periodStart} and PARTICIPANT#{periodEnd}`（集計対象期間はF-109/F-003で設定した週/月）で取得した行のうち、`communityGenre`が候補生成対象コミュニティの`genre`と一致するものだけを件数カウントする。ダブルブッキング検知（1つ目のパターン）と同一インデックスの応用で、新規GSIは追加しない。
 - **[v1.10追加]** 全員承認済み判定（F-502b、本確定のトリガー）：`PK=EVENT#{eventId}, SK begins_with PARTICIPANT#`（アクセスパターン14と同一クエリ）で取得した全行の`status`が`CONFIRMED`であるかを判定する。1件でも`AWAITING_APPROVAL`/`REJECTED`が残っていれば本確定しない。新規GSIは追加しない。
 
@@ -887,3 +887,11 @@ GSI2SK:  {createdAt}#{announcementId}
 | No | 変更内容 | 理由 |
 |---|---|---|
 | 1 | §5トランザクション・冪等性の設計方針に「登録済み対局セッションの削除」を追加。GameSession本体＋全参加者分のGameResult＋GameResultChipを`TransactWriteItems`でまとめて削除する方針を明記 | Issue #42：登録済み半荘の削除機能追加。既存のキー設計（PK/SK）自体は変更せず、削除時の操作方針のみ新規追加 |
+
+---
+
+## 23. v1.14 → v1.15 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.11 Participantのアクセスパターン注記を修正。イベント全体中止（cancel_event）時、CONFIRMEDのParticipant行を`CANCELLED`へ更新するようになった旨を反映（新規属性・キー変更なし） | Issue #63：中止済みイベントのParticipant行がCONFIRMEDのまま残留し、同じメンバー・同じ時間帯の新規イベント確定がPARTICIPANT_SCHEDULE_CONFLICTで誤ってブロックされていたバグの解消。`status`の取り得る値自体（CANCELLED含む）は元々本書が定義済みだったため、値の追加ではなく実装の追従 |
