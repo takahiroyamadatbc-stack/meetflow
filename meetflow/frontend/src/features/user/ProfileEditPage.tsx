@@ -83,7 +83,10 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
     try {
       const avatarUrl = await resizeAndUploadAvatar(file);
       setIconUrl(avatarUrl);
-    } catch {
+    } catch (err) {
+      // Issue #62: 原因調査時に根本原因(S3 CORS等)を追いやすいよう、
+      // 握りつぶさずコンソールには残す。ユーザー向け表示は汎用メッセージのまま。
+      console.error("プロフィール画像のアップロードに失敗しました", err);
       toast.error("プロフィール画像のアップロードに失敗しました");
     } finally {
       setIsUploadingIcon(false);
@@ -152,8 +155,17 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
               accept="image/png,image/jpeg,image/webp"
               disabled={isUploadingIcon}
               onChange={(e) => handleIconSelected(e.target.files)}
-              className="text-sm"
+              className="hidden"
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isUploadingIcon}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              画像を選択
+            </Button>
             {isUploadingIcon && (
               <p className="text-muted-foreground text-xs">アップロード中...</p>
             )}
