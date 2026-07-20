@@ -9,5 +9,7 @@ export type NotificationItem = {
   message: string;
   read: boolean;
   relatedEventId: string | null;
+  /** AVAILABILITY_REQUEST等、イベント単位ではなくコミュニティ単位の遷移先を持つ通知用（Issue #73） */
+  relatedCommunityId: string | null;
   createdAt: string;
 };

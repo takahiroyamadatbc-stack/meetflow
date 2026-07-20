@@ -44,7 +44,9 @@ export function NotificationListPage() {
     if (!notification.read) {
       readMutation.mutate(notification.notificationId);
     }
-    if (notification.relatedEventId) {
+    if (notification.type === "AVAILABILITY_REQUEST" && notification.relatedCommunityId) {
+      navigate(paths.availabilityNew(notification.relatedCommunityId));
+    } else if (notification.relatedEventId) {
       navigate(paths.eventDetail(notification.relatedEventId));
     }
   }

@@ -53,5 +53,6 @@ def _to_api_notification(item):
         "message": item.get("message"),
         "read": item.get("read", False),
         "relatedEventId": item.get("relatedEventId"),
+        "relatedCommunityId": item.get("relatedCommunityId"),
         "createdAt": created_at,
     }
