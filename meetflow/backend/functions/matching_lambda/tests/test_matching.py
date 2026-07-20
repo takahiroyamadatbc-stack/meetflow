@@ -67,6 +67,26 @@ def test_generate_candidates_success(table):
     assert member_ids == {"user-1", "user-2", "user-3", "user-4"}
 
 
+def test_generate_candidates_ignores_stale_min_players_1_template(table):
+    """Issue #57: `_validate`はminPlayers>=2を強制するが、既に保存済みの
+    minPlayers=1のテンプレート（過去データ）が万一残っていても、1人だけの
+    空き区間が候補化されない（下限2のガードがマッチング処理側にもある）
+    ことを確認する二重防御のテスト。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=1, max_players=1)
+    _seed_matching_group(table, "community-1", ["user-1"])
+
+    response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    assert body_of(response)["data"]["candidates"] == []
+
+
 def test_generate_candidates_with_overlapping_but_not_identical_times(table):
     """#9: 全員の空き予定が寸分違わず一致しなくても、共通する時間帯が
     存在すれば候補が成立すること（例：Aは11:00〜13:00、Bは12:00〜14:00

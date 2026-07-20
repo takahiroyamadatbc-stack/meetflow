@@ -292,7 +292,11 @@ def _run_matching(table, community_id, template_id, template):
         if not item.get("gameTypes") or game_type in item["gameTypes"]
     ]
 
-    min_players = template.get("minPlayers", 1)
+    # Issue #57: minPlayers=1を許すと1人だけの空き区間がそのまま候補化され、
+    # 「相互非公開型マッチング」の前提が管理者側から破れてしまう。
+    # `_validate`側で下限2を強制しているが、既存データや将来の書き込み経路
+    # 漏れに備えてここでも下限2を強制する二重防御。
+    min_players = max(template.get("minPlayers", 2), 2)
     max_players = template.get("maxPlayers", min_players)
     required_members = set(
         (template.get("conditions") or {}).get("requiredMembers", []) or []

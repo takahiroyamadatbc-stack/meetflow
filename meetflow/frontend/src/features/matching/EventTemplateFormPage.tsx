@@ -32,8 +32,8 @@ const GAME_TYPES: GameType[] = ["MAHJONG4", "MAHJONG3"];
 const templateSchema = z
   .object({
     gameType: z.enum(["MAHJONG4", "MAHJONG3"]),
-    minPlayers: z.coerce.number().int().min(1, "1以上を指定してください"),
-    maxPlayers: z.coerce.number().int().min(1, "1以上を指定してください"),
+    minPlayers: z.coerce.number().int().min(2, "2以上を指定してください"),
+    maxPlayers: z.coerce.number().int().min(2, "2以上を指定してください"),
     priority: z.coerce.number().int().min(0).max(100),
     beginnerOk: z.boolean(),
   })
@@ -162,7 +162,7 @@ function TemplateForm({
                 <FormItem className="flex-1">
                   <FormLabel>最低人数</FormLabel>
                   <FormControl>
-                    <Input type="number" min={1} {...field} value={field.value as number} />
+                    <Input type="number" min={2} {...field} value={field.value as number} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -175,7 +175,7 @@ function TemplateForm({
                 <FormItem className="flex-1">
                   <FormLabel>最大人数</FormLabel>
                   <FormControl>
-                    <Input type="number" min={1} {...field} value={field.value as number} />
+                    <Input type="number" min={2} {...field} value={field.value as number} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
