@@ -14,10 +14,10 @@ import { paths } from "@/routes/paths";
 
 /**
  * 招待URL受諾画面（画面設計書に番号は無いが、招待フローに必須のため実装）。
- * マウント時にGET /invites/{token}で承認要否を事前取得し、承認不要
- * （即時参加）の場合はメッセージ欄を表示しない（Issue #23。承認制の
- * コミュニティでは、joinViaInviteがmessageを保存し管理者の審査材料に
- * 使うが、即時参加ではmessageは一切参照・保存されず捨てられるため）。
+ * マウント時にGET /invites/{token}で承認要否・招待発行者・呼び出し元の
+ * 既存所属状況を事前取得し、「〇〇さんから招待されています」カードと
+ * して表示する（Issue #70）。参加済み・承認待ちの場合はそれぞれ専用の
+ * 状態を表示し、参加確認の代わりに次の行き先を案内する。
  */
 export function InviteAcceptPage() {
   const { token } = useParams<{ token: string }>();
@@ -69,16 +69,80 @@ export function InviteAcceptPage() {
   }
 
   if (isError || !preview) {
-    return <EmptyState message="招待URLが無効です" />;
+    return (
+      <EmptyState
+        message="招待URLが無効です"
+        action={
+          <Button onClick={() => navigate(paths.home, { replace: true })}>ホームへ戻る</Button>
+        }
+      />
+    );
+  }
+
+  if (preview.alreadyMember) {
+    return (
+      <div className="flex flex-1 flex-col justify-center px-6 py-10">
+        <Card>
+          <CardHeader>
+            <CardTitle>{preview.communityName}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-muted-foreground text-sm">
+              既にこのコミュニティに参加しています
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() =>
+                  navigate(paths.communityDetail(preview.communityId), { replace: true })
+                }
+              >
+                コミュニティへ
+              </Button>
+              <Button variant="outline" onClick={() => navigate(paths.home, { replace: true })}>
+                ホームへ
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (preview.joinRequestPending) {
+    return (
+      <div className="flex flex-1 flex-col justify-center px-6 py-10">
+        <Card>
+          <CardHeader>
+            <CardTitle>{preview.communityName}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-muted-foreground text-sm">
+              参加リクエストを承認待ちです。管理者の承認をお待ちください
+            </p>
+            <Button variant="outline" onClick={() => navigate(paths.home, { replace: true })}>
+              ホームへ
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-1 flex-col justify-center px-6 py-10">
       <Card>
         <CardHeader>
-          <CardTitle>{preview.communityName} に参加する</CardTitle>
+          <CardTitle>
+            {preview.invitedByDisplayName
+              ? `コミュニティ${preview.communityName}に${preview.invitedByDisplayName}さんから招待されています`
+              : `コミュニティ${preview.communityName}に招待されています`}
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {preview.communityDescription && (
+            <p className="text-muted-foreground text-sm">{preview.communityDescription}</p>
+          )}
+          <p className="text-sm">参加しますか？</p>
           {preview.approvalRequired && (
             <Textarea
               placeholder="参加メッセージ（任意）"
@@ -87,9 +151,14 @@ export function InviteAcceptPage() {
               rows={3}
             />
           )}
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            参加する
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+              参加する
+            </Button>
+            <Button variant="outline" onClick={() => navigate(paths.home, { replace: true })}>
+              今はしない
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

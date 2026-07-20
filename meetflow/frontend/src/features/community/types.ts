@@ -49,7 +49,14 @@ export type CommunityDetail = CommunityMutationResult & {
 export type InvitePreview = {
   communityId: string;
   communityName: string;
+  communityDescription: string;
+  communityGenre: string;
+  communityIcon: string | null;
   approvalRequired: boolean;
+  /** 招待発行者が既に退会している場合はnull（Issue #70） */
+  invitedByDisplayName: string | null;
+  alreadyMember: boolean;
+  joinRequestPending: boolean;
 };
 
 export type CreateCommunityInput = {
