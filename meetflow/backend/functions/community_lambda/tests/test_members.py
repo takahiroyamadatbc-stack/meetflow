@@ -6,14 +6,14 @@ from handlers import members
 from _factories import api_event, body_of, put_community, put_membership, put_profile
 
 
-def _put_event(table, event_id, *, community_id, start_time, end_time=None):
+def _put_event(table, event_id, *, community_id, start_time, end_time=None, status="CONFIRMED"):
     table.put_item(
         Item={
             "PK": f"EVENT#{event_id}",
             "SK": "METADATA",
             "GSI1PK": f"COMMUNITY#{community_id}",
             "GSI1SK": f"EVENT#{start_time}#{event_id}",
-            "status": "CONFIRMED",
+            "status": status,
             "startTime": start_time,
             "endTime": end_time or start_time,
             "createdAt": now_iso_ms(),
@@ -581,6 +581,25 @@ def test_leave_community_not_blocked_by_past_event(table):
     past = add_days_iso(now_iso_ms(), -7)
     _put_event(table, "event-1", community_id="community-1", start_time=past)
     _put_participant(table, "event-1", "user-2", start_time=past, status="CONFIRMED")
+
+    response = members.leave_community(
+        "user-2", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 200
+
+
+def test_leave_community_not_blocked_by_cancelled_event(table):
+    """Issue #63: イベント全体が中止（CANCELLED）された場合、残留した
+    Participant.status（CONFIRMED/AWAITING_APPROVAL）だけを見て予約済みと
+    誤判定しないこと（親Event.statusも併せて確認する）。
+    """
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    future = add_days_iso(now_iso_ms(), 7)
+    _put_event(table, "event-1", community_id="community-1", start_time=future, status="CANCELLED")
+    _put_participant(table, "event-1", "user-2", start_time=future, status="CONFIRMED")
 
     response = members.leave_community(
         "user-2", api_event(path_params={"communityId": "community-1"})

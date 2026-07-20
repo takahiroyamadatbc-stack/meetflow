@@ -37,6 +37,12 @@ def has_upcoming_reserved_participation(
         event_item = table.get_item(
             Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}
         ).get("Item")
-        if event_item and event_item.get("GSI1PK") == f"COMMUNITY#{community_id}":
-            return True
+        if not event_item or event_item.get("GSI1PK") != f"COMMUNITY#{community_id}":
+            continue
+        # Issue #63: イベント全体が中止（CANCELLED）されていれば、その
+        # Participant行がCONFIRMED/AWAITING_APPROVALのまま残留していても
+        # 予約済み扱いしない（親Eventの状態を必ず併せて見る）。
+        if event_item.get("status") == "CANCELLED":
+            continue
+        return True
     return False

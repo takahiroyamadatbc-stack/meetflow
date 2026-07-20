@@ -515,6 +515,45 @@ def _create_confirmed_event(table):
     return event_id
 
 
+def test_cancel_event_updates_participant_status_to_cancelled(table):
+    """Issue #63: イベント中止時にParticipant.statusもCANCELLEDへ更新される
+    こと（従来はEvent側のstatusしか更新されず、CONFIRMEDのまま残留していた）。
+    """
+    event_id = _create_confirmed_event(table)
+
+    events.cancel_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    for uid in ("user-1", "user-2", "user-3", "user-4"):
+        participant = table.get_item(
+            Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}
+        )["Item"]
+        assert participant["status"] == "CANCELLED"
+
+
+def test_confirm_event_not_blocked_by_own_previously_cancelled_event(table):
+    """Issue #63: イベントを中止しても、その時間帯の予定が『残っている』扱い
+    になり、同じメンバー・同じ時間帯で新規イベントを確定しようとすると
+    PARTICIPANT_SCHEDULE_CONFLICTで弾かれてしまっていた回帰バグの再発防止。
+    """
+    event_id = _create_confirmed_event(table)
+    events.cancel_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    put_candidate(
+        table, "community-1", "candidate-2", ["user-1", "user-2", "user-3", "user-4"]
+    )
+    create_response = events.create_event(
+        "user-1", api_event(body={"candidateId": "candidate-2"})
+    )
+    new_event_id = body_of(create_response)["data"]["eventId"]
+
+    response = events.confirm_event(
+        "user-1", api_event(path_params={"eventId": new_event_id})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["status"] == "CONFIRMED"
+
+
 def test_complete_event_success(table):
     """本日の対局を終了する（Issue #20：長らく未実装だったCOMPLETED遷移）。
     OWNER/ADMINがCONFIRMED状態のイベントを終了させるとCOMPLETEDになる。
