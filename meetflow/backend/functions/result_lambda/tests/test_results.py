@@ -83,6 +83,178 @@ def test_create_session_auto_calculates_uma_oka(table):
     assert points_by_user["user-4"] == -40.0  # (10000-30000)/1000 - 20
 
 
+def _busted_auto_body(**overrides):
+    """user-4が箱下（マイナス持ち点）になっているAUTO入力（Issue #66/#67）。
+    合計点は25000*4=100000で一致する（60000+30000+15000-5000）。
+    """
+    body = {
+        "gameType": "MAHJONG4",
+        "calcMode": "AUTO",
+        "startingPoints": 25000,
+        "returnPoints": 30000,
+        "umaByRank": [20, 10, -10, -20],
+        "results": [
+            {"userId": "user-1", "score": 60000},
+            {"userId": "user-2", "score": 30000},
+            {"userId": "user-3", "score": 15000},
+            {"userId": "user-4", "score": -5000},
+        ],
+    }
+    body.update(overrides)
+    return body
+
+
+def test_create_session_box_under_settlement_default_true_uses_negative_score_as_is(table):
+    """Issue #67: boxUnderSettlementを省略した場合は従来通り（あり）で、
+    マイナスの持ち点をそのまま基礎点の計算に使う。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_busted_auto_body()),
+    )
+
+    assert response["statusCode"] == 201
+    points_by_user = {
+        r["userId"]: float(r["rankPoints"]) for r in body_of(response)["data"]["results"]
+    }
+    assert points_by_user["user-4"] == -55.0  # (-5000-30000)/1000 - 20
+
+
+def test_create_session_box_under_settlement_false_clamps_negative_score_to_zero(table):
+    """Issue #67: 箱下精算なしの場合、マイナスの持ち点は0点に切り捨てて
+    基礎点を計算する。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(boxUnderSettlement=False),
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    data = body_of(response)["data"]
+    assert data["boxUnderSettlement"] is False
+    points_by_user = {r["userId"]: float(r["rankPoints"]) for r in data["results"]}
+    assert points_by_user["user-4"] == -50.0  # (0-30000)/1000 - 20
+
+
+def test_create_session_tobi_assignment_applies_bonus_and_penalty(table):
+    """Issue #66: 飛び賞は受取人に+tobiPoints、トビになった本人に
+    -tobiPointsを加減点する。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(
+                tobiPoints=10,
+                tobiAssignments=[{"bustedUserId": "user-4", "receiverUserId": "user-1"}],
+            ),
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    data = body_of(response)["data"]
+    assert data["tobiPoints"] == 10
+    assert data["tobiAssignments"] == [
+        {"bustedUserId": "user-4", "receiverUserId": "user-1"}
+    ]
+    points_by_user = {r["userId"]: float(r["rankPoints"]) for r in data["results"]}
+    assert points_by_user["user-1"] == 80.0  # 70.0 + 10
+    assert points_by_user["user-4"] == -65.0  # -55.0 - 10
+    assert points_by_user["user-2"] == 10.0
+    assert points_by_user["user-3"] == -25.0
+
+
+def test_create_session_tobi_assignment_rejects_non_busted_user(table):
+    """トビになっていない（score>=0の）ユーザーをbustedUserIdに指定した
+    場合は拒否する。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(
+                tobiPoints=10,
+                tobiAssignments=[{"bustedUserId": "user-2", "receiverUserId": "user-1"}],
+            ),
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "RESULT_VALIDATION_ERROR"
+
+
+def test_create_session_tobi_assignment_rejects_unknown_user(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(
+                tobiPoints=10,
+                tobiAssignments=[
+                    {"bustedUserId": "user-4", "receiverUserId": "no-such-user"}
+                ],
+            ),
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "RESULT_VALIDATION_ERROR"
+
+
+def test_create_session_box_under_settlement_rejects_non_bool(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(boxUnderSettlement="true"),
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "RESULT_VALIDATION_ERROR"
+
+
+def test_get_last_game_settings_carries_forward_box_under_and_tobi_points(table):
+    """Issue #66/#67: boxUnderSettlement/tobiPointsは配給原点等と同じ
+    house-rule的な設定のため次回のデフォルトとして引き継ぐ。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+    results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(boxUnderSettlement=False, tobiPoints=10),
+        ),
+    )
+
+    response = results.get_last_game_settings(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["boxUnderSettlement"] is False
+    assert data["tobiPoints"] == 10
+
+
 def test_create_session_increments_session_no(table):
     put_membership(table, "community-1", "user-1", role="OWNER")
     put_event(table, "event-1", "community-1")

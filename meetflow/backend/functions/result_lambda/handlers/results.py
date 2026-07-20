@@ -244,6 +244,11 @@ def get_last_game_settings(user_id, event):
         response["startingPoints"] = session_item.get("startingPoints")
         response["returnPoints"] = session_item.get("returnPoints")
         response["umaByRank"] = session_item.get("umaByRank", [])
+        # boxUnderSettlement/tobiPointsは配給原点等と同じ「house rule」的な
+        # 設定のため次回のデフォルトとして引き継ぐ。tobiAssignments（誰を
+        # トビにしたか）は半荘ごとの実データのため引き継がない（Issue #66）。
+        response["boxUnderSettlement"] = session_item.get("boxUnderSettlement", True)
+        response["tobiPoints"] = session_item.get("tobiPoints", 0)
     return success_response(response)
 
 
@@ -415,6 +420,45 @@ def _validate_session_body(body):
         ):
             return error_response("RESULT_VALIDATION_ERROR", "ウマの指定が不正です")
 
+        # Issue #67: 箱下精算（あり/なし）。省略時True（従来通りマイナス点を
+        # そのまま使う）。
+        box_under_settlement = body.get("boxUnderSettlement", True)
+        if not isinstance(box_under_settlement, bool):
+            return error_response(
+                "RESULT_VALIDATION_ERROR", "boxUnderSettlementが不正です"
+            )
+
+        # Issue #66: 飛び賞。最終スコアだけでは「誰が誰をトビにしたか」を
+        # 判定できないため、フロントでの明示的な選択（bustedUserId/
+        # receiverUserId）をそのまま受け取る。bustedUserIdの実際のscoreが
+        # マイナスであることをここでも検証し（トビでない相手への不正な
+        # 加減点を防ぐ）、resultsに含まれないuserIdの指定も拒否する。
+        tobi_points = body.get("tobiPoints", 0)
+        if not _is_number(tobi_points) or tobi_points < 0:
+            return error_response("RESULT_VALIDATION_ERROR", "tobiPointsが不正です")
+        tobi_assignments = body.get("tobiAssignments", [])
+        if not isinstance(tobi_assignments, list):
+            return error_response(
+                "RESULT_VALIDATION_ERROR", "tobiAssignmentsが不正です"
+            )
+        score_by_user_id = {r["userId"]: r["score"] for r in results}
+        for a in tobi_assignments:
+            if not isinstance(a, dict):
+                return error_response(
+                    "RESULT_VALIDATION_ERROR", "tobiAssignmentsが不正です"
+                )
+            busted_user_id = a.get("bustedUserId")
+            receiver_user_id = a.get("receiverUserId")
+            if (
+                busted_user_id not in score_by_user_id
+                or receiver_user_id not in score_by_user_id
+                or busted_user_id == receiver_user_id
+                or score_by_user_id[busted_user_id] >= 0
+            ):
+                return error_response(
+                    "RESULT_VALIDATION_ERROR", "tobiAssignmentsが不正です"
+                )
+
     chips = body.get("chips", [])
     if not isinstance(chips, list):
         return error_response("RESULT_VALIDATION_ERROR", "chipsが不正です")
@@ -436,30 +480,54 @@ def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _compute_results(results, calc_mode, starting_points, return_points, uma_by_rank):
+def _compute_results(
+    results,
+    calc_mode,
+    starting_points,
+    return_points,
+    uma_by_rank,
+    box_under_settlement=True,
+    tobi_points=0,
+    tobi_assignments=None,
+):
     """score降順でrankを機械的に決める（同点はPythonのsortedの安定性を
     利用し、入力順でタイブレークする）。AUTO時のみ配給原点・返し点・ウマを
     使った一般的な麻雀のウマオカ計算式で最終ポイントを算出する：
 
-        base   = (score - returnPoints) / 1000
+        settledScore = score（箱下精算あり）/ max(score, 0)（箱下精算なし）
+        base   = (settledScore - returnPoints) / 1000
         oka    = (returnPoints - startingPoints) * 人数 / 1000  # 1位のみ加算
-        final  = base + umaByRank[着順-1] + oka
+        tobi   = 飛び賞の受取人は+tobiPoints、トビになった本人は-tobiPoints
+        final  = base + umaByRank[着順-1] + oka + tobi
+
+    箱下精算なしの0点切り捨ては基礎点(base)の項にのみ適用し、トビ判定
+    （tobiAssignments）自体は常に生の点数（マイナスのまま）で行われた前提の
+    データをそのまま使う（Issue #66/#67、判定はフロントでの明示的な選択に
+    基づく。ここでは加減点の計算のみ行う）。
 
     MANUAL時はこの計算を一切行わず、rankPointsは常に0とする。
     """
+    tobi_assignments = tobi_assignments or []
     ordered = sorted(results, key=lambda r: -r["score"])
     player_count = len(results)
     computed = []
     for index, r in enumerate(ordered):
         rank = index + 1
         if calc_mode == "AUTO":
-            base = (r["score"] - return_points) / 1000
+            settled_score = r["score"] if box_under_settlement else max(r["score"], 0)
+            base = (settled_score - return_points) / 1000
             oka = (
                 (return_points - starting_points) * player_count / 1000
                 if rank == 1
                 else 0
             )
-            rank_points = round(base + uma_by_rank[rank - 1] + oka, 1)
+            tobi_delta = 0
+            for a in tobi_assignments:
+                if a["receiverUserId"] == r["userId"]:
+                    tobi_delta += tobi_points
+                elif a["bustedUserId"] == r["userId"]:
+                    tobi_delta -= tobi_points
+            rank_points = round(base + uma_by_rank[rank - 1] + oka + tobi_delta, 1)
         else:
             rank_points = 0
         computed.append(
@@ -482,9 +550,19 @@ def _write_session_items(table, event_id, community_id, session_no, body):
     starting_points = body.get("startingPoints")
     return_points = body.get("returnPoints")
     uma_by_rank = body.get("umaByRank")
+    box_under_settlement = body.get("boxUnderSettlement", True)
+    tobi_points = body.get("tobiPoints", 0)
+    tobi_assignments = body.get("tobiAssignments", [])
 
     computed = _compute_results(
-        results, calc_mode, starting_points, return_points, uma_by_rank
+        results,
+        calc_mode,
+        starting_points,
+        return_points,
+        uma_by_rank,
+        box_under_settlement,
+        tobi_points,
+        tobi_assignments,
     )
 
     session_item = {
@@ -498,6 +576,12 @@ def _write_session_items(table, event_id, community_id, session_no, body):
         session_item["startingPoints"] = _to_decimal(starting_points)
         session_item["returnPoints"] = _to_decimal(return_points)
         session_item["umaByRank"] = [_to_decimal(v) for v in uma_by_rank]
+        session_item["boxUnderSettlement"] = box_under_settlement
+        session_item["tobiPoints"] = _to_decimal(tobi_points)
+        session_item["tobiAssignments"] = [
+            {"bustedUserId": a["bustedUserId"], "receiverUserId": a["receiverUserId"]}
+            for a in tobi_assignments
+        ]
     table.put_item(Item=session_item)
 
     for r in computed:
@@ -550,6 +634,9 @@ def _build_session_response(session_no, session_item, computed, chips):
         response["startingPoints"] = session_item["startingPoints"]
         response["returnPoints"] = session_item["returnPoints"]
         response["umaByRank"] = session_item["umaByRank"]
+        response["boxUnderSettlement"] = session_item.get("boxUnderSettlement", True)
+        response["tobiPoints"] = session_item.get("tobiPoints", 0)
+        response["tobiAssignments"] = session_item.get("tobiAssignments", [])
     return response
 
 
@@ -600,6 +687,9 @@ def _group_sessions(event_id, items):
             entry["startingPoints"] = meta.get("startingPoints")
             entry["returnPoints"] = meta.get("returnPoints")
             entry["umaByRank"] = meta.get("umaByRank", [])
+            entry["boxUnderSettlement"] = meta.get("boxUnderSettlement", True)
+            entry["tobiPoints"] = meta.get("tobiPoints", 0)
+            entry["tobiAssignments"] = meta.get("tobiAssignments", [])
         out.append(entry)
     return out
 
