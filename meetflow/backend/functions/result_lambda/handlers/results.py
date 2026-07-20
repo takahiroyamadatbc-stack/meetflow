@@ -96,6 +96,12 @@ def update_session(user_id, event):
     if validation_error:
         return validation_error
 
+    if body["gameType"] != session_item["gameType"]:
+        return error_response(
+            "RESULT_VALIDATION_ERROR",
+            "ゲーム種別は編集できません。ゲーム種別が変わる場合は新しい対局として登録してください",
+        )
+
     existing_results = table.query(
         KeyConditionExpression=Key("PK").eq(f"EVENT#{event_id}")
         & Key("SK").begins_with(f"SESSION#{session_no}#RESULT#")

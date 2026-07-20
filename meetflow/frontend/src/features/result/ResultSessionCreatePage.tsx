@@ -1115,7 +1115,6 @@ const sessionEditRowSchema = z.object({
 });
 
 const sessionEditSchema = z.object({
-  gameType: z.enum(["MAHJONG4", "MAHJONG3"]),
   calcMode: z.enum(["AUTO", "MANUAL"]),
   startingPoints: z.coerce.number().int(),
   returnPoints: z.coerce.number().int(),
@@ -1151,7 +1150,6 @@ function SessionEditForm({
   const form = useForm<SessionEditFormInput, unknown, SessionEditFormValues>({
     resolver: zodResolver(sessionEditSchema),
     defaultValues: {
-      gameType: existingSession.gameType,
       calcMode: existingSession.calcMode,
       startingPoints: existingSession.startingPoints ?? 25000,
       returnPoints: existingSession.returnPoints ?? 30000,
@@ -1227,7 +1225,7 @@ function SessionEditForm({
         tieOrder,
       );
       const input = {
-        gameType: values.gameType,
+        gameType: existingSession.gameType,
         calcMode: values.calcMode,
         results: orderedResults,
         chips: values.rows.map((r) => ({ userId: r.userId, chipCount: r.chipCount })),
@@ -1275,27 +1273,12 @@ function SessionEditForm({
       )}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-6">
-          <FormField
-            control={form.control}
-            name="gameType"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>ゲーム種別</FormLabel>
-                <div className="flex gap-2">
-                  {GAME_TYPES.map((gt) => (
-                    <Button
-                      key={gt}
-                      type="button"
-                      variant={field.value === gt ? "default" : "outline"}
-                      onClick={() => field.onChange(gt)}
-                    >
-                      {GAME_TYPE_LABELS[gt]}
-                    </Button>
-                  ))}
-                </div>
-              </FormItem>
-            )}
-          />
+          <FormItem>
+            <FormLabel>ゲーム種別</FormLabel>
+            <p className="text-sm">
+              {GAME_TYPE_LABELS[existingSession.gameType]}（編集できません。人数や顔ぶれが変わる場合は新しい対局として登録してください）
+            </p>
+          </FormItem>
 
           <FormField
             control={form.control}
