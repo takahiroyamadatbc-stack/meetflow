@@ -16,7 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { signInUser } from "@/features/auth/api";
-import { consumePendingInvitePath } from "@/features/auth/pendingInvite";
+import { peekPendingInvitePath } from "@/features/auth/pendingInvite";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -49,7 +49,7 @@ export function LoginPage() {
     setSubmitError(null);
     try {
       await signInUser(values.email, values.password);
-      const pendingInvitePath = consumePendingInvitePath();
+      const pendingInvitePath = peekPendingInvitePath();
       const from = locationState?.from;
       navigate(
         pendingInvitePath ?? (from ? `${from.pathname}${from.search}` : paths.home),
