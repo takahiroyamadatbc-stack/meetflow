@@ -557,6 +557,29 @@ function HanchanEntryForm({
     }
   };
 
+  /**
+   * 配給原点欄の値が変更されたら（Issue #65）、自動計算モードかつ参加者
+   * として選択されている行のうち、現在「変更前の配給原点と同じ値」に
+   * なっている点数欄だけを新しい配給原点の値に追従して更新する。既に
+   * 異なる値へ個別入力済みの点数欄は上書きしない。
+   */
+  const handleStartingPointsChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    fieldOnChange: (e: React.ChangeEvent<HTMLInputElement>) => void,
+  ) => {
+    const previousStartingPoints = numeric(form.getValues("startingPoints"));
+    fieldOnChange(e);
+    if (calcMode !== "AUTO") return;
+    const nextStartingPoints = numeric(e.target.value);
+    const participantIds = needsSelection ? selectedUserIds : rows.map((r) => r.userId);
+    rows.forEach((r, index) => {
+      if (!participantIds.includes(r.userId)) return;
+      if (numeric(form.getValues(`rows.${index}.score`)) === previousStartingPoints) {
+        form.setValue(`rows.${index}.score`, nextStartingPoints);
+      }
+    });
+  };
+
   const participantIds = needsSelection ? selectedUserIds : rows.map((r) => r.userId);
   const filled = watchedRows
     .map((r, index) => ({ ...r, index }))
@@ -715,7 +738,12 @@ function HanchanEntryForm({
                     <FormItem className="flex-1">
                       <FormLabel className="text-xs">配給原点</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} value={field.value as number} />
+                        <Input
+                          type="number"
+                          {...field}
+                          value={field.value as number}
+                          onChange={(e) => handleStartingPointsChange(e, field.onChange)}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
