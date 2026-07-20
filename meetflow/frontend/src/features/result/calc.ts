@@ -1,4 +1,4 @@
-import type { CalcMode, GameSessionDetail } from "@/features/result/types";
+import type { CalcMode, GameSessionDetail, TobiAssignment } from "@/features/result/types";
 import type { GameType } from "@/features/user/types";
 
 export type LiveResultRow = {
@@ -7,6 +7,16 @@ export type LiveResultRow = {
   score: number;
   rank: number;
   rankPoints: number;
+};
+
+/** 自動計算の箱下精算・飛び賞設定（Issue #66/#67）。省略時は従来通りの挙動になる。 */
+export type SettlementOptions = {
+  /** false（箱下精算なし）の場合、基礎点の計算にはマイナスの持ち点を0点に切り捨てて使う。省略時true。 */
+  boxUnderSettlement?: boolean;
+  /** 飛び賞1件あたりのポイント数。省略時0（実質無効）。 */
+  tobiPoints?: number;
+  /** 誰が誰をトビにしたか（省略時なし）。トビ判定自体は常に生の点数（マイナスのまま）で行う。 */
+  tobiAssignments?: TobiAssignment[];
 };
 
 /**
@@ -26,6 +36,7 @@ export function computeLiveResults(
   returnPoints: number,
   umaByRank: number[],
   tieOrder?: string[],
+  settlement?: SettlementOptions,
 ): LiveResultRow[] {
   const orderIndex = new Map((tieOrder ?? []).map((userId, i) => [userId, i]));
   const ordered = [...rows].sort((a, b) => {
@@ -35,15 +46,24 @@ export function computeLiveResults(
     return ai - bi;
   });
   const playerCount = rows.length;
+  const boxUnderSettlement = settlement?.boxUnderSettlement ?? true;
+  const tobiPoints = settlement?.tobiPoints ?? 0;
+  const tobiAssignments = settlement?.tobiAssignments ?? [];
 
   return ordered.map((row, index) => {
     const rank = index + 1;
     let rankPoints = 0;
     if (calcMode === "AUTO") {
-      const base = (row.score - returnPoints) / 1000;
+      const settledScore = boxUnderSettlement ? row.score : Math.max(row.score, 0);
+      const base = (settledScore - returnPoints) / 1000;
       const oka = rank === 1 ? ((returnPoints - startingPoints) * playerCount) / 1000 : 0;
       const uma = umaByRank[rank - 1] ?? 0;
-      rankPoints = Math.round((base + uma + oka) * 10) / 10;
+      const tobiDelta = tobiAssignments.reduce((sum, a) => {
+        if (a.receiverUserId === row.userId) return sum + tobiPoints;
+        if (a.bustedUserId === row.userId) return sum - tobiPoints;
+        return sum;
+      }, 0);
+      rankPoints = Math.round((base + uma + oka + tobiDelta) * 10) / 10;
     }
     return { ...row, rank, rankPoints };
   });

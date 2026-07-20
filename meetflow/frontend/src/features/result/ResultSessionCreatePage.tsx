@@ -26,6 +26,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -58,6 +65,7 @@ import type {
   CalcMode,
   GameSessionDetail,
   LastGameSettings,
+  TobiAssignment,
 } from "@/features/result/types";
 import { GAME_TYPE_LABELS, type GameType } from "@/features/user/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
@@ -81,6 +89,11 @@ const GAME_TYPES: GameType[] = ["MAHJONG4", "MAHJONG3"];
 const CALC_MODES: { value: CalcMode; label: string }[] = [
   { value: "AUTO", label: "自動計算（ウマ・オカ）" },
   { value: "MANUAL", label: "手動計算（点数のみ）" },
+];
+/** 箱下精算（Issue #67）: 対局終了時の持ち点がマイナスの場合の扱い。既定は「あり」（従来通りマイナスをそのまま使う）。 */
+const BOX_UNDER_SETTLEMENT_OPTIONS: { value: boolean; label: string }[] = [
+  { value: true, label: "あり" },
+  { value: false, label: "なし（0点切り捨て）" },
 ];
 
 function numeric(value: unknown): number {
@@ -400,6 +413,8 @@ const hanchanSchema = z.object({
   startingPoints: z.coerce.number().int(),
   returnPoints: z.coerce.number().int(),
   umaByRank: z.array(z.coerce.number().int()),
+  boxUnderSettlement: z.boolean(),
+  tobiPoints: z.coerce.number().int().min(0),
   rows: z.array(hanchanRowSchema).min(1),
 });
 type HanchanFormInput = z.input<typeof hanchanSchema>;
@@ -429,12 +444,16 @@ function buildHanchanDefaults(
           lastSettings.returnPoints ??
           DEFAULT_POINTS_BY_GAME_TYPE[lastSettings.gameType].returnPoints,
         umaByRank: lastSettings.umaByRank ?? [0, 0, 0, 0],
+        boxUnderSettlement: lastSettings.boxUnderSettlement ?? true,
+        tobiPoints: lastSettings.tobiPoints ?? 0,
       }
     : {
         gameType: "MAHJONG4" as GameType,
         calcMode: "AUTO" as CalcMode,
         ...DEFAULT_POINTS_BY_GAME_TYPE.MAHJONG4,
         umaByRank: [0, 0, 0, 0],
+        boxUnderSettlement: true,
+        tobiPoints: 0,
       };
   // 参加者選択チェックボックスの初期値（左詰めで対象人数分）と揃える。
   const defaultParticipantIds = new Set(
@@ -445,6 +464,8 @@ function buildHanchanDefaults(
     calcMode: base.calcMode,
     startingPoints: base.startingPoints,
     returnPoints: base.returnPoints,
+    boxUnderSettlement: base.boxUnderSettlement,
+    tobiPoints: base.tobiPoints,
     umaByRank: [0, 1, 2, 3].map((i) => base.umaByRank[i] ?? 0),
     rows: rows.map((r) => ({
       userId: r.userId,
@@ -499,6 +520,16 @@ function HanchanEntryForm({
   const startingPoints = form.watch("startingPoints");
   const returnPoints = form.watch("returnPoints");
   const umaByRank = form.watch("umaByRank");
+  const boxUnderSettlement = form.watch("boxUnderSettlement");
+  const tobiPoints = form.watch("tobiPoints");
+  /**
+   * 飛び賞（Issue #66）: 誰がトビになったか（点数<0）はここで機械的に検知
+   * できるが、誰がトビにしたか（受取人）は最終スコアだけからは分からない
+   * ため、bustedUserId -> receiverUserIdの対応を管理者に選んでもらう。
+   * 半荘ごとの実データのため、点数欄・参加者選択と同じくuseStateで管理し
+   * （lastSettingsからは引き継がない）、次の半荘に進む際にリセットする。
+   */
+  const [tobiCredits, setTobiCredits] = useState<Record<string, string>>({});
 
   const expectedCount = expectedPlayerCount(gameType);
   const needsSelection = rows.length > expectedCount;
@@ -586,6 +617,12 @@ function HanchanEntryForm({
     .filter((r) => participantIds.includes(r.userId));
   const participantCountWarning = filled.length !== expectedCount;
 
+  /** トビ（点数<0）になっている参加者。飛び賞パネルはこれが1件以上ある時だけ表示する。 */
+  const bustedRows = filled.filter((r) => numeric(r.score) < 0);
+  const activeTobiAssignments: TobiAssignment[] = bustedRows
+    .map((r) => ({ bustedUserId: r.userId, receiverUserId: tobiCredits[r.userId] }))
+    .filter((a): a is TobiAssignment => Boolean(a.receiverUserId));
+
   const liveResults = computeLiveResults(
     filled.map((r) => ({ userId: r.userId, nickname: r.nickname, score: numeric(r.score) })),
     calcMode,
@@ -593,6 +630,11 @@ function HanchanEntryForm({
     numeric(returnPoints),
     umaByRank.map(numeric),
     tieOrder,
+    {
+      boxUnderSettlement,
+      tobiPoints: numeric(tobiPoints),
+      tobiAssignments: activeTobiAssignments,
+    },
   );
   const scoreMismatchAmount =
     calcMode === "AUTO" && filled.length > 0
@@ -621,6 +663,9 @@ function HanchanEntryForm({
               startingPoints: values.startingPoints,
               returnPoints: values.returnPoints,
               umaByRank: values.umaByRank.slice(0, filledValues.length),
+              boxUnderSettlement: values.boxUnderSettlement,
+              tobiPoints: values.tobiPoints,
+              tobiAssignments: activeTobiAssignments,
             }
           : {}),
       };
@@ -651,6 +696,8 @@ function HanchanEntryForm({
       );
       setTieOrder(rows.map((r) => r.userId));
       setSelectedUserIds(nextSelected);
+      // 飛び賞の受取人選択は半荘ごとの実データのため次の半荘には引き継がない。
+      setTobiCredits({});
     },
     onError: (err) => {
       if (err instanceof ApiError && getErrorDisplay(err.code) === "inline") {
@@ -782,6 +829,71 @@ function HanchanEntryForm({
                     />
                   ))}
                 </div>
+              </div>
+              <FormField
+                control={form.control}
+                name="boxUnderSettlement"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">箱下精算</FormLabel>
+                    <div className="flex gap-2">
+                      {BOX_UNDER_SETTLEMENT_OPTIONS.map((opt) => (
+                        <Button
+                          key={String(opt.value)}
+                          type="button"
+                          variant={field.value === opt.value ? "default" : "outline"}
+                          onClick={() => field.onChange(opt.value)}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+
+          {calcMode === "AUTO" && bustedRows.length > 0 && (
+            <div className="flex flex-col gap-3 rounded-lg border p-3">
+              <FormField
+                control={form.control}
+                name="tobiPoints"
+                render={({ field }) => (
+                  <FormItem className="max-w-40">
+                    <FormLabel className="text-xs">飛び賞（1件あたりのポイント）</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} {...field} value={field.value as number} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex flex-col gap-2">
+                {bustedRows.map((busted) => (
+                  <div key={busted.userId} className="flex items-center gap-2 text-sm">
+                    <span className="min-w-28">{busted.nickname}をトビにした人</span>
+                    <Select
+                      value={tobiCredits[busted.userId] ?? ""}
+                      onValueChange={(value) =>
+                        setTobiCredits((prev) => ({ ...prev, [busted.userId]: value ?? "" }))
+                      }
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="未選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filled
+                          .filter((p) => p.userId !== busted.userId)
+                          .map((p) => (
+                            <SelectItem key={p.userId} value={p.userId}>
+                              {p.nickname}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1008,6 +1120,8 @@ const sessionEditSchema = z.object({
   startingPoints: z.coerce.number().int(),
   returnPoints: z.coerce.number().int(),
   umaByRank: z.array(z.coerce.number().int()),
+  boxUnderSettlement: z.boolean(),
+  tobiPoints: z.coerce.number().int().min(0),
   rows: z.array(sessionEditRowSchema).min(1),
 });
 type SessionEditFormInput = z.input<typeof sessionEditSchema>;
@@ -1042,6 +1156,8 @@ function SessionEditForm({
       startingPoints: existingSession.startingPoints ?? 25000,
       returnPoints: existingSession.returnPoints ?? 30000,
       umaByRank: rows.map((_, i) => existingSession.umaByRank?.[i] ?? 0),
+      boxUnderSettlement: existingSession.boxUnderSettlement ?? true,
+      tobiPoints: existingSession.tobiPoints ?? 0,
       rows: rows.map((r) => ({
         userId: r.userId,
         nickname: r.nickname,
@@ -1068,6 +1184,18 @@ function SessionEditForm({
   const startingPoints = form.watch("startingPoints");
   const returnPoints = form.watch("returnPoints");
   const umaByRank = form.watch("umaByRank");
+  const boxUnderSettlement = form.watch("boxUnderSettlement");
+  const tobiPoints = form.watch("tobiPoints");
+  /** 飛び賞の受取人選択（Issue #66）。既存の登録内容があればそれを初期値にする。 */
+  const [tobiCredits, setTobiCredits] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      (existingSession.tobiAssignments ?? []).map((a) => [a.bustedUserId, a.receiverUserId]),
+    ),
+  );
+  const bustedRows = watchedRows.filter((r) => numeric(r.score) < 0);
+  const activeTobiAssignments: TobiAssignment[] = bustedRows
+    .map((r) => ({ bustedUserId: r.userId, receiverUserId: tobiCredits[r.userId] }))
+    .filter((a): a is TobiAssignment => Boolean(a.receiverUserId));
 
   const liveResults = computeLiveResults(
     watchedRows.map((r) => ({ userId: r.userId, nickname: r.nickname, score: numeric(r.score) })),
@@ -1076,6 +1204,11 @@ function SessionEditForm({
     numeric(returnPoints),
     umaByRank.map(numeric),
     tieOrder,
+    {
+      boxUnderSettlement,
+      tobiPoints: numeric(tobiPoints),
+      tobiAssignments: activeTobiAssignments,
+    },
   );
   const scoreMismatchAmount =
     calcMode === "AUTO"
@@ -1103,6 +1236,9 @@ function SessionEditForm({
               startingPoints: values.startingPoints,
               returnPoints: values.returnPoints,
               umaByRank: values.umaByRank,
+              boxUnderSettlement: values.boxUnderSettlement,
+              tobiPoints: values.tobiPoints,
+              tobiAssignments: activeTobiAssignments,
             }
           : {}),
       };
@@ -1232,6 +1368,71 @@ function SessionEditForm({
                     />
                   ))}
                 </div>
+              </div>
+              <FormField
+                control={form.control}
+                name="boxUnderSettlement"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">箱下精算</FormLabel>
+                    <div className="flex gap-2">
+                      {BOX_UNDER_SETTLEMENT_OPTIONS.map((opt) => (
+                        <Button
+                          key={String(opt.value)}
+                          type="button"
+                          variant={field.value === opt.value ? "default" : "outline"}
+                          onClick={() => field.onChange(opt.value)}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+
+          {calcMode === "AUTO" && bustedRows.length > 0 && (
+            <div className="flex flex-col gap-3 rounded-lg border p-3">
+              <FormField
+                control={form.control}
+                name="tobiPoints"
+                render={({ field }) => (
+                  <FormItem className="max-w-40">
+                    <FormLabel className="text-xs">飛び賞（1件あたりのポイント）</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} {...field} value={field.value as number} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex flex-col gap-2">
+                {bustedRows.map((busted) => (
+                  <div key={busted.userId} className="flex items-center gap-2 text-sm">
+                    <span className="min-w-28">{busted.nickname}をトビにした人</span>
+                    <Select
+                      value={tobiCredits[busted.userId] ?? ""}
+                      onValueChange={(value) =>
+                        setTobiCredits((prev) => ({ ...prev, [busted.userId]: value ?? "" }))
+                      }
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="未選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {rows
+                          .filter((p) => p.userId !== busted.userId)
+                          .map((p) => (
+                            <SelectItem key={p.userId} value={p.userId}>
+                              {p.nickname}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
               </div>
             </div>
           )}

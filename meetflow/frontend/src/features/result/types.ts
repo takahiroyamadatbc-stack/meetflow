@@ -13,6 +13,17 @@ export type ChipInput = {
   chipCount: number;
 };
 
+/**
+ * 飛び賞（Issue #66）: 誰が誰をトビにしたかは最終スコアだけからは判定できない
+ * ため、管理者がUIで明示的に指定した組を持つ。半荘共通のポイント数
+ * （`SessionInput.tobiPoints`）を、bustedUserIdから減算しreceiverUserIdへ
+ * 加算する。
+ */
+export type TobiAssignment = {
+  bustedUserId: string;
+  receiverUserId: string;
+};
+
 /** results.py create_session()/update_session() へのリクエストボディ実体 */
 export type SessionInput = {
   gameType: GameType;
@@ -20,6 +31,11 @@ export type SessionInput = {
   startingPoints?: number;
   returnPoints?: number;
   umaByRank?: number[];
+  /** 箱下精算（Issue #67）。省略時はtrue（従来通りマイナス点をそのまま使う）。 */
+  boxUnderSettlement?: boolean;
+  /** 飛び賞1件あたりのポイント数（Issue #66）。省略時は0（実質的に無効）。 */
+  tobiPoints?: number;
+  tobiAssignments?: TobiAssignment[];
   results: ScoreInput[];
   chips?: ChipInput[];
 };
@@ -46,6 +62,9 @@ export type GameSessionDetail = {
   startingPoints?: number;
   returnPoints?: number;
   umaByRank?: number[];
+  boxUnderSettlement?: boolean;
+  tobiPoints?: number;
+  tobiAssignments?: TobiAssignment[];
   results: SessionResultRow[];
   chips: ChipResultRow[];
 };
@@ -60,6 +79,11 @@ export type LastGameSettings =
       startingPoints?: number;
       returnPoints?: number;
       umaByRank?: number[];
+      // tobiAssignmentsは半荘ごとの実データ（誰が誰をトビにしたか）のため、
+      // 「次回のデフォルト」として引き継ぐ対象に含めない（boxUnderSettlement/
+      // tobiPointsは配給原点等と同じ「house rule」的な設定のため引き継ぐ）。
+      boxUnderSettlement?: boolean;
+      tobiPoints?: number;
     };
 
 /** results.py get_user_results() の_aggregate()集計値（ゲーム種別ごと） */

@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.15
+# MeetFlow DynamoDB 物理テーブル設計書 v1.16
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -433,6 +433,9 @@ GSI1SK:  COMMUNITY#{communityId}#{playedAt}
 | startingPoints | N | 配給原点（calcMode=AUTOの場合のみ） **[v1.13追加]** |
 | returnPoints | N | 返し点（calcMode=AUTOの場合のみ） **[v1.13追加]** |
 | umaByRank | List\<N\> | 着順ごとのウマ（calcMode=AUTOの場合のみ） **[v1.13追加]** |
+| boxUnderSettlement | BOOL | 箱下精算あり/なし（calcMode=AUTOの場合のみ。省略時true扱い） **[v1.16追加]** |
+| tobiPoints | N | 飛び賞1件あたりのポイント（calcMode=AUTOの場合のみ。省略時0扱い） **[v1.16追加]** |
+| tobiAssignments | List\<Map\> | 飛び賞の受取人指定。各要素は`{bustedUserId, receiverUserId}`（calcMode=AUTOの場合のみ。無ければ空リスト） **[v1.16追加]** |
 
 | 属性(GameResult) | 型 | 説明 |
 |---|---|---|
@@ -455,6 +458,8 @@ GSI1SK:  COMMUNITY#{communityId}#{playedAt}
 > F-801〜F-804に対応。ゲーム固有結果（ポーカーのBuy-in等）は`extra`属性（Map型）に格納し、基本キー構造は変えずに拡張する（F-902の設計方針）。
 >
 > **[v1.13追加]** `GameResult.gameType`/`GameResultChip.gameType`は、四麻と三麻で平均着順のスケールが異なり合算すると指標として意味を持たなくなる問題（ResultLambda `_aggregate`）に対応するために追加した。GameResultにはイベント/セッションの状態が保持されておらず`GameSession`への都度JOINが必要になるため、GSI1で1回のQueryのまま種別ごとに集計できるよう書き込み時に非正規化した（読み取り時に都度GameSessionを引く方式は、コミュニティの通算成績集計のような多件数アクセスパターンでは高コストになるため採用しない）。
+>
+> **[v1.16追加]** `boxUnderSettlement`/`tobiPoints`/`tobiAssignments`はIssue #66（飛び賞）・#67（箱下精算）対応で追加した。いずれも新規のPK/SK/GSIは不要（GameSession本体への属性追加のみ）。`tobiAssignments`は「誰が誰をトビにしたか」という最終スコアだけからは導けない情報のため、フロントのUIで管理者に明示的に選んでもらった結果をそのまま保存する（GameResult側には非正規化しない。`rankPoints`は書き込み時にサーバー側で加減点済みの最終値のみを保持する）。
 
 ---
 
@@ -895,3 +900,12 @@ GSI2SK:  {createdAt}#{announcementId}
 | No | 変更内容 | 理由 |
 |---|---|---|
 | 1 | 3.11 Participantのアクセスパターン注記を修正。イベント全体中止（cancel_event）時、CONFIRMEDのParticipant行を`CANCELLED`へ更新するようになった旨を反映（新規属性・キー変更なし） | Issue #63：中止済みイベントのParticipant行がCONFIRMEDのまま残留し、同じメンバー・同じ時間帯の新規イベント確定がPARTICIPANT_SCHEDULE_CONFLICTで誤ってブロックされていたバグの解消。`status`の取り得る値自体（CANCELLED含む）は元々本書が定義済みだったため、値の追加ではなく実装の追従 |
+
+---
+
+## 24. v1.15 → v1.16 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.13 GameSessionに`boxUnderSettlement`（BOOL、既定true相当）を追加 | Issue #67：箱下精算あり/なしの切り替え。既存レコードには属性が無いためアプリ側で既定trueとして読む（マイグレーション不要） |
+| 2 | 3.13 GameSessionに`tobiPoints`（N、既定0相当）・`tobiAssignments`（List\<Map\>、既定空リスト相当）を追加 | Issue #66：飛び賞の受取人指定。最終スコアだけでは「誰が誰をトビにしたか」を導けないため、フロントUIでの明示的な選択結果をそのまま保存する方式とした。GameResultへの非正規化は行わない（`rankPoints`側で既に加減点済みのため） |
