@@ -7,6 +7,7 @@ from meetflow_common import (
     now_iso_ms,
     parse_body,
     require_membership,
+    resolve_display_name,
     success_response,
     write_operation_log,
 )
@@ -87,12 +88,17 @@ def revoke_invite(user_id, event):
 
 
 def get_invite_preview(user_id, event):
-    """GET /invites/{token}（API設計書v1.14 §4.3c、新規）: 招待受諾画面
-    （InviteAcceptPage）が承認要否を事前判定するためのプレビューAPI
-    （Issue #23）。対象コミュニティへの所属は要求しない（招待未受諾の
-    呼び出し元が使うAPIのため）。承認要否はjoin_via_inviteと同じ条件
-    （`memberApprovalRequired`または`createdByRole == "MEMBER"`）で判定
-    する。
+    """GET /invites/{token}（API設計書v1.15 §4.3c）: 招待受諾画面
+    （InviteAcceptPage）が「〇〇さんから招待されています」カードを表示
+    するためのプレビューAPI（Issue #23、#70でレスポンスを拡張）。対象
+    コミュニティへの所属は要求しない（招待未受諾の呼び出し元が使うAPIの
+    ため）。承認要否はjoin_via_inviteと同じ条件（`memberApprovalRequired`
+    または`createdByRole == "MEMBER"`）で判定する。
+
+    `alreadyMember`/`joinRequestPending`は、呼び出し元（招待URLを踏んだ
+    本人）が対象コミュニティに対して既にどの状態にあるかを返す。
+    フロント側はこれを見て「参加する」ボタンの代わりに詰み画面
+    （既に参加済み/承認待ち）を出し分ける。
     """
     token = event["pathParameters"]["token"]
     table = get_table()
@@ -114,11 +120,48 @@ def get_invite_preview(user_id, event):
     approval_required = bool(community.get("memberApprovalRequired")) or (
         invite.get("createdByRole") == "MEMBER"
     )
+
+    invited_by_display_name = None
+    inviter_id = invite.get("createdBy")
+    if inviter_id:
+        inviter_membership = table.get_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{inviter_id}"}
+        ).get("Item")
+        # 招待者が既に退会している場合はMembershipが存在しないため、
+        # グローバルのニックネームへはフォールバックせず表示自体を省略する
+        # （「コミュニティ内で通っている名前」を出すのが目的のカードのため）。
+        if inviter_membership is not None:
+            inviter_profile = table.get_item(
+                Key={"PK": f"USER#{inviter_id}", "SK": "PROFILE"}
+            ).get("Item")
+            invited_by_display_name = (
+                resolve_display_name(inviter_membership, inviter_profile) or None
+            )
+
+    already_member = (
+        table.get_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"}
+        ).get("Item")
+        is not None
+    )
+    join_request = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": f"JOINREQ#{user_id}"}
+    ).get("Item")
+    join_request_pending = (
+        join_request is not None and join_request.get("status") == "PENDING"
+    )
+
     return success_response(
         {
             "communityId": community_id,
             "communityName": community.get("name"),
+            "communityDescription": community.get("description", ""),
+            "communityGenre": community.get("genre", ""),
+            "communityIcon": community.get("icon"),
             "approvalRequired": approval_required,
+            "invitedByDisplayName": invited_by_display_name,
+            "alreadyMember": already_member,
+            "joinRequestPending": join_request_pending,
         }
     )
 

@@ -10,6 +10,7 @@ from _factories import (
     put_invite,
     put_join_request,
     put_membership,
+    put_profile,
 )
 
 
@@ -187,8 +188,79 @@ def test_get_invite_preview_no_approval_required(table):
     assert data == {
         "communityId": "community-1",
         "communityName": "テストコミュニティ",
+        "communityDescription": "",
+        "communityGenre": "麻雀",
+        "communityIcon": None,
         "approvalRequired": False,
+        # user-1はput_membershipされていない（put_communityはMembershipを
+        # 作らない）ため、招待者のMembershipが無いケースとして
+        # invitedByDisplayNameはNoneになる。
+        "invitedByDisplayName": None,
+        "alreadyMember": False,
+        "joinRequestPending": False,
     }
+
+
+def test_get_invite_preview_invited_by_display_name_prefers_membership(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
+    put_membership(table, "community-1", "user-1", role="OWNER", display_name="オーナー太郎")
+    put_profile(table, "user-1", nickname="グローバル太郎")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert body_of(response)["data"]["invitedByDisplayName"] == "オーナー太郎"
+
+
+def test_get_invite_preview_invited_by_display_name_falls_back_to_nickname(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_profile(table, "user-1", nickname="グローバル太郎")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert body_of(response)["data"]["invitedByDisplayName"] == "グローバル太郎"
+
+
+def test_get_invite_preview_invited_by_display_name_omitted_when_inviter_left(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
+    # 招待者user-1のMembershipは無い（既に退会した想定）。
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert body_of(response)["data"]["invitedByDisplayName"] is None
+
+
+def test_get_invite_preview_already_member(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=False)
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert body_of(response)["data"]["alreadyMember"] is True
+
+
+def test_get_invite_preview_join_request_pending(table):
+    put_community(table, "community-1", owner_id="user-1", member_approval_required=True)
+    put_join_request(table, "community-1", "user-2", status="PENDING")
+    put_invite(table, "tok123", community_id="community-1", created_by="user-1")
+
+    response = invites.get_invite_preview(
+        "user-2", api_event(path_params={"token": "tok123"})
+    )
+
+    assert body_of(response)["data"]["joinRequestPending"] is True
 
 
 def test_get_invite_preview_approval_required_due_to_community_setting(table):
