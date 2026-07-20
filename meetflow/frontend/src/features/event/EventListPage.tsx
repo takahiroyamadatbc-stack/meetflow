@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
+import { communityKeys, getCommunity } from "@/features/community/api";
 import { eventKeys, listCommunityEvents } from "@/features/event/api";
 import { EVENT_STATUS_LABELS } from "@/features/event/types";
 import { paths } from "@/routes/paths";
@@ -20,6 +21,13 @@ export function EventListPage() {
   const [tab, setTab] = useState<"upcoming" | "past">("upcoming");
   const status = tab === "upcoming" ? UPCOMING_STATUSES : PAST_STATUSES;
 
+  const { data: community } = useQuery({
+    queryKey: communityKeys.detail(communityId!),
+    queryFn: () => getCommunity(communityId!),
+    enabled: !!communityId,
+  });
+  const isAdmin = community?.role === "OWNER" || community?.role === "ADMIN";
+
   const { data: events, isLoading } = useQuery({
     queryKey: eventKeys.communityEvents(communityId!, status),
     queryFn: () => listCommunityEvents(communityId!, status),
@@ -28,6 +36,14 @@ export function EventListPage() {
 
   return (
     <div className="flex flex-col gap-3 p-4">
+      {isAdmin && (
+        <Link to={paths.manualCandidateNew(communityId!)}>
+          <Button type="button" variant="outline" className="w-full">
+            今すぐイベントを作成
+          </Button>
+        </Link>
+      )}
+
       <div className="flex gap-2">
         <Button
           type="button"
