@@ -36,6 +36,23 @@ def test_create_template_invalid_player_range(table):
     assert body_of(response)["error"]["code"] == "INVALID_PLAYER_RANGE"
 
 
+def test_create_template_rejects_min_players_below_2(table):
+    """Issue #57: minPlayers=1だと1人だけの空き区間が候補化され、相互
+    非公開型マッチングの前提が管理者側から破れてしまうため、下限は2人。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = event_templates.create_template(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={"gameType": "MAHJONG4", "minPlayers": 1, "maxPlayers": 4},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PLAYER_RANGE"
+
+
 def test_create_template_invalid_game_type(table):
     put_membership(table, "community-1", "user-1", role="OWNER")
 

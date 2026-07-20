@@ -176,10 +176,12 @@ def _validate(body):
         or not isinstance(max_players, int)
         or isinstance(min_players, bool)
         or isinstance(max_players, bool)
-        or min_players < 1
+        or min_players < 2
         or min_players > max_players
     ):
-        return error_response("INVALID_PLAYER_RANGE", "人数の範囲指定が不正です")
+        return error_response(
+            "INVALID_PLAYER_RANGE", "人数の範囲指定が不正です（最低人数は2人以上にしてください）"
+        )
 
     priority = body.get("priority", 0)
     if not isinstance(priority, int) or isinstance(priority, bool) or not (
