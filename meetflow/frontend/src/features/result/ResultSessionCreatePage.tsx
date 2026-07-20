@@ -405,6 +405,15 @@ const hanchanSchema = z.object({
 type HanchanFormInput = z.input<typeof hanchanSchema>;
 type HanchanFormValues = z.output<typeof hanchanSchema>;
 
+/** ゲーム種別ごとのデフォルト配給原点/返し点（Issue #64：三麻は四麻と異なる）。 */
+const DEFAULT_POINTS_BY_GAME_TYPE: Record<
+  GameType,
+  { startingPoints: number; returnPoints: number }
+> = {
+  MAHJONG4: { startingPoints: 25000, returnPoints: 30000 },
+  MAHJONG3: { startingPoints: 35000, returnPoints: 40000 },
+};
+
 function buildHanchanDefaults(
   rows: { userId: string; nickname: string }[],
   lastSettings: LastGameSettings | undefined,
@@ -413,15 +422,18 @@ function buildHanchanDefaults(
     ? {
         gameType: lastSettings.gameType,
         calcMode: lastSettings.calcMode,
-        startingPoints: lastSettings.startingPoints ?? 25000,
-        returnPoints: lastSettings.returnPoints ?? 30000,
+        startingPoints:
+          lastSettings.startingPoints ??
+          DEFAULT_POINTS_BY_GAME_TYPE[lastSettings.gameType].startingPoints,
+        returnPoints:
+          lastSettings.returnPoints ??
+          DEFAULT_POINTS_BY_GAME_TYPE[lastSettings.gameType].returnPoints,
         umaByRank: lastSettings.umaByRank ?? [0, 0, 0, 0],
       }
     : {
         gameType: "MAHJONG4" as GameType,
         calcMode: "AUTO" as CalcMode,
-        startingPoints: 25000,
-        returnPoints: 30000,
+        ...DEFAULT_POINTS_BY_GAME_TYPE.MAHJONG4,
         umaByRank: [0, 0, 0, 0],
       };
   // 参加者選択チェックボックスの初期値（左詰めで対象人数分）と揃える。
@@ -516,10 +528,20 @@ function HanchanEntryForm({
     fillDefaultScore(userId);
   };
 
-  /** ゲーム種別が変わったら対象人数も変わるため、選択を左詰めの初期状態に戻す。 */
+  /**
+   * ゲーム種別が変わったら対象人数も変わるため、選択を左詰めの初期状態に戻す。
+   * 配給原点・返し点も、保存済み設定（lastSettings）が無い場合に限り、
+   * 切り替え先のゲーム種別のデフォルト値に更新する（Issue #64）。保存済み
+   * 設定がある場合はそちらを優先し、値を上書きしない。
+   */
   const handleGameTypeChange = (nextGameType: GameType) => {
     form.setValue("gameType", nextGameType);
     setSelectedUserIds(rows.slice(0, expectedPlayerCount(nextGameType)).map((r) => r.userId));
+    if (!lastSettings?.found) {
+      const defaults = DEFAULT_POINTS_BY_GAME_TYPE[nextGameType];
+      form.setValue("startingPoints", defaults.startingPoints);
+      form.setValue("returnPoints", defaults.returnPoints);
+    }
   };
 
   /** 手動計算→自動計算に切り替えた瞬間、参加中の全員の点数欄に配給原点を入力する。 */
