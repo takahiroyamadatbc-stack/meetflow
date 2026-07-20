@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.17
+# MeetFlow DynamoDB 物理テーブル設計書 v1.18
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -478,10 +478,13 @@ SK:   NOTIF#{createdAt}#{notificationId}
 | type | S | CANDIDATE_GENERATED / APPROVAL_REQUESTED / CONFIRMED / CANCELLED / SUBSTITUTE 等 |
 | message | S | 本文 |
 | read | BOOL | 既読フラグ |
-| relatedEventId | S | 関連イベントID |
+| relatedEventId | S | （任意）関連イベントID |
+| **relatedCommunityId** | **S** | **（任意）関連コミュニティID。イベント単位ではなくコミュニティ単位でしか遷移先を持たない通知（`AVAILABILITY_REQUEST`等）用 [v1.18追加]** |
 | createdAt | S | ISO8601 |
 
 > F-701／F-702に対応。ユーザーが直接の主体なのでPKをUSER#にし、GSI不要。
+>
+> **[v1.18追加]** `relatedCommunityId`はIssue #73対応。空き予定提出リクエスト（`AVAILABILITY_REQUEST`）の通知は特定のイベントではなくコミュニティに紐づくため、`relatedEventId`だけでは遷移先を表現できず、通知をタップしても画面遷移しない導線切れになっていた。`relatedEventId`と`relatedCommunityId`は排他ではなく通知種別ごとにどちらか一方（または将来的に両方）が設定される想定で、汎用的な`relatedId`+`relatedType`にはせず既存の`relatedEventId`と同じ素直な命名パターンを踏襲した。
 
 ---
 
@@ -920,3 +923,11 @@ GSI2SK:  {createdAt}#{announcementId}
 | No | 変更内容 | 理由 |
 |---|---|---|
 | 1 | 3.10 Eventに`deletedAvailabilitySnapshot`（List\<Map\>、任意）を追加 | Issue #68：confirm_event時に削除される候補メンバーのAvailabilityを、cancel_event時に正確に復元できるようにするため。イベント時間帯だけでの復元だと、メンバーが元々登録していたより広い範囲（複数メンバーの空き予定の交差区間をイベント時間として採用するマッチングの性質上、本人の元の登録はイベント時間帯より広いことがある）を再現できないため、削除前の完全なスナップショットを一時的にEvent側へ保持する方式とした。復元後は本属性をREMOVEし恒久的な保持はしない |
+
+---
+
+## 26. v1.17 → v1.18 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.14 Notificationに`relatedCommunityId`（S、任意）を追加 | Issue #73：空き予定提出リクエスト（`AVAILABILITY_REQUEST`）通知は特定のイベントではなくコミュニティに紐づくため、既存の`relatedEventId`だけでは遷移先を表現できず、通知タップ後に画面遷移しない導線切れになっていた |

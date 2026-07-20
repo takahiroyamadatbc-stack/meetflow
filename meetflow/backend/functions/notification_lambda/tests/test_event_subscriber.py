@@ -63,6 +63,9 @@ def test_availability_request_created_all_scope_notifies_every_member(table):
         notifications = _notifications_for(table, user_id)
         assert len(notifications) == 1
         assert notifications[0]["type"] == "AVAILABILITY_REQUEST"
+        # Issue #73: 通知タップ時にコミュニティの空き予定登録画面へ遷移できる
+        # よう、relatedCommunityIdを保持していること。
+        assert notifications[0]["relatedCommunityId"] == "community-1"
 
 
 def test_availability_request_created_specified_scope_notifies_targets_only(table):

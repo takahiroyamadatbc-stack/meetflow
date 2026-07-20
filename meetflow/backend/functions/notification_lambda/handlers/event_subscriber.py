@@ -73,7 +73,13 @@ def handle_domain_event(event):
         else:
             target_user_ids = []
         for target_user_id in target_user_ids:
-            _create_notification(table, target_user_id, "AVAILABILITY_REQUEST", None)
+            _create_notification(
+                table,
+                target_user_id,
+                "AVAILABILITY_REQUEST",
+                None,
+                related_community_id=community_id,
+            )
     elif detail_type == EVENT_AWAITING_APPROVAL:
         for user_id in detail.get("awaitingUserIds", []):
             _create_notification(
@@ -114,7 +120,9 @@ def _list_member_roles(table, community_id):
     ]
 
 
-def _create_notification(table, user_id, notif_type, related_event_id):
+def _create_notification(
+    table, user_id, notif_type, related_event_id, related_community_id=None
+):
     notification_id = generate_id()
     created_at = now_iso_ms()
     item = {
@@ -127,6 +135,8 @@ def _create_notification(table, user_id, notif_type, related_event_id):
     }
     if related_event_id:
         item["relatedEventId"] = related_event_id
+    if related_community_id:
+        item["relatedCommunityId"] = related_community_id
     table.put_item(Item=item)
     push_sender.send_push_to_user(
         table, user_id, title="MeetFlow", body=_MESSAGES[notif_type], notif_type=notif_type
