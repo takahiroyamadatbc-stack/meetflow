@@ -449,6 +449,26 @@ def test_update_session_rejects_different_participants(table):
     assert body_of(response)["error"]["code"] == "RESULT_VALIDATION_ERROR"
 
 
+def test_update_session_rejects_different_game_type(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+    results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_manual_body()),
+    )
+
+    response = results.update_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1", "sessionNo": "0001"},
+            body=_manual_body(gameType="MAHJONG3"),
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "RESULT_VALIDATION_ERROR"
+
+
 def test_update_session_requires_admin_role(table):
     put_membership(table, "community-1", "user-1", role="OWNER")
     put_membership(table, "community-1", "user-2", role="MEMBER")
