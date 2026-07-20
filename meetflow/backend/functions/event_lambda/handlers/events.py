@@ -331,10 +331,18 @@ def confirm_event(user_id, event):
             }
         )
 
-    availability_delete_ops = _availability_delete_operations(
+    availability_delete_ops, availability_snapshots = _availability_delete_operations(
         table, community_id, member_ids, start_time, end_time
     )
     operations.extend(availability_delete_ops)
+    if availability_snapshots:
+        # cancel_event側（Issue #68）が正確に復元できるよう、削除対象となる
+        # Availability行の完全なスナップショットをEvent側に一時保持する。
+        # 同一トランザクション内でEvent METADATAのUpdate操作（operations[0]）
+        # に相乗りさせる。
+        event_update = operations[0]["Update"]
+        event_update["UpdateExpression"] += ", deletedAvailabilitySnapshot = :snap"
+        event_update["ExpressionAttributeValues"][":snap"] = availability_snapshots
 
     try:
         transact_write(operations)
@@ -391,7 +399,8 @@ def confirm_event(user_id, event):
 
 def _availability_delete_operations(table, community_id, member_ids, start_time, end_time):
     """イベント確定時、候補元となったメンバーの空き予定(Availability)を
-    削除するためのTransactWriteItems用Delete操作を組み立てる。
+    削除するためのTransactWriteItems用Delete操作と、その削除前スナップ
+    ショット（Issue #68でcancel_event側が復元に使う）を組み立てる。
 
     マッチング（matching_lambdaの_overlapping_member_windows）はメンバー
     全員の空き予定の交差区間をイベント時間として採用するため、各メンバー
@@ -399,9 +408,13 @@ def _availability_delete_operations(table, community_id, member_ids, start_time,
     （例: 本人は10:00-18:00で登録していたが、他メンバーとの共通区間が
     12:00-13:00だったためイベントは12:00-13:00で確定した場合）。そのため
     完全一致ではなく、イベント時間帯[start_time, end_time)と重複する
-    Availabilityを削除対象とする。
+    Availabilityを削除対象とする。単純にイベント時間帯だけを復元対象と
+    すると本人が元々登録していたより広い範囲を再現できないため、削除前の
+    全属性（PK/SK/GSI1PK/GSI1SK含む）をそのままスナップショットとして
+    保持し、中止時に完全に同一の内容で書き戻せるようにする。
     """
     operations = []
+    snapshots = []
     for uid in member_ids:
         resp = table.query(
             IndexName="GSI1",
@@ -416,7 +429,48 @@ def _availability_delete_operations(table, community_id, member_ids, start_time,
             if not item_end or item_end <= start_time or item_start >= end_time:
                 continue
             operations.append({"Delete": {"Key": {"PK": item["PK"], "SK": item["SK"]}}})
-    return operations
+            snapshot = {
+                "pk": item["PK"],
+                "sk": item["SK"],
+                "gsi1pk": item["GSI1PK"],
+                "gsi1sk": item["GSI1SK"],
+                "userId": item["userId"],
+                "endTime": item["endTime"],
+                "comment": item.get("comment", ""),
+            }
+            if item.get("createdAt"):
+                snapshot["createdAt"] = item["createdAt"]
+            if item.get("gameTypes"):
+                snapshot["gameTypes"] = sorted(item["gameTypes"])
+            snapshots.append(snapshot)
+    return operations, snapshots
+
+
+def _restore_availability(table, snapshots):
+    """cancel_event時、confirm_event（_availability_delete_operations）が削除
+    したAvailability行をEvent.deletedAvailabilitySnapshotから復元する
+    （Issue #68）。削除前の完全なスナップショット（PK/SK/GSI1PK/GSI1SK含む）
+    をそのまま書き戻すため、メンバーが元々登録していた範囲・gameTypes・
+    commentを完全に再現できる。
+    """
+    if not snapshots:
+        return 0
+    for snapshot in snapshots:
+        item = {
+            "PK": snapshot["pk"],
+            "SK": snapshot["sk"],
+            "GSI1PK": snapshot["gsi1pk"],
+            "GSI1SK": snapshot["gsi1sk"],
+            "userId": snapshot["userId"],
+            "endTime": snapshot["endTime"],
+            "comment": snapshot.get("comment", ""),
+        }
+        if snapshot.get("createdAt"):
+            item["createdAt"] = snapshot["createdAt"]
+        if snapshot.get("gameTypes"):
+            item["gameTypes"] = set(snapshot["gameTypes"])
+        table.put_item(Item=item)
+    return len(snapshots)
 
 
 def cancel_event(user_id, event):
@@ -443,11 +497,17 @@ def cancel_event(user_id, event):
             "INVALID_STATUS_TRANSITION", "終了済みのイベントは中止できません", status_code=409
         )
 
+    # deletedAvailabilitySnapshot（confirm_event側でIssue #68用に保持した削除前
+    # データ）は復元後に不要になるため、statusの更新と同じ呼び出しでREMOVEする
+    # （存在しない属性へのREMOVEはエラーにならない）。
     table.update_item(
         Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"},
-        UpdateExpression="SET #status = :cancelled",
+        UpdateExpression="SET #status = :cancelled REMOVE deletedAvailabilitySnapshot",
         ExpressionAttributeNames={"#status": "status"},
         ExpressionAttributeValues={":cancelled": "CANCELLED"},
+    )
+    restored_count = _restore_availability(
+        table, event_item.get("deletedAvailabilitySnapshot")
     )
     _cancel_participants(table, event_id)
     _reopen_candidate(table, community_id, event_item.get("candidateId"))
@@ -459,6 +519,14 @@ def cancel_event(user_id, event):
         target_type="Event",
         target_id=event_id,
     )
+    if restored_count:
+        write_operation_log(
+            action="RESTORE_AVAILABILITY_ON_EVENT_CANCEL",
+            user_id=user_id,
+            community_id=community_id,
+            target_type="Availability",
+            target_id=f"{restored_count} items",
+        )
 
     put_event(
         EVENT_CANCELLED,

@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.16
+# MeetFlow DynamoDB 物理テーブル設計書 v1.17
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -306,6 +306,7 @@ GSI1SK:  EVENT#{startTime}#{eventId}
 | status | S | DRAFT/OPEN/MATCHING/PENDING_APPROVAL/**AWAITING_MEMBER_APPROVAL[v1.10追加]**/CONFIRMED/IN_PROGRESS/COMPLETED/CANCELLED |
 | startTime / endTime | S | ISO8601 |
 | createdAt | S | ISO8601 |
+| **deletedAvailabilitySnapshot** | **List\<Map\>** | **（任意）confirm_event実行時に削除した候補メンバーのAvailability行の完全なスナップショット（PK/SK/GSI1PK/GSI1SK/userId/endTime/comment/createdAt/gameTypesを保持）。cancel_event実行時にそのまま書き戻して復元し、復元後は本属性自体をREMOVEする（恒久的な保持はしない）[v1.17追加]** |
 
 **アクセスパターン**
 - イベント詳細取得：PK直接（`GetItem`）
@@ -314,6 +315,8 @@ GSI1SK:  EVENT#{startTime}#{eventId}
 > F-501〜F-504、要件定義書14章のライフサイクルに対応。EventIdをPKにすることで、Participant/CancelRequest/GameSession等の子エンティティを同一PK配下にぶら下げられる（次項参照）。
 >
 > **[v1.10追加]** `AWAITING_MEMBER_APPROVAL`はF-502b「イベント確定フローの全員承認」（Issue #10）で追加した中間状態。管理者による仮確定（F-502、`PENDING_APPROVAL`→`AWAITING_MEMBER_APPROVAL`）と、参加予定者全員の個別承認完了による本確定（`AWAITING_MEMBER_APPROVAL`→`CONFIRMED`）の間に位置する。候補メンバー全員が自動承認（3.1/3.3の`autoApprove`）ONの場合はこの状態を経由せず直接`CONFIRMED`になる。
+>
+> **[v1.17追加]** `deletedAvailabilitySnapshot`はIssue #68（イベント中止時にAvailabilityを復元する）に対応する属性。confirm_eventは候補元となった参加者のAvailability（3.9参照）のうち確定イベント時間帯と重複するものを削除するが（Issue #14）、単純にイベントの`[startTime, endTime)`と同じ範囲だけをcancel_event時に復元すると、メンバーが元々登録していたより広い範囲（マッチングは複数メンバーの空き予定の交差区間をイベント時間として採用するため、本人の元の登録はイベント時間帯より広いことがある）を正しく復元できない。そのため、削除対象となった各Availability行の全属性をそのままEvent側に一時保持し、cancel_event時に完全に同一の内容で書き戻す方式とした。書き戻し後は本属性を`REMOVE`し、Eventアイテムに恒久的なコピーを残さない（GameSession等と異なりAvailability自体の正本はあくまでAVAIL#側であるため）。
 
 ---
 
@@ -909,3 +912,11 @@ GSI2SK:  {createdAt}#{announcementId}
 |---|---|---|
 | 1 | 3.13 GameSessionに`boxUnderSettlement`（BOOL、既定true相当）を追加 | Issue #67：箱下精算あり/なしの切り替え。既存レコードには属性が無いためアプリ側で既定trueとして読む（マイグレーション不要） |
 | 2 | 3.13 GameSessionに`tobiPoints`（N、既定0相当）・`tobiAssignments`（List\<Map\>、既定空リスト相当）を追加 | Issue #66：飛び賞の受取人指定。最終スコアだけでは「誰が誰をトビにしたか」を導けないため、フロントUIでの明示的な選択結果をそのまま保存する方式とした。GameResultへの非正規化は行わない（`rankPoints`側で既に加減点済みのため） |
+
+---
+
+## 25. v1.16 → v1.17 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.10 Eventに`deletedAvailabilitySnapshot`（List\<Map\>、任意）を追加 | Issue #68：confirm_event時に削除される候補メンバーのAvailabilityを、cancel_event時に正確に復元できるようにするため。イベント時間帯だけでの復元だと、メンバーが元々登録していたより広い範囲（複数メンバーの空き予定の交差区間をイベント時間として採用するマッチングの性質上、本人の元の登録はイベント時間帯より広いことがある）を再現できないため、削除前の完全なスナップショットを一時的にEvent側へ保持する方式とした。復元後は本属性をREMOVEし恒久的な保持はしない |

@@ -123,20 +123,29 @@ def put_event_status(table, event_id, status):
 
 
 def put_availability(
-    table, community_id, user_id, availability_id, *, start_time, end_time
+    table,
+    community_id,
+    user_id,
+    availability_id,
+    *,
+    start_time,
+    end_time,
+    comment="",
+    game_types=None,
 ):
-    table.put_item(
-        Item={
-            "PK": f"COMMUNITY#{community_id}",
-            "SK": f"AVAIL#{start_time}#{availability_id}",
-            "GSI1PK": f"USER#{user_id}",
-            "GSI1SK": f"AVAIL#{start_time}",
-            "userId": user_id,
-            "endTime": end_time,
-            "comment": "",
-            "createdAt": now_iso_ms(),
-        }
-    )
+    item = {
+        "PK": f"COMMUNITY#{community_id}",
+        "SK": f"AVAIL#{start_time}#{availability_id}",
+        "GSI1PK": f"USER#{user_id}",
+        "GSI1SK": f"AVAIL#{start_time}",
+        "userId": user_id,
+        "endTime": end_time,
+        "comment": comment,
+        "createdAt": now_iso_ms(),
+    }
+    if game_types:
+        item["gameTypes"] = set(game_types)
+    table.put_item(Item=item)
 
 
 def put_confirmed_participant(
