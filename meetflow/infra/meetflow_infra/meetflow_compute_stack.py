@@ -159,6 +159,19 @@ class MeetFlowComputeStack(Stack):
             encryption=s3.BucketEncryption.S3_MANAGED,
             removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
             auto_delete_objects=not is_prod,
+            # Issue #62: ブラウザから署名付きURLへ直接PUTする(UserLambdaの
+            # プロフィール画像アップロード、CommunityLambdaのコミュニティ
+            # アイコンアップロードが共にこのバケットを使う)ため、CORS未設定
+            # だとブラウザにブロックされる。API Gatewayのdefault_cors_preflight_
+            # optionsと同じ判断(MVP規模のためオリジンは絞り込まない)でALL_
+            # ORIGINSにする。
+            cors=[
+                s3.CorsRule(
+                    allowed_methods=[s3.HttpMethods.PUT],
+                    allowed_origins=["*"],
+                    allowed_headers=["*"],
+                )
+            ],
         )
         avatar_distribution = cloudfront.Distribution(
             self,
@@ -638,6 +651,16 @@ class MeetFlowComputeStack(Stack):
             encryption=s3.BucketEncryption.S3_MANAGED,
             removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
             auto_delete_objects=not is_prod,
+            # Issue #62: AvatarBucketと同じ構造的な問題(ブラウザから署名付き
+            # URLへの直接PUTがCORS未設定でブロックされる)がこのバケットにも
+            # あるため、同様にCORSを設定する。
+            cors=[
+                s3.CorsRule(
+                    allowed_methods=[s3.HttpMethods.PUT],
+                    allowed_origins=["*"],
+                    allowed_headers=["*"],
+                )
+            ],
         )
 
         fn = self._build_function(
