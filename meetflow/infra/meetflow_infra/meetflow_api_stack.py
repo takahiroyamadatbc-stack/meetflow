@@ -125,6 +125,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("POST", "/events/{eventId}/sessions", "result"),
     ("GET", "/events/{eventId}/sessions", "result"),
     ("PUT", "/events/{eventId}/sessions/{sessionNo}", "result"),
+    ("DELETE", "/events/{eventId}/sessions/{sessionNo}", "result"),
     ("GET", "/communities/{communityId}/game-sessions/last-settings", "result"),
     ("GET", "/users/{userId}/results", "result"),
     # NotificationLambda
