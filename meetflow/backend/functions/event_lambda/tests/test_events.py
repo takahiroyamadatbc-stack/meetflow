@@ -373,6 +373,71 @@ def test_confirm_event_deletes_overlapping_availability(table):
     assert non_overlap_item is not None
 
 
+def test_cancel_event_restores_deleted_availability(table):
+    """#68: イベント確定時に削除されたAvailabilityが、中止時に元の登録内容
+    （イベント時間帯より広い範囲・gameTypes・comment含む）のまま復元される
+    こと。単純にイベント時間帯[start,end)だけを復元すると、本人が元々
+    登録していたより広い範囲（マッチングは複数メンバーの空き予定の交差
+    区間をイベント時間として採用するため）が失われてしまう。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    start_time, end_time = put_candidate(
+        table, "community-1", "candidate-1", ["user-1", "user-2"]
+    )
+    put_availability(
+        table,
+        "community-1",
+        "user-1",
+        "avail-overlap",
+        start_time="2026-08-05T18:00:00.000Z",
+        end_time="2026-08-05T23:00:00.000Z",
+        comment="全自動卓あり",
+        game_types=["MAHJONG4"],
+    )
+    create_response = events.create_event(
+        "user-1", api_event(body={"candidateId": "candidate-1"})
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+    events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    overlap_key = {
+        "PK": "COMMUNITY#community-1",
+        "SK": "AVAIL#2026-08-05T18:00:00.000Z#avail-overlap",
+    }
+    assert table.get_item(Key=overlap_key).get("Item") is None
+
+    response = events.cancel_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+    assert response["statusCode"] == 200
+
+    restored = table.get_item(Key=overlap_key)["Item"]
+    assert restored["endTime"] == "2026-08-05T23:00:00.000Z"
+    assert restored["comment"] == "全自動卓あり"
+    assert restored["gameTypes"] == {"MAHJONG4"}
+    assert restored["GSI1PK"] == "USER#user-1"
+    assert restored["GSI1SK"] == "AVAIL#2026-08-05T18:00:00.000Z"
+
+    event_item = table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}
+    )["Item"]
+    assert "deletedAvailabilitySnapshot" not in event_item
+
+
+def test_cancel_event_without_deleted_availability_is_noop(table):
+    """イベント確定時に削除対象のAvailabilityが無かった場合、中止時の
+    復元処理は何もせず正常終了すること。
+    """
+    event_id = _create_pending_event(table)
+    events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    response = events.cancel_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+
+    assert response["statusCode"] == 200
+
+
 def test_confirm_event_already_confirmed(table):
     event_id = _create_pending_event(table)
     put_event_status(table, event_id, "CONFIRMED")
