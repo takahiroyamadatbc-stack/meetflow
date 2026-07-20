@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { communityKeys, getInvitePreview, joinViaInvite } from "@/features/community/api";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
+import { consumePendingInvitePath } from "@/features/auth/pendingInvite";
 import { paths } from "@/routes/paths";
 
 /**
@@ -24,6 +25,14 @@ export function InviteAcceptPage() {
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
   const [message, setMessage] = useState("");
+
+  // このページへの到着をもって招待の引き継ぎ導線は役目を終えたとみなし、
+  // sessionStorageの一時保存を消費（削除）する。LoginPage/ConfirmSignUpPage/
+  // RedirectIfAuthenticatedはpeek（読むだけ）に統一したため、削除はここでのみ
+  // 行う（レンダー中の副作用を避けるためuseEffect内で実行。Issue #69）。
+  useEffect(() => {
+    consumePendingInvitePath();
+  }, []);
 
   const {
     data: preview,
