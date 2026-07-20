@@ -3,6 +3,7 @@ import {
   confirmSignUp,
   fetchAuthSession,
   getCurrentUser,
+  resendSignUpCode,
   signIn,
   signOut,
   signUp,
@@ -44,6 +45,18 @@ export async function confirmSignUpCode(email: string, code: string, nickname?: 
     confirmationCode: code,
     options: nickname ? { clientMetadata: { nickname } } : undefined,
   });
+}
+
+/**
+ * 未確認ユーザーへの確認コード再送信（Issue #61）。
+ * サインアップ済み・未確認（Cognito側でUNCONFIRMED）のユーザーが確認コードを
+ * 消費せず離脱した後、同じメールアドレスで再度signUp()を呼ぶと
+ * UsernameExistsExceptionになるため、その場合の再送信に使う。
+ * 対象ユーザーが既にCONFIRMED済みの場合はCognito側が
+ * InvalidParameterException等を返す（呼び出し元でハンドリングする）。
+ */
+export async function resendSignUpConfirmationCode(email: string) {
+  return resendSignUpCode({ username: email });
 }
 
 /** ログイン（UserPoolClientの制約によりSRP認証となる） */

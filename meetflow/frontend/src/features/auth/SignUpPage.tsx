@@ -15,7 +15,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { signUpUser } from "@/features/auth/api";
+import { resendSignUpConfirmationCode, signUpUser } from "@/features/auth/api";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -54,6 +54,23 @@ export function SignUpPage() {
       await signUpUser(values.email, values.password, values.nickname);
       navigate(paths.signupConfirm, { state: { email: values.email, nickname: values.nickname } });
     } catch (err) {
+      const name = err instanceof Error ? err.name : "";
+      if (name === "UsernameExistsException") {
+        // 確認コードを送信済みだが未確認（本登録未完了）のユーザーが再度
+        // サインアップした場合はコードを再送信し、確認コード入力画面へ
+        // 遷移させる。既に確認済みのユーザーの場合はresendSignUpCode自体が
+        // 失敗するため、その場合のみ「登録済み」エラーを表示する（Issue #61）。
+        try {
+          await resendSignUpConfirmationCode(values.email);
+          navigate(paths.signupConfirm, {
+            state: { email: values.email, nickname: values.nickname },
+          });
+          return;
+        } catch {
+          setSubmitError("このメールアドレスは登録済みです");
+          return;
+        }
+      }
       setSubmitError(err instanceof Error ? err.message : "登録に失敗しました");
     }
   }
