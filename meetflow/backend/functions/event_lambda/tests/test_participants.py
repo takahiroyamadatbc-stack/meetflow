@@ -1,10 +1,20 @@
 from unittest.mock import patch
 
-from meetflow_common import EVENT_CONFIRMED, EVENT_PARTICIPANT_REJECTED
+import pytest
+
+from meetflow_common import AuthError, EVENT_CONFIRMED, EVENT_PARTICIPANT_REJECTED
 
 from handlers import events, participants
 
-from _factories import api_event, body_of, put_candidate, put_membership, put_profile
+from _factories import (
+    api_event,
+    body_of,
+    put_candidate,
+    put_confirmed_participant,
+    put_event_template,
+    put_membership,
+    put_profile,
+)
 
 
 def _create_confirmed_event(table, community_id="community-1", member_ids=None):
@@ -377,3 +387,217 @@ def test_reject_participation_blocks_finalize(table):
     ]
     assert event_item["status"] == "AWAITING_MEMBER_APPROVAL"
     mock_put_event.assert_not_called()
+
+
+# --- Issue #78: 確定後のメンバー追加・削除(F-603のMVP前倒し) ---
+
+
+def test_add_participant_success(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    put_membership(table, "community-1", "user-5")
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+    )
+
+    assert response["statusCode"] == 201
+    assert body_of(response)["data"]["status"] == "CONFIRMED"
+    participant = table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": "PARTICIPANT#user-5"}
+    )["Item"]
+    assert participant["status"] == "CONFIRMED"
+
+
+def test_add_participant_requires_admin(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    put_membership(table, "community-1", "user-5")
+
+    with pytest.raises(AuthError):
+        participants.add_participant(
+            "user-2",
+            api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+        )
+
+
+def test_add_participant_event_not_confirmed(table):
+    event_id = _create_awaiting_approval_event(table)
+    put_membership(table, "community-1", "user-5")
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
+
+
+def test_add_participant_after_start_time_rejected(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    for uid in ("user-1", "user-2"):
+        put_profile(table, uid, auto_approve=True)
+    put_candidate(
+        table,
+        "community-1",
+        "candidate-1",
+        ["user-1", "user-2"],
+        start_time="2020-01-01T10:00:00.000Z",
+        end_time="2020-01-01T14:00:00.000Z",
+    )
+    create_response = events.create_event(
+        "user-1", api_event(body={"candidateId": "candidate-1"})
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+    events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+    put_membership(table, "community-1", "user-5")
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
+
+
+def test_add_participant_not_active_member(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-999"}),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_add_participant_already_participant(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    put_membership(table, "community-1", "user-2")
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-2"}),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_add_participant_exceeds_max_players(table):
+    put_event_template(table, "community-1", "template-1", min_players=2, max_players=2)
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    put_membership(table, "community-1", "user-5")
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_add_participant_schedule_conflict(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    put_membership(table, "community-1", "user-5")
+    put_confirmed_participant(
+        table,
+        "user-5",
+        start_time="2026-08-05T20:00:00.000Z",
+        end_time="2026-08-05T22:00:00.000Z",
+    )
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "PARTICIPANT_SCHEDULE_CONFLICT"
+
+
+def test_remove_participant_success(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2", "user-3"])
+
+    response = participants.remove_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id, "userId": "user-3"}),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["status"] == "CANCELLED"
+    assert data["remainingParticipantCount"] == 2
+    participant = table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": "PARTICIPANT#user-3"}
+    )["Item"]
+    assert participant["status"] == "CANCELLED"
+    assert participant["removedBy"] == "user-1"
+
+
+def test_remove_participant_below_min_players_flags_response(table):
+    put_event_template(table, "community-1", "template-1", min_players=3, max_players=4)
+    event_id = _create_confirmed_event(
+        table, member_ids=["user-1", "user-2", "user-3", "user-4"]
+    )
+
+    response = participants.remove_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id, "userId": "user-4"}),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["remainingParticipantCount"] == 3
+    assert data["belowMinPlayers"] is False
+
+    response2 = participants.remove_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id, "userId": "user-3"}),
+    )
+    data2 = body_of(response2)["data"]
+    assert data2["remainingParticipantCount"] == 2
+    assert data2["belowMinPlayers"] is True
+
+    # イベント自体は自動中止されない(管理者判断に委ねる)。
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"})[
+        "Item"
+    ]
+    assert event_item["status"] == "CONFIRMED"
+
+
+def test_remove_participant_requires_admin(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2", "user-3"])
+
+    with pytest.raises(AuthError):
+        participants.remove_participant(
+            "user-2",
+            api_event(path_params={"eventId": event_id, "userId": "user-3"}),
+        )
+
+
+def test_remove_participant_not_found(table):
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+
+    response = participants.remove_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id, "userId": "user-999"}),
+    )
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "PARTICIPANT_NOT_FOUND"
+
+
+def test_remove_participant_event_not_confirmed(table):
+    event_id = _create_awaiting_approval_event(table)
+
+    response = participants.remove_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id, "userId": "user-2"}),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"

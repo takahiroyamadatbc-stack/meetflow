@@ -1,5 +1,6 @@
 import { apiClient } from "@/api/client";
 import type {
+  AddParticipantResult,
   CancelRequest,
   CreateEventInput,
   EventDetail,
@@ -8,6 +9,7 @@ import type {
   Participant,
   ParticipationApproveResult,
   ParticipationRejectResult,
+  RemoveParticipantResult,
 } from "@/features/event/types";
 
 export const eventKeys = {
@@ -101,5 +103,23 @@ export function rejectParticipation(eventId: string, reason?: string) {
   return apiClient.post<ParticipationRejectResult>(
     `/events/${eventId}/participants/me/reject`,
     reason ? { reason } : {},
+  );
+}
+
+/**
+ * POST /events/{eventId}/participants（Issue #78、F-603のMVP前倒し）
+ * 確定済みイベントに、管理者がコミュニティメンバーを1名追加する。
+ */
+export function addParticipant(eventId: string, userId: string) {
+  return apiClient.post<AddParticipantResult>(`/events/${eventId}/participants`, { userId });
+}
+
+/**
+ * POST /events/{eventId}/participants/{userId}/remove（Issue #78、F-603のMVP前倒し）
+ * 確定済みイベントから、管理者が参加者を本人同意なしに強制的に取り消す。
+ */
+export function removeParticipant(eventId: string, userId: string) {
+  return apiClient.post<RemoveParticipantResult>(
+    `/events/${eventId}/participants/${userId}/remove`,
   );
 }

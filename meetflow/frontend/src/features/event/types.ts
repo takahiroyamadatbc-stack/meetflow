@@ -104,3 +104,21 @@ export type CreateEventInput = {
   locationId?: string;
   locationNote?: string;
 };
+
+/** participants.py add_participant() のレスポンス実体（Issue #78、F-603のMVP前倒し） */
+export type AddParticipantResult = {
+  eventId: string;
+  userId: string;
+  nickname: string;
+  status: "CONFIRMED";
+};
+
+/** participants.py remove_participant() のレスポンス実体（Issue #78、F-603のMVP前倒し） */
+export type RemoveParticipantResult = {
+  eventId: string;
+  userId: string;
+  status: "CANCELLED";
+  remainingParticipantCount: number;
+  /** 削除の結果minPlayersを割り込んだかどうか（管理者への警告表示専用、自動中止はしない） */
+  belowMinPlayers: boolean;
+};
