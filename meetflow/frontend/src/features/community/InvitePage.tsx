@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,6 +61,12 @@ export function InvitePage() {
                 >
                   {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </Button>
+              </div>
+              <div className="flex flex-col items-center gap-2 py-2">
+                <div className="rounded-lg bg-white p-3">
+                  <QRCodeSVG value={createMutation.data.url} size={180} bgColor="#ffffff" fgColor="#000000" />
+                </div>
+                <p className="text-muted-foreground text-xs">QRコードを読み取っても招待URLを開けます</p>
               </div>
               <Button
                 variant="destructive"
