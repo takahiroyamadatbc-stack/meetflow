@@ -239,7 +239,46 @@ def confirm_event(user_id, event):
         Limit=1,
     )
     candidate_items = candidate_resp.get("Items", [])
-    member_ids = sorted(candidate_items[0].get("members", [])) if candidate_items else []
+    candidate_member_ids = (
+        sorted(candidate_items[0].get("members", [])) if candidate_items else []
+    )
+
+    # Issue #79: 候補メンバー全員をそのまま参加者にするのではなく、管理者が
+    # 一部を選んで仮確定できるようにする。`memberIds`省略時は従来通り
+    # 候補メンバー全員（後方互換）。
+    body = parse_body(event)
+    selected_member_ids = body.get("memberIds")
+    if selected_member_ids is not None:
+        if (
+            not isinstance(selected_member_ids, list)
+            or not selected_member_ids
+            or not all(isinstance(m, str) for m in selected_member_ids)
+        ):
+            return error_response("INVALID_PARAMETER", "memberIdsが不正です")
+        selected_member_ids = set(selected_member_ids)
+        if not selected_member_ids.issubset(candidate_member_ids):
+            return error_response(
+                "INVALID_PARAMETER", "候補に含まれないメンバーが選択されています"
+            )
+
+        template_id = candidate_items[0].get("templateId") if candidate_items else None
+        if template_id is None:
+            # 手動作成候補（Issue #56）には開催条件(minPlayers)が無いため、
+            # 1人以上であること以外の下限チェックは行わない。
+            min_players = 1
+        else:
+            template = table.get_item(
+                Key={"PK": f"COMMUNITY#{community_id}", "SK": f"TEMPLATE#{template_id}"}
+            ).get("Item")
+            min_players = max((template or {}).get("minPlayers", 2), 2)
+        if len(selected_member_ids) < min_players:
+            return error_response(
+                "INVALID_PARAMETER",
+                f"選択メンバーは{min_players}人以上にしてください",
+            )
+        member_ids = sorted(selected_member_ids)
+    else:
+        member_ids = candidate_member_ids
 
     start_time = event_item["startTime"]
     end_time = event_item["endTime"]

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -30,6 +31,7 @@ import {
   rejectParticipation,
 } from "@/features/event/api";
 import { EVENT_STATUS_LABELS, PARTICIPANT_STATUS_LABELS } from "@/features/event/types";
+import { getCandidateDetail, matchingKeys } from "@/features/matching/api";
 import { listEventSessions, resultKeys } from "@/features/result/api";
 import { GAME_TYPE_LABELS } from "@/features/user/types";
 import { QuickFeedbackPrompt } from "@/features/feedback/QuickFeedbackPrompt";
@@ -72,6 +74,23 @@ export function EventDetailPage() {
     enabled: !!eventId && (community?.role === "OWNER" || community?.role === "ADMIN"),
   });
 
+  const isAdmin = community?.role === "OWNER" || community?.role === "ADMIN";
+  // Issue #79: 仮確定前(PENDING_APPROVAL)は参加者(Participant)がまだ
+  // 存在しないため、候補(MatchCandidate)のメンバー一覧を取得して
+  // チェックボックスで選択可能にする。
+  const { data: candidate } = useQuery({
+    queryKey: matchingKeys.candidateDetail(event?.candidateId ?? ""),
+    queryFn: () => getCandidateDetail(event!.candidateId!),
+    enabled: !!event?.candidateId && event?.status === "PENDING_APPROVAL" && isAdmin,
+  });
+
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (candidate) {
+      setSelectedMemberIds(new Set(candidate.members.map((m) => m.userId)));
+    }
+  }, [candidate]);
+
   // COMPLETED/IN_PROGRESSへの状態遷移が未実装なため、実運用で唯一到達
   // 可能なCONFIRMED状態を成績入力の解禁条件にしている（Issue #20）。
   const canManageResults =
@@ -85,7 +104,8 @@ export function EventDetailPage() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: () => confirmEvent(eventId!),
+    mutationFn: () =>
+      confirmEvent(eventId!, candidate ? Array.from(selectedMemberIds) : undefined),
     onSuccess: (updated) => {
       queryClient.setQueryData(eventKeys.detail(eventId!), updated);
       queryClient.invalidateQueries({ queryKey: eventKeys.participants(eventId!) });
@@ -158,7 +178,6 @@ export function EventDetailPage() {
     return <EmptyState message="イベントが見つかりません" />;
   }
 
-  const isAdmin = community?.role === "OWNER" || community?.role === "ADMIN";
   const myParticipant = participants?.find((p) => p.userId === userId);
   const pendingCancelCount = (cancelRequests ?? []).filter((r) => r.status === "PENDING").length;
   const confirmedParticipantCount = (participants ?? []).filter(
@@ -207,9 +226,49 @@ export function EventDetailPage() {
       </Card>
 
       {event.status === "PENDING_APPROVAL" && isAdmin && (
-        <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
-          このイベントを仮確定する
-        </Button>
+        <Card>
+          <CardContent className="flex flex-col gap-3">
+            {candidate && candidate.members.length > 0 && (
+              <>
+                <p className="text-sm font-medium">参加させるメンバーを選択してください</p>
+                <div className="flex flex-col gap-2">
+                  {candidate.members.map((member) => (
+                    <label
+                      key={member.userId}
+                      className="flex items-center gap-2 text-sm"
+                      htmlFor={`candidate-member-${member.userId}`}
+                    >
+                      <Checkbox
+                        id={`candidate-member-${member.userId}`}
+                        checked={selectedMemberIds.has(member.userId)}
+                        onCheckedChange={(checked) =>
+                          setSelectedMemberIds((prev) => {
+                            const next = new Set(prev);
+                            if (checked) {
+                              next.add(member.userId);
+                            } else {
+                              next.delete(member.userId);
+                            }
+                            return next;
+                          })
+                        }
+                      />
+                      {member.nickname}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+            <Button
+              onClick={() => confirmMutation.mutate()}
+              disabled={
+                confirmMutation.isPending || (!!candidate && selectedMemberIds.size === 0)
+              }
+            >
+              このイベントを仮確定する
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {event.status === "AWAITING_MEMBER_APPROVAL" &&

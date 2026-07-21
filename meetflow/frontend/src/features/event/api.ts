@@ -34,9 +34,17 @@ export function getEvent(eventId: string) {
   return apiClient.get<EventDetail>(`/events/${eventId}`);
 }
 
-/** POST /events/{eventId}/confirm */
-export function confirmEvent(eventId: string) {
-  return apiClient.post<EventDetail>(`/events/${eventId}/confirm`);
+/**
+ * POST /events/{eventId}/confirm
+ * memberIds省略時は候補メンバー全員を参加者にする（後方互換）。
+ * Issue #79: 管理者が候補メンバーの一部だけを選んで仮確定できるように、
+ * 選択したメンバーIDリストを渡せるようにした。
+ */
+export function confirmEvent(eventId: string, memberIds?: string[]) {
+  return apiClient.post<EventDetail>(
+    `/events/${eventId}/confirm`,
+    memberIds ? { memberIds } : undefined,
+  );
 }
 
 /** POST /events/{eventId}/cancel（イベント全体の中止） */
