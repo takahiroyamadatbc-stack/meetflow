@@ -1,3 +1,4 @@
+import time
 from unittest.mock import patch
 
 import pytest
@@ -110,6 +111,28 @@ def test_event_confirmed_still_notifies_participants(table):
         notifications = _notifications_for(table, user_id)
         assert len(notifications) == 1
         assert notifications[0]["type"] == "CONFIRMED"
+
+
+def test_created_notification_has_unread_ttl(table):
+    """Issue #91: 未読のまま放置される通知が無期限に増え続けないよう、
+    作成時点で90日後の仮TTLをセットする。"""
+    before = int(time.time())
+
+    event_subscriber.handle_domain_event(
+        domain_event(
+            EVENT_CONFIRMED,
+            {
+                "eventId": "event-1",
+                "communityId": "community-1",
+                "participantIds": ["user-1"],
+                "startTime": "2026-08-01T19:00:00.000Z",
+                "endTime": "2026-08-01T23:00:00.000Z",
+            },
+        )
+    )
+
+    notification = _notifications_for(table, "user-1")[0]
+    assert notification["ttl"] == pytest.approx(before + 90 * 86400, abs=60)
 
 
 def test_event_awaiting_approval_notifies_only_awaiting_users(table):
