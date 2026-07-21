@@ -9,6 +9,7 @@ import { ConfirmSignUpPage } from "@/features/auth/ConfirmSignUpPage";
 import { HomePage } from "@/features/home/HomePage";
 import { MyPage } from "@/features/user/MyPage";
 import { ProfileEditPage } from "@/features/user/ProfileEditPage";
+import { AccountDeletePage } from "@/features/user/AccountDeletePage";
 import { CommunityListPage } from "@/features/community/CommunityListPage";
 import { CommunityCreatePage } from "@/features/community/CommunityCreatePage";
 import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
@@ -172,6 +173,11 @@ export const router = createBrowserRouter([
         path: "/mypage/profile",
         element: <ProfileEditPage />,
         handle: { title: "プロフィール編集" },
+      },
+      {
+        path: "/mypage/delete-account",
+        element: <AccountDeletePage />,
+        handle: { title: "アカウント削除" },
       },
       {
         path: "/communities/:communityId/event-templates",

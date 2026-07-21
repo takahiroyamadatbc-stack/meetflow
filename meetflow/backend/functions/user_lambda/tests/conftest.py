@@ -34,6 +34,7 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "ap-northeast-1")
 os.environ.setdefault("TABLE_NAME", "test-MeetFlowTable")
 os.environ.setdefault("AVATAR_BUCKET_NAME", "test-meetflow-avatars")
 os.environ.setdefault("AVATAR_CLOUDFRONT_DOMAIN", "avatars.test.cloudfront.net")
+os.environ.setdefault("USER_POOL_ID", "ap-northeast-1_testpool")
 
 
 @pytest.fixture

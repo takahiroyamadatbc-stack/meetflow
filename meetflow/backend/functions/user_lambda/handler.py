@@ -2,14 +2,17 @@ import os
 import uuid
 
 import boto3
+from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
     dispatch,
     error_response,
     get_table,
+    has_upcoming_reserved_participation,
     now_iso_ms,
     parse_body,
     success_response,
+    write_operation_log,
 )
 
 # 設計書には明記されていない、PROFILE_VALIDATION_ERROR
@@ -29,12 +32,14 @@ _AVATAR_UPLOAD_EXPIRES_IN_SECONDS = 300
 _ROUTES = {
     ("GET", "/users/me"): lambda user_id, event: _get_profile(user_id),
     ("PUT", "/users/me"): lambda user_id, event: _update_profile(user_id, event),
+    ("DELETE", "/users/me"): lambda user_id, event: _delete_account(user_id),
     ("POST", "/users/me/avatar/upload-url"): (
         lambda user_id, event: _create_avatar_upload_url(user_id, event)
     ),
 }
 
 _s3_client = None
+_cognito_client = None
 
 
 def _get_s3_client():
@@ -42,6 +47,13 @@ def _get_s3_client():
     if _s3_client is None:
         _s3_client = boto3.client("s3")
     return _s3_client
+
+
+def _get_cognito_client():
+    global _cognito_client
+    if _cognito_client is None:
+        _cognito_client = boto3.client("cognito-idp")
+    return _cognito_client
 
 
 def handler(event, context):
@@ -207,6 +219,72 @@ def _update_profile(user_id, event):
         return error_response("USER_NOT_FOUND", "ユーザーが見つかりません")
 
     return _get_profile(user_id)
+
+
+def _delete_account(user_id):
+    """Issue #82: アカウント削除(Cognitoユーザー自体の退会)。
+
+    コミュニティ単位の自主退会(community_lambdaのleave_community)と
+    同じ制約を、所属する全コミュニティに対して適用する:
+    (1) いずれかでOWNERを務めている場合は、先にオーナー移譲(Issue #24)
+        が必要(LAST_OWNER_CANNOT_LEAVEを流用)。
+    (2) いずれかで未来の確定イベント参加が残っている場合は、先にキャン
+        セル申請が必要(MEMBER_HAS_UPCOMING_EVENTSを流用、Issue #25/#26と
+        同じhas_upcoming_reserved_participationで判定)。
+    実際の削除処理(Cognitoユーザー削除・Membership削除・Profile削除)を
+    始める前に全コミュニティ分を検証し、途中まで削除が進んだ状態を避ける。
+
+    過去の成績(GameResult等)やOperationLog等、他メンバー・コミュニティ
+    運営に必要な履歴データは削除しない(本Issueのスコープ外、保持方針は
+    別途検討)。userIdへの参照は残るが、実データはUserプロフィール
+    (nickname/icon等)を介さず各エンティティ側に非正規化コピーされている
+    ため、表示上大きな支障はない。
+    """
+    table = get_table()
+
+    resp = table.query(
+        IndexName="GSI1",
+        KeyConditionExpression=Key("GSI1PK").eq(f"USER#{user_id}")
+        & Key("GSI1SK").begins_with("COMMUNITY#"),
+    )
+    memberships = resp.get("Items", [])
+
+    for m in memberships:
+        if m.get("role") == "OWNER":
+            return error_response(
+                "LAST_OWNER_CANNOT_LEAVE",
+                "オーナーを務めているコミュニティがあります。先にオーナーを移譲してください",
+                status_code=409,
+            )
+    for m in memberships:
+        community_id = m["GSI1SK"].split("#", 1)[1]
+        if has_upcoming_reserved_participation(table, user_id, community_id):
+            return error_response(
+                "MEMBER_HAS_UPCOMING_EVENTS",
+                "未来の確定イベント参加が残っているコミュニティがあります。"
+                "先にイベント参加のキャンセル申請をしてください",
+                status_code=409,
+            )
+
+    _get_cognito_client().admin_delete_user(
+        UserPoolId=os.environ["USER_POOL_ID"], Username=user_id
+    )
+
+    for m in memberships:
+        community_id = m["GSI1SK"].split("#", 1)[1]
+        table.delete_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{user_id}"}
+        )
+    table.delete_item(Key={"PK": f"USER#{user_id}", "SK": "PROFILE"})
+
+    write_operation_log(
+        action="DELETE_ACCOUNT",
+        user_id=user_id,
+        target_type="User",
+        target_id=user_id,
+    )
+
+    return success_response({"userId": user_id, "deleted": True})
 
 
 def _create_avatar_upload_url(user_id, event):

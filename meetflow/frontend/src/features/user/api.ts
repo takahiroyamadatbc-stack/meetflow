@@ -15,6 +15,17 @@ export function updateMyProfile(input: UpdateUserProfileInput) {
   return apiClient.put<UserProfile>("/users/me", input);
 }
 
+/**
+ * DELETE /users/me（Issue #82）
+ * アカウント削除（Cognitoユーザー自体の退会）。所属コミュニティで
+ * オーナーを務めている、または未来の確定イベント参加が残っている場合は
+ * サーバー側でブロックされる（それぞれLAST_OWNER_CANNOT_LEAVE /
+ * MEMBER_HAS_UPCOMING_EVENTSとしてエラーになる）。
+ */
+export function deleteMyAccount() {
+  return apiClient.delete<{ userId: string; deleted: true }>("/users/me");
+}
+
 /** POST /users/me/avatar/upload-url（Issue #47） */
 function presignAvatarUpload(contentType: string) {
   return apiClient.post<{ uploadUrl: string; avatarUrl: string; expiresIn: number }>(

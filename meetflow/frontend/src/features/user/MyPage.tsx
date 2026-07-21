@@ -93,6 +93,10 @@ export function MyPage() {
       <Button variant="outline" onClick={handleSignOut}>
         ログアウト
       </Button>
+
+      <Link to={paths.accountDelete} className="text-muted-foreground text-center text-xs underline">
+        アカウントを削除する
+      </Link>
     </div>
   );
 }
