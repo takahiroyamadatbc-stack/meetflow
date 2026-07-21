@@ -1,13 +1,18 @@
-import type { GameType } from "@/features/user/types";
+import { GAME_TYPE_LABELS, type GameType } from "@/features/user/types";
 
 /**
  * backend/functions/matching_lambda/handlers/event_templates.py の
  * _to_api_template() レスポンス実体。人数条件は範囲判定
  * （minPlayers〜maxPlayersの範囲内であること。厳密な一致ではない）。
+ *
+ * gameTypeは麻雀コミュニティではGameType（MAHJONG4/MAHJONG3）、それ以外の
+ * ジャンルのコミュニティではコミュニティのジャンルと同じ固定値1つのみ
+ * （Issue #92。細分類は設けない）となるため、バックエンド同様string型で
+ * 受ける。表示には`gameTypeLabel()`を使うこと。
  */
 export type EventTemplate = {
   templateId: string;
-  gameType: GameType;
+  gameType: string;
   minPlayers: number;
   maxPlayers: number;
   priority: number;
@@ -15,12 +20,18 @@ export type EventTemplate = {
 };
 
 export type EventTemplateInput = {
-  gameType: GameType;
+  gameType: string;
   minPlayers: number;
   maxPlayers: number;
   priority: number;
   conditions: { beginnerOk?: boolean };
 };
+
+/** GAME_TYPE_LABELSに無いgameType（Issue #92：麻雀以外のジャンルではコミュニティの
+ * ジャンル名がそのままgameTypeになる）は、値自体が既に表示用ラベルを兼ねる。 */
+export function gameTypeLabel(gameType: string): string {
+  return GAME_TYPE_LABELS[gameType as GameType] ?? gameType;
+}
 
 /** matching.py _to_api_candidate() が返す候補メンバー1件分 */
 export type CandidateMemberInfo = {

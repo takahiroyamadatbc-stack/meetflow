@@ -21,7 +21,7 @@ import {
   listEventTemplates,
   matchingKeys,
 } from "@/features/matching/api";
-import { GAME_TYPE_LABELS } from "@/features/user/types";
+import { gameTypeLabel } from "@/features/matching/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { paths } from "@/routes/paths";
 
@@ -86,7 +86,7 @@ export function EventTemplateListPage() {
         <Card key={template.templateId}>
           <CardContent className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{GAME_TYPE_LABELS[template.gameType]}</span>
+              <span className="text-sm font-medium">{gameTypeLabel(template.gameType)}</span>
               <Badge variant="outline">優先度 {template.priority}</Badge>
             </div>
             <p className="text-muted-foreground text-sm">

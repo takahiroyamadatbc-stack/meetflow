@@ -9,6 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Form,
   FormControl,
   FormDescription,
@@ -19,6 +26,7 @@ import {
 } from "@/components/ui/form";
 import { communityKeys, createCommunity } from "@/features/community/api";
 import { ThemeColorPicker } from "@/features/community/components/ThemeColorPicker";
+import { COMMUNITY_GENRES } from "@/features/community/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { getErrorDisplay, ApiError } from "@/api/errors";
 import { paths } from "@/routes/paths";
@@ -26,7 +34,7 @@ import { paths } from "@/routes/paths";
 const createCommunitySchema = z.object({
   name: z.string().min(1, "コミュニティ名を入力してください").max(50, "50文字以内で入力してください"),
   description: z.string().max(300, "300文字以内で入力してください"),
-  genre: z.string().max(30, "30文字以内で入力してください"),
+  genre: z.enum(COMMUNITY_GENRES, { message: "ジャンルを選択してください" }),
   memberApprovalRequired: z.boolean(),
   themeColor: z.string().nullable(),
 });
@@ -44,7 +52,7 @@ export function CommunityCreatePage() {
     defaultValues: {
       name: "",
       description: "",
-      genre: "",
+      genre: COMMUNITY_GENRES[0],
       memberApprovalRequired: false,
       themeColor: null,
     },
@@ -94,9 +102,20 @@ export function CommunityCreatePage() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>ジャンル</FormLabel>
-                <FormControl>
-                  <Input placeholder="例：麻雀" {...field} />
-                </FormControl>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {COMMUNITY_GENRES.map((genre) => (
+                      <SelectItem key={genre} value={genre}>
+                        {genre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}

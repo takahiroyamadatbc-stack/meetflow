@@ -74,6 +74,9 @@ export function CommunityDetailPage() {
   }
 
   const isAdmin = community.role === "OWNER" || community.role === "ADMIN";
+  // Issue #92: 成績・ランキング機能は麻雀専用ロジック（ウマ・オカ・トビ精算等）
+  // に依存しているため、麻雀以外のジャンルでは導線自体を非表示にする。
+  const isMahjongCommunity = community.genre === "麻雀";
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -101,7 +104,9 @@ export function CommunityDetailPage() {
 
       <NavCard to={paths.communityInvite(community.communityId)} label="メンバーを招待する" />
       <NavCard to={paths.eventList(community.communityId)} label="イベント一覧" />
-      <NavCard to={paths.communityRanking(community.communityId)} label="ランキングを見る" />
+      {isMahjongCommunity && (
+        <NavCard to={paths.communityRanking(community.communityId)} label="ランキングを見る" />
+      )}
 
       <Accordion className="flex flex-col gap-2">
         {isAdmin && (
@@ -122,10 +127,12 @@ export function CommunityDetailPage() {
                   to={paths.communityProfileEdit(community.communityId)}
                   label="コミュニティプロフィールを編集"
                 />
-                <NavCard
-                  to={paths.communityRankingSettingsEdit(community.communityId)}
-                  label="ランキング設定を変更"
-                />
+                {isMahjongCommunity && (
+                  <NavCard
+                    to={paths.communityRankingSettingsEdit(community.communityId)}
+                    label="ランキング設定を変更"
+                  />
+                )}
               </div>
             </AccordionContent>
           </AccordionItem>

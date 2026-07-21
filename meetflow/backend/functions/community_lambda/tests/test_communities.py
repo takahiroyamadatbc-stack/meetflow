@@ -44,6 +44,30 @@ def test_create_community_invalid_name(table, name):
     assert error["code"] == "INVALID_PARAMETER"
 
 
+@pytest.mark.parametrize("genre", ["ポーカー", "ボードゲーム", "TRPG", "スポーツ", "その他"])
+def test_create_community_allows_all_fixed_genres(table, genre):
+    """Issue #92: ジャンルは固定選択肢6種のいずれも作成時に指定できる。"""
+    response = communities.create_community(
+        "user-1", api_event(body={"name": "テスト会", "genre": genre})
+    )
+
+    assert response["statusCode"] == 201
+    assert body_of(response)["data"]["genre"] == genre
+
+
+@pytest.mark.parametrize("genre", [None, "", "その他のジャンル", "麻雀サークル"])
+def test_create_community_rejects_non_fixed_genre(table, genre):
+    """Issue #92: 固定選択肢6種以外の自由入力は拒否する。"""
+    body = {"name": "テスト会"}
+    if genre is not None:
+        body["genre"] = genre
+
+    response = communities.create_community("user-1", api_event(body=body))
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
 def test_get_community_success(table):
     put_community(
         table, "community-1", owner_id="user-1", name="コミュニティA", member_approval_required=True
@@ -190,6 +214,20 @@ def test_update_community_success(table):
     assert body_of(response)["data"]["name"] == "改名後"
 
 
+def test_update_community_rejects_non_fixed_genre(table):
+    """Issue #92: 更新時も固定選択肢6種以外のgenreは拒否する。"""
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_community(
+        "user-1",
+        api_event(path_params={"communityId": "community-1"}, body={"genre": "その他のジャンル"}),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
 def test_update_community_invalid_name(table):
     put_community(table, "community-1", owner_id="user-1")
     put_membership(table, "community-1", "user-1", role="OWNER")
@@ -271,7 +309,7 @@ def test_transfer_owner_to_self_is_invalid(table):
 
 
 def test_create_community_with_theme_color(table):
-    event = api_event(body={"name": "火曜麻雀会", "themeColor": "#6366F1"})
+    event = api_event(body={"name": "火曜麻雀会", "genre": "麻雀", "themeColor": "#6366F1"})
 
     response = communities.create_community("user-1", event)
 

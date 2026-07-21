@@ -12,7 +12,7 @@ import {
   listEventTemplates,
   matchingKeys,
 } from "@/features/matching/api";
-import { GAME_TYPE_LABELS } from "@/features/user/types";
+import { gameTypeLabel } from "@/features/matching/types";
 import { QuickFeedbackPrompt } from "@/features/feedback/QuickFeedbackPrompt";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 
@@ -74,7 +74,7 @@ export function MatchingCandidateListPage() {
               size="sm"
               onClick={() => setSelectedTemplateId(template.templateId)}
             >
-              {GAME_TYPE_LABELS[template.gameType]}（優先度{template.priority}）
+              {gameTypeLabel(template.gameType)}（優先度{template.priority}）
             </Button>
           ))}
         </div>
