@@ -48,12 +48,11 @@ def generate_candidates(user_id, event):
             "EVENT_TEMPLATE_NOT_FOUND", "指定した開催条件が見つかりません"
         )
 
-    # 再生成時、同一テンプレートの既存PENDING候補を積み残さないよう
-    # DISCARDEDへ一括更新してから新規候補を生成する（Issue #27）。
-    _discard_stale_pending_candidates(table, community_id, template_id)
-
     # NO_CANDIDATES_FOUND（エラーコード一覧v1.1 §5）はエラーではなく正常な
     # 200の空結果である -- ここでは空の`candidates`リストで対応する。
+    # 再生成時に内容が完全一致する既存候補があれば新規レコードは作らず
+    # 再利用する（Issue #84）。それ以外の既存PENDINGはDISCARDEDにする
+    # （Issue #27）。いずれも_run_matching内部で行う。
     candidate_items = _run_matching(table, community_id, template_id, template)
     candidates = [_to_api_candidate(table, community_id, item) for item in candidate_items]
     return success_response({"candidates": candidates}, status_code=201)
@@ -205,35 +204,68 @@ def get_candidate_detail(user_id, event):
     return success_response(_to_api_candidate(table, community_id, items[0]))
 
 
-def _discard_stale_pending_candidates(table, community_id, template_id):
-    """候補再生成時に、同一templateIdの既存PENDING候補（と紐づく
-    CandidateMember）をDISCARDEDにする（Issue #27）。CONFIRMED（イベント
-    化済み）の候補には触れない。粒度はコミュニティ全体ではなくtemplateId
-    単位とし、他テンプレートの候補生成が無関係な候補を巻き込まないように
-    する。
+def _existing_candidates_for_template(table, community_id, template_id):
+    """同一community内の既存CANDIDATE系アイテムを1回のQueryでまとめて取得し、
+    (1) 完全一致判定用の署名(startTime, endTime, memberIds)→アイテムの
+    マップ（CONFIRMED＝イベント化済みは対象外）と、(2) 今回の生成結果で
+    再利用されなければDISCARDEDにすべき既存PENDING候補一覧、の2つを
+    組み立てる（Issue #84）。
+
+    MatchCandidate自体にはstartTime/endTimeが無く、ミラーされている
+    CandidateMember側にしか無いため、同じQuery結果からCandidateMember
+    行も拾ってcandidateId→(startTime, endTime)の対応表を作る。
+    """
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
+        & Key("SK").begins_with("CANDIDATE#")
+    )
+    all_items = resp.get("Items", [])
+
+    time_by_candidate_id = {}
+    for item in all_items:
+        if "#MEMBER#" not in item["SK"]:
+            continue
+        candidate_id = item.get("candidateId")
+        if candidate_id and candidate_id not in time_by_candidate_id:
+            time_by_candidate_id[candidate_id] = (item.get("startTime"), item.get("endTime"))
+
+    reusable_by_signature = {}
+    stale_pending = []
+    for item in all_items:
+        if "#MEMBER#" in item["SK"] or item.get("templateId") != template_id:
+            continue
+        status = item.get("status")
+        if status == "PENDING":
+            stale_pending.append(item)
+        if status == "CONFIRMED":
+            continue
+        candidate_id = item["GSI2PK"].split("#", 1)[1]
+        start_time, end_time = time_by_candidate_id.get(candidate_id, (None, None))
+        if not start_time or not end_time:
+            continue
+        signature = (start_time, end_time, tuple(sorted(item.get("members", []))))
+        reusable_by_signature[signature] = item
+
+    return reusable_by_signature, stale_pending
+
+
+def _discard_unmatched_candidates(table, community_id, stale_pending, matched_candidate_ids):
+    """今回の生成で再利用されなかった既存PENDING候補のみをDISCARDEDにする
+    （Issue #84）。以前は同一templateIdのPENDING候補を問答無用に全部
+    DISCARDEDしていたが、内容が完全一致する候補は_revive_candidateで
+    使い回すため、ここで対象になるのは本当に不要になったものだけ。
+    CONFIRMED（イベント化済み）の候補には触れない。
 
     管理者による単発の手動実行が前提でMVP規模では競合リスクが低いため、
     ConditionExpressionは付けない（他の単純なupdate_itemと同様の簡潔さを
     優先）。TransactWriteItemsの100件上限は100件単位のチャンクに分けて
     吸収する。
     """
-    resp = table.query(
-        KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
-        & Key("SK").begins_with("CANDIDATE#")
-    )
-    stale = [
-        item
-        for item in resp.get("Items", [])
-        if "#MEMBER#" not in item["SK"]
-        and item.get("templateId") == template_id
-        and item.get("status") == "PENDING"
-    ]
-    if not stale:
-        return
-
     operations = []
-    for item in stale:
+    for item in stale_pending:
         candidate_id = item["GSI2PK"].split("#", 1)[1]
+        if candidate_id in matched_candidate_ids:
+            continue
         operations.append(_discard_update(item["PK"], item["SK"]))
         for uid in item.get("members", []):
             operations.append(
@@ -258,6 +290,77 @@ def _discard_update(pk, sk):
     }
 
 
+def _revive_candidate(
+    table,
+    community_id,
+    existing_item,
+    template_id,
+    template,
+    start_time,
+    end_time,
+    member_ids,
+    community_genre,
+):
+    """既存候補と内容（開始/終了時刻・メンバー構成）が完全一致する場合に、
+    新規レコードを作らずこの既存候補を再利用する（Issue #84）。
+    MatchCandidateのSKはcreatedAtを含む（DynamoDB物理設計書 §3.8）ため、
+    createdAtを今回の再生成時刻に更新するには旧SKの削除＋新SKでのPutが
+    必要になる -- candidateId自体は使い回すため、CandidateMember側の
+    紐付け（SK=CANDIDATE#{candidateId}#MEMBER#{userId}）は変わらない。
+    """
+    candidate_id = existing_item["GSI2PK"].split("#", 1)[1]
+    profiles = [
+        table.get_item(Key={"PK": f"USER#{uid}", "SK": "PROFILE"}).get("Item") or {}
+        for uid in member_ids
+    ]
+    days_since_last_played = [
+        _days_since_last_participation(table, uid) for uid in member_ids
+    ]
+    frequency_status = [
+        _frequency_limit_status(table, community_id, uid, community_genre, start_time)
+        for uid in member_ids
+    ]
+    score, reasons = calculate_score(
+        template=template,
+        members_profiles=profiles,
+        members_days_since_last_played=days_since_last_played,
+        members_frequency_status=frequency_status,
+    )
+
+    created_at = now_iso_ms()
+    candidate_item = {
+        "PK": f"COMMUNITY#{community_id}",
+        "SK": f"CANDIDATE#{created_at}#{candidate_id}",
+        "GSI2PK": f"CANDIDATE#{candidate_id}",
+        "GSI2SK": "METADATA",
+        "templateId": template_id,
+        "score": score,
+        "members": set(member_ids),
+        "reasons": set(reasons),
+        "status": "PENDING",
+        "createdAt": created_at,
+    }
+    transact_write(
+        [
+            {"Delete": {"Key": {"PK": existing_item["PK"], "SK": existing_item["SK"]}}},
+            {"Put": {"Item": candidate_item}},
+        ]
+    )
+
+    for uid in member_ids:
+        table.update_item(
+            Key={
+                "PK": f"COMMUNITY#{community_id}",
+                "SK": f"CANDIDATE#{candidate_id}#MEMBER#{uid}",
+            },
+            UpdateExpression="SET #status = :pending, createdAt = :created",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":pending": "PENDING", ":created": created_at},
+        )
+
+    return candidate_item
+
+
 def _run_matching(table, community_id, template_id, template):
     """F-401の処理フロー（Lambda設計書v1.1 §6.3）: 空き予定の取得 ->
     条件マッチング（F-402） -> スコアリング（F-403） -> MatchCandidate +
@@ -268,6 +371,12 @@ def _run_matching(table, community_id, template_id, template):
     Bは12:00〜14:00なら12:00〜13:00が共通区間）。そのため(startTime, endTime)
     の完全一致ではなく、_overlapping_member_windowsで全員の区間の交差
     （重複区間）を求める。
+
+    [Issue #84] 同一テンプレートへの再生成で、内容（開始/終了時刻・
+    メンバー構成）が既存候補と完全一致する場合は新規レコードを作らず
+    _revive_candidateで再利用する。今回の結果に対応が見つからなかった
+    既存PENDING候補だけを最後に_discard_unmatched_candidatesでDISCARDED
+    にする。
     """
     from_time = now_iso_ms()
     to_time = add_days_iso(from_time, _MATCHING_WINDOW_DAYS)
@@ -302,6 +411,11 @@ def _run_matching(table, community_id, template_id, template):
         (template.get("conditions") or {}).get("requiredMembers", []) or []
     )
 
+    reusable_by_signature, stale_pending = _existing_candidates_for_template(
+        table, community_id, template_id
+    )
+
+    matched_candidate_ids = set()
     created_candidates = []
     for start_time, end_time, member_ids in _overlapping_member_windows(filtered_items):
         if required_members and not required_members.issubset(member_ids):
@@ -316,17 +430,35 @@ def _run_matching(table, community_id, template_id, template):
             optional = [m for m in member_ids if m not in required_members]
             member_ids = sorted(required + optional[: max_players - len(required)])
 
-        candidate_item = _create_candidate(
-            table,
-            community_id,
-            template_id,
-            template,
-            start_time,
-            end_time,
-            member_ids,
-            community_genre,
-        )
+        signature = (start_time, end_time, tuple(member_ids))
+        existing = reusable_by_signature.get(signature)
+        if existing is not None:
+            candidate_item = _revive_candidate(
+                table,
+                community_id,
+                existing,
+                template_id,
+                template,
+                start_time,
+                end_time,
+                member_ids,
+                community_genre,
+            )
+            matched_candidate_ids.add(existing["GSI2PK"].split("#", 1)[1])
+        else:
+            candidate_item = _create_candidate(
+                table,
+                community_id,
+                template_id,
+                template,
+                start_time,
+                end_time,
+                member_ids,
+                community_genre,
+            )
         created_candidates.append(candidate_item)
+
+    _discard_unmatched_candidates(table, community_id, stale_pending, matched_candidate_ids)
 
     return created_candidates
 

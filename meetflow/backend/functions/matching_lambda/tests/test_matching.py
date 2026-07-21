@@ -342,7 +342,10 @@ def _get_candidate_item(table, candidate_id):
     return resp["Items"][0]
 
 
-def test_generate_candidates_discards_stale_pending_on_regeneration(table):
+def test_generate_candidates_reuses_identical_candidate_on_regeneration(table):
+    """Issue #84: 内容(開始/終了時刻・メンバー構成)が完全一致する再生成では、
+    新規レコードを作らず既存候補をPENDINGへ復活させ、candidateIdを使い回す。
+    """
     put_membership(table, "community-1", "user-1", role="OWNER")
     put_template(table, "community-1", "template-1", min_players=4, max_players=4)
     _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
@@ -355,6 +358,62 @@ def test_generate_candidates_discards_stale_pending_on_regeneration(table):
     )
     first_candidate = body_of(first_response)["data"]["candidates"][0]
     first_candidate_id = first_candidate["candidateId"]
+    first_created_at = first_candidate["createdAt"]
+
+    second_response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+    second_candidates = body_of(second_response)["data"]["candidates"]
+    assert len(second_candidates) == 1
+    assert second_candidates[0]["candidateId"] == first_candidate_id
+    # 復活時にcreatedAtを今回の再生成時刻へ更新する（Issue #84のQ&Aで確認済み）。
+    assert second_candidates[0]["createdAt"] > first_created_at
+
+    revived_item = _get_candidate_item(table, first_candidate_id)
+    assert revived_item["status"] == "PENDING"
+
+    for user_id in [m["userId"] for m in first_candidate["members"]]:
+        member_item = table.get_item(
+            Key={
+                "PK": "COMMUNITY#community-1",
+                "SK": f"CANDIDATE#{first_candidate_id}#MEMBER#{user_id}",
+            }
+        )["Item"]
+        assert member_item["status"] == "PENDING"
+
+
+def test_generate_candidates_discards_stale_pending_when_content_changes(table):
+    """Issue #27: 完全一致しない（内容が変わった）場合は、従来通り既存
+    PENDING候補をDISCARDEDにする。Issue #84の再利用ロジック導入後も、
+    元の重複防止機能自体は維持されていることを確認する。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3", "user-4"])
+
+    first_response = matching.generate_candidates(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, body={"templateId": "template-1"}
+        ),
+    )
+    first_candidate_id = body_of(first_response)["data"]["candidates"][0]["candidateId"]
+
+    # 空き予定の終了時刻を延長し、次の生成結果が完全一致しなくなるようにする。
+    extended_end = _add_hours_iso(_END, 1)
+    for uid in ["user-1", "user-2", "user-3", "user-4"]:
+        put_availability(
+            table,
+            "community-1",
+            uid,
+            start_time=_START,
+            end_time=extended_end,
+            game_types=["MAHJONG4"],
+            availability_id=f"avail-{uid}",
+        )
 
     second_response = matching.generate_candidates(
         "user-1",
@@ -365,11 +424,12 @@ def test_generate_candidates_discards_stale_pending_on_regeneration(table):
     second_candidates = body_of(second_response)["data"]["candidates"]
     assert len(second_candidates) == 1
     assert second_candidates[0]["candidateId"] != first_candidate_id
+    assert second_candidates[0]["endTime"] == extended_end
 
     stale_item = _get_candidate_item(table, first_candidate_id)
     assert stale_item["status"] == "DISCARDED"
 
-    for user_id in [m["userId"] for m in first_candidate["members"]]:
+    for user_id in ["user-1", "user-2", "user-3", "user-4"]:
         member_item = table.get_item(
             Key={
                 "PK": "COMMUNITY#community-1",
