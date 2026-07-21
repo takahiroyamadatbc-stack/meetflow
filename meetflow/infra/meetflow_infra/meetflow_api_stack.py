@@ -86,6 +86,8 @@ _ROUTES: list[tuple[str, str, str]] = [
     ),
     ("GET", "/communities/{communityId}/locations", "community"),
     ("POST", "/communities/{communityId}/locations", "community"),
+    ("PUT", "/communities/{communityId}/locations/{placeId}", "community"),
+    ("DELETE", "/communities/{communityId}/locations/{placeId}", "community"),
     ("GET", "/communities/{communityId}/logs", "community"),
     ("GET", "/users/{userId}/logs", "community"),
     # AvailabilityLambda
