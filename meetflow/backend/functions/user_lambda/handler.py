@@ -32,6 +32,7 @@ _ROUTES = {
     ("POST", "/users/me/avatar/upload-url"): (
         lambda user_id, event: _create_avatar_upload_url(user_id, event)
     ),
+    ("DELETE", "/users/me/avatar"): lambda user_id, event: _delete_avatar(user_id),
 }
 
 _s3_client = None
@@ -246,6 +247,40 @@ def _create_avatar_upload_url(user_id, event):
             "expiresIn": _AVATAR_UPLOAD_EXPIRES_IN_SECONDS,
         }
     )
+
+
+def _delete_avatar(user_id):
+    """Issue #76: プロフィール画像の削除。DB上のicon参照をクリアするのに
+    加えて、S3上のアップロード済みファイルも削除する。iconが既に空の
+    場合は何もせず現在のプロフィールを返す(冪等)。
+    """
+    table = get_table()
+    item = table.get_item(Key={"PK": f"USER#{user_id}", "SK": "PROFILE"}).get("Item")
+    if item is None:
+        return error_response("USER_NOT_FOUND", "ユーザーが見つかりません")
+
+    icon = item.get("icon", "")
+    if not icon:
+        return success_response(_to_api_profile(item))
+
+    # 自分がアップロードしたアバターバケット配下のファイルであることを
+    # URLのプレフィックスで確認してから削除する(不正な外部URLが
+    # iconに紛れ込んでいた場合に誤って任意のキーを消さないため)。
+    avatar_prefix = f"https://{os.environ['AVATAR_CLOUDFRONT_DOMAIN']}/"
+    if icon.startswith(avatar_prefix):
+        avatar_key = icon[len(avatar_prefix):]
+        _get_s3_client().delete_object(
+            Bucket=os.environ["AVATAR_BUCKET_NAME"], Key=avatar_key
+        )
+
+    table.update_item(
+        Key={"PK": f"USER#{user_id}", "SK": "PROFILE"},
+        UpdateExpression="SET #icon = :icon",
+        ExpressionAttributeNames={"#icon": "icon"},
+        ExpressionAttributeValues={":icon": ""},
+    )
+
+    return _get_profile(user_id)
 
 
 def _to_api_profile(item):

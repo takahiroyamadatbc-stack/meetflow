@@ -227,7 +227,10 @@ class MeetFlowComputeStack(Stack):
         # Issue #47: アバター署名付きPUT URL発行用。閲覧はCloudFrontが
         # バケットから直接読むため、FeedbackAttachmentsBucketと異なりLambda
         # 自身に読み取り権限は不要(grant_putのみ)。
+        # Issue #76: プロフィール画像削除時にS3オブジェクト自体も削除するため
+        # grant_deleteも付与する。
         avatar_bucket.grant_put(fn)
+        avatar_bucket.grant_delete(fn)
 
         CfnOutput(
             self,

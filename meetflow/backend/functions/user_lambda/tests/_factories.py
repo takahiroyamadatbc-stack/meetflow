@@ -28,14 +28,14 @@ def cognito_post_confirmation_event(
     }
 
 
-def put_profile(table, user_id, *, nickname="ぷれいやー"):
+def put_profile(table, user_id, *, nickname="ぷれいやー", icon=""):
     table.put_item(
         Item={
             "PK": f"USER#{user_id}",
             "SK": "PROFILE",
             "userId": user_id,
             "nickname": nickname,
-            "icon": "",
+            "icon": icon,
             "bio": "",
             "beginnerOk": False,
             "createdAt": now_iso_ms(),

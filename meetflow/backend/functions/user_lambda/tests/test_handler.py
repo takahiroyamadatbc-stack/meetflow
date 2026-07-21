@@ -1,3 +1,7 @@
+import os
+
+import boto3
+
 import handler
 
 from _factories import api_event, body_of, cognito_post_confirmation_event, put_profile
@@ -226,6 +230,59 @@ def test_create_avatar_upload_url_rejects_unsupported_content_type(table):
 
     assert response["statusCode"] == 400
     assert body_of(response)["error"]["code"] == "PROFILE_VALIDATION_ERROR"
+
+
+def _create_avatar_bucket_with_object(avatar_key):
+    s3 = boto3.client("s3", region_name=os.environ["AWS_DEFAULT_REGION"])
+    s3.create_bucket(
+        Bucket=os.environ["AVATAR_BUCKET_NAME"],
+        CreateBucketConfiguration={
+            "LocationConstraint": os.environ["AWS_DEFAULT_REGION"]
+        },
+    )
+    s3.put_object(Bucket=os.environ["AVATAR_BUCKET_NAME"], Key=avatar_key, Body=b"dummy")
+    return s3
+
+
+def test_delete_avatar_clears_icon_and_deletes_s3_object(table):
+    avatar_key = "avatars/user-1/original.webp"
+    icon_url = f"https://{os.environ['AVATAR_CLOUDFRONT_DOMAIN']}/{avatar_key}"
+    put_profile(table, "user-1", icon=icon_url)
+    s3 = _create_avatar_bucket_with_object(avatar_key)
+
+    response = handler._delete_avatar("user-1")
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["icon"] == ""
+    remaining = s3.list_objects_v2(Bucket=os.environ["AVATAR_BUCKET_NAME"])
+    assert remaining.get("KeyCount", 0) == 0
+
+
+def test_delete_avatar_is_noop_when_icon_already_empty(table):
+    put_profile(table, "user-1", icon="")
+
+    response = handler._delete_avatar("user-1")
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["icon"] == ""
+
+
+def test_delete_avatar_ignores_urls_outside_avatar_bucket(table):
+    # 万一不正な外部URLがiconに入っていた場合でも、S3削除は試みず
+    # DB上の参照クリアのみ行う。
+    put_profile(table, "user-1", icon="https://example.com/not-an-avatar.png")
+
+    response = handler._delete_avatar("user-1")
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["icon"] == ""
+
+
+def test_delete_avatar_not_found(table):
+    response = handler._delete_avatar("unknown-user")
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "USER_NOT_FOUND"
 
 
 def test_post_confirmation_creates_profile_with_nickname_from_client_metadata(table):

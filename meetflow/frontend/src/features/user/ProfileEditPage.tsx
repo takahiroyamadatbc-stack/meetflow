@@ -5,6 +5,7 @@ import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +28,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { getMyProfile, updateMyProfile, userKeys } from "@/features/user/api";
+import { deleteMyAvatar, getMyProfile, updateMyProfile, userKeys } from "@/features/user/api";
 import { resizeAndUploadAvatar } from "@/features/user/avatarUpload";
 import { GAME_TYPE_LABELS, type GameType, type UserProfile } from "@/features/user/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
@@ -94,6 +95,18 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
     }
   }
 
+  // Issue #76: 削除は保存ボタンを待たずに即時確定する（DBの参照クリアと
+  // S3ファイル削除をバックエンドでアトミックに行うAPIを叩く）。
+  const deleteIconMutation = useMutation({
+    mutationFn: deleteMyAvatar,
+    onSuccess: (updated) => {
+      queryClient.setQueryData(userKeys.me, updated);
+      setIconUrl(updated.icon);
+      toast.success("プロフィール画像を削除しました");
+    },
+    onError: handleApiError,
+  });
+
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -157,15 +170,29 @@ function ProfileEditForm({ profile }: { profile: UserProfile }) {
               onChange={(e) => handleIconSelected(e.target.files)}
               className="hidden"
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isUploadingIcon}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              画像を選択
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isUploadingIcon}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                画像を選択
+              </Button>
+              {iconUrl && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isUploadingIcon || deleteIconMutation.isPending}
+                  onClick={() => deleteIconMutation.mutate()}
+                  aria-label="プロフィール画像を削除"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
+            </div>
             {isUploadingIcon && (
               <p className="text-muted-foreground text-xs">アップロード中...</p>
             )}
