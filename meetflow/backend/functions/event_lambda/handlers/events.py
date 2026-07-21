@@ -28,6 +28,8 @@ from ._shared import (
     write_status_history,
 )
 
+_MAX_MEMO_LENGTH = 300  # 設計書には明記されていない、MVP向け保守的な上限値
+
 
 def create_event(user_id, event):
     """F-501 (API設計書v1.4 §8.1)。
@@ -177,6 +179,48 @@ def get_event(user_id, event):
     community_id = item["GSI1PK"].split("#", 1)[1]
     require_membership(table, community_id, user_id)
     return success_response(to_api_event(table, item))
+
+
+def update_event(user_id, event):
+    """PUT /events/{eventId}（Issue #87）。参加者向けのひとことメモ（memo、
+    例：持ち物・集合時間の補足・注意事項）を更新する。会場に関する情報
+    （locationNote）とは別物。confirm_eventの`memberIds`のようなライフ
+    サイクル操作とは異なり、イベントのステータスを問わずOWNER/ADMINが
+    いつでも編集できる。"""
+    event_id = event["pathParameters"]["eventId"]
+    table = get_table()
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+        "Item"
+    )
+    if event_item is None:
+        return error_response("EVENT_NOT_FOUND", "指定したイベントが見つかりません")
+
+    community_id = event_item["GSI1PK"].split("#", 1)[1]
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    body = parse_body(event)
+    if "memo" not in body:
+        return error_response("INVALID_PARAMETER", "更新する項目がありません")
+    memo = body["memo"]
+    if not isinstance(memo, str) or len(memo) > _MAX_MEMO_LENGTH:
+        return error_response(
+            "INVALID_PARAMETER", f"メモは{_MAX_MEMO_LENGTH}文字以内で入力してください"
+        )
+
+    resp = table.update_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"},
+        UpdateExpression="SET memo = :memo",
+        ExpressionAttributeValues={":memo": memo},
+        ReturnValues="ALL_NEW",
+    )
+    write_operation_log(
+        action="UPDATE_EVENT",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Event",
+        target_id=event_id,
+    )
+    return success_response(to_api_event(table, resp["Attributes"]))
 
 
 def confirm_event(user_id, event):

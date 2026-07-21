@@ -122,6 +122,114 @@ def test_get_event_not_found(table):
     assert body_of(response)["error"]["code"] == "EVENT_NOT_FOUND"
 
 
+def test_update_event_memo_success(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_place(table, "community-1", "place-1")
+    put_candidate(table, "community-1", "candidate-1", ["user-1", "user-2"])
+    create_response = events.create_event(
+        "user-1",
+        api_event(body={"candidateId": "candidate-1", "locationId": "place-1"}),
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+
+    response = events.update_event(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"memo": "現地集合でお願いします"}),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["memo"] == "現地集合でお願いします"
+
+    fetched = events.get_event("user-1", api_event(path_params={"eventId": event_id}))
+    assert body_of(fetched)["data"]["memo"] == "現地集合でお願いします"
+
+
+def test_update_event_not_found(table):
+    response = events.update_event(
+        "user-1",
+        api_event(path_params={"eventId": "does-not-exist"}, body={"memo": "x"}),
+    )
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "EVENT_NOT_FOUND"
+
+
+def test_update_event_forbidden_for_plain_member(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_place(table, "community-1", "place-1")
+    put_candidate(table, "community-1", "candidate-1", ["user-1", "user-2"])
+    create_response = events.create_event(
+        "user-1",
+        api_event(body={"candidateId": "candidate-1", "locationId": "place-1"}),
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+
+    with pytest.raises(AuthError):
+        events.update_event(
+            "user-2",
+            api_event(path_params={"eventId": event_id}, body={"memo": "x"}),
+        )
+
+
+def test_update_event_memo_too_long(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_place(table, "community-1", "place-1")
+    put_candidate(table, "community-1", "candidate-1", ["user-1", "user-2"])
+    create_response = events.create_event(
+        "user-1",
+        api_event(body={"candidateId": "candidate-1", "locationId": "place-1"}),
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+
+    response = events.update_event(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"memo": "a" * 301}),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_event_no_fields(table):
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_place(table, "community-1", "place-1")
+    put_candidate(table, "community-1", "candidate-1", ["user-1", "user-2"])
+    create_response = events.create_event(
+        "user-1",
+        api_event(body={"candidateId": "candidate-1", "locationId": "place-1"}),
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+
+    response = events.update_event(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={}),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_event_allowed_regardless_of_status(table):
+    """Issue #87: 確定後（COMPLETED等）もOWNER/ADMINならいつでもメモを編集できる。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_place(table, "community-1", "place-1")
+    put_candidate(table, "community-1", "candidate-1", ["user-1", "user-2"])
+    create_response = events.create_event(
+        "user-1",
+        api_event(body={"candidateId": "candidate-1", "locationId": "place-1"}),
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+    put_event_status(table, event_id, "COMPLETED")
+
+    response = events.update_event(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"memo": "ありがとうございました"}),
+    )
+
+    assert response["statusCode"] == 200
+
+
 def _create_pending_event(table, community_id="community-1", member_ids=None, template_id="template-1"):
     member_ids = member_ids or ["user-1", "user-2", "user-3", "user-4"]
     put_membership(table, community_id, "user-1", role="OWNER")

@@ -33,6 +33,7 @@ export type EventDetail = {
   endTime: string;
   location: { placeId: string; name: string; address: string; note: string } | null;
   locationNote: string;
+  memo: string;
   createdAt: string;
 };
 

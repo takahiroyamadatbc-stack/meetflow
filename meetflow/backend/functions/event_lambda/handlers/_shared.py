@@ -32,6 +32,7 @@ def to_api_event(table, item):
         "endTime": item.get("endTime"),
         "location": location,
         "locationNote": item.get("locationNote", ""),
+        "memo": item.get("memo", ""),
         "createdAt": item.get("createdAt"),
     }
 

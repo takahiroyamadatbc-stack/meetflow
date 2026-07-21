@@ -39,6 +39,7 @@ import {
   listParticipants,
   rejectParticipation,
   removeParticipant,
+  updateEventMemo,
 } from "@/features/event/api";
 import { EVENT_STATUS_LABELS, PARTICIPANT_STATUS_LABELS } from "@/features/event/types";
 import { getCandidateDetail, matchingKeys } from "@/features/matching/api";
@@ -61,6 +62,8 @@ export function EventDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [newMemberId, setNewMemberId] = useState("");
   const [removeTargetUserId, setRemoveTargetUserId] = useState<string | null>(null);
+  const [isEditingMemo, setIsEditingMemo] = useState(false);
+  const [memoDraft, setMemoDraft] = useState("");
 
   const { data: event, isLoading } = useQuery({
     queryKey: eventKeys.detail(eventId!),
@@ -211,6 +214,16 @@ export function EventDetailPage() {
     onSettled: () => setRemoveTargetUserId(null),
   });
 
+  const updateMemoMutation = useMutation({
+    mutationFn: (memo: string) => updateEventMemo(eventId!, memo),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(eventKeys.detail(eventId!), updated);
+      setIsEditingMemo(false);
+      toast.success("メモを更新しました");
+    },
+    onError: handleApiError,
+  });
+
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4 p-4">
@@ -246,6 +259,61 @@ export function EventDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {(event.memo || isAdmin) && (
+        <Card>
+          <CardContent className="flex flex-col gap-2">
+            <p className="text-sm font-medium">ひとことメモ</p>
+            {isEditingMemo ? (
+              <div className="flex flex-col gap-2">
+                <Textarea
+                  placeholder="例：持ち物、集合時間の補足、注意事項など"
+                  value={memoDraft}
+                  onChange={(e) => setMemoDraft(e.target.value)}
+                  maxLength={300}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={updateMemoMutation.isPending}
+                    onClick={() => updateMemoMutation.mutate(memoDraft)}
+                  >
+                    保存する
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setIsEditingMemo(false)}>
+                    キャンセル
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {event.memo ? (
+                  <p className="text-muted-foreground text-sm whitespace-pre-wrap">
+                    {event.memo}
+                  </p>
+                ) : (
+                  isAdmin && (
+                    <p className="text-muted-foreground text-sm">まだメモはありません</p>
+                  )
+                )}
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => {
+                      setMemoDraft(event.memo);
+                      setIsEditingMemo(true);
+                    }}
+                  >
+                    編集する
+                  </Button>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="flex flex-col gap-2">
