@@ -1273,12 +1273,12 @@ function SessionEditForm({
       )}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-6">
-          <FormItem>
-            <FormLabel>ゲーム種別</FormLabel>
+          <div className="grid gap-2">
+            <p className="text-sm font-medium">ゲーム種別</p>
             <p className="text-sm">
               {GAME_TYPE_LABELS[existingSession.gameType]}（編集できません。人数や顔ぶれが変わる場合は新しい対局として登録してください）
             </p>
-          </FormItem>
+          </div>
 
           <FormField
             control={form.control}
