@@ -1,6 +1,12 @@
+import time
+
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import error_response, get_table, success_response
+
+# Issue #91: 既読になった通知は、未読時の仮TTL（event_subscriber.pyの
+# _UNREAD_TTL_DAYS=90日後）よりも短い期限に上書きする。
+_READ_TTL_HOURS = 24
 
 
 def list_notifications(user_id, event):
@@ -38,9 +44,12 @@ def mark_read(user_id, event):
 
     table.update_item(
         Key={"PK": target["PK"], "SK": target["SK"]},
-        UpdateExpression="SET #read = :true",
-        ExpressionAttributeNames={"#read": "read"},
-        ExpressionAttributeValues={":true": True},
+        UpdateExpression="SET #read = :true, #ttl = :ttl",
+        ExpressionAttributeNames={"#read": "read", "#ttl": "ttl"},
+        ExpressionAttributeValues={
+            ":true": True,
+            ":ttl": int(time.time()) + _READ_TTL_HOURS * 3600,
+        },
     )
     return success_response({"notificationId": notification_id, "read": True})
 

@@ -6,6 +6,8 @@ that doc's earlier SES-vs-in-app contradiction in favor of 要件定義書/
 機能要件書, later extended by v1.3 27章).
 """
 
+import time
+
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
@@ -23,6 +25,11 @@ from meetflow_common import (
 )
 
 from handlers import push_sender
+
+# Issue #91: 未読のまま放置された通知が無期限に増え続けないよう、作成時点
+# で仮のTTL（90日後）をセットしておく。既読になった時点でnotifications.py
+# のmark_readがより短い期限（24時間後）に上書きする。
+_UNREAD_TTL_DAYS = 90
 
 _MESSAGES = {
     "CONFIRMED": "参加予定のイベントが確定しました。",
@@ -132,6 +139,7 @@ def _create_notification(
         "message": _MESSAGES[notif_type],
         "read": False,
         "createdAt": created_at,
+        "ttl": int(time.time()) + _UNREAD_TTL_DAYS * 86400,
     }
     if related_event_id:
         item["relatedEventId"] = related_event_id
