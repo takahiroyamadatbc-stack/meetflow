@@ -32,10 +32,24 @@ export type FeedbackItem = {
   attachmentUrls?: string[];
 };
 
+/** Issue #85: QUICK評価の週次/月次集計の粒度 */
+export type QuickStatsPeriod = "WEEK" | "MONTH";
+
+export type QuickStatsBucket = {
+  /** 週(月曜始まり)/月の開始日（`YYYY-MM-DD`） */
+  bucketStart: string;
+  /** `relatedFeature` -> `rating` -> 件数 */
+  byFeatureRating: Record<string, Partial<Record<FeedbackRating, number>>>;
+};
+
 export type FeedbackStats = {
   byCategory: Record<string, number>;
   byStatus: Record<string, number>;
   byPriority: Record<string, number>;
+  quickStats: {
+    period: QuickStatsPeriod;
+    buckets: QuickStatsBucket[];
+  };
 };
 
 export const FEEDBACK_CATEGORY_LABELS: Record<FeedbackCategory, string> = {
@@ -54,6 +68,13 @@ export const FEEDBACK_PRIORITY_LABELS: Record<FeedbackPriority, string> = {
   LOW: "低",
   MEDIUM: "中",
   HIGH: "高",
+};
+
+/** QuickFeedbackPromptの表示順・絵文字と揃える（Issue #85のグラフ凡例でも使用） */
+export const FEEDBACK_RATING_LABELS: Record<FeedbackRating, string> = {
+  GOOD: "😊 満足",
+  NEUTRAL: "😐 ふつう",
+  BAD: "😞 不満",
 };
 
 /** 該当機能の選択肢（S-28詳細投稿フォーム）。QuickFeedbackPromptの埋め込み箇所とも対応する */

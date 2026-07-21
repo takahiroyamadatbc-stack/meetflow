@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from boto3.dynamodb.conditions import Attr, Key
 
 from meetflow_common import (
@@ -19,6 +21,7 @@ _RATINGS = ("BAD", "NEUTRAL", "GOOD")
 _CATEGORIES = ("BUG", "FEATURE_REQUEST", "UX_IMPROVEMENT")
 _STATUSES = ("UNHANDLED", "PLANNED", "DONE")
 _PRIORITIES = ("LOW", "MEDIUM", "HIGH")
+_QUICK_STATS_PERIODS = ("WEEK", "MONTH")
 
 
 def create_feedback(user_id, event):
@@ -213,15 +216,32 @@ def update_feedback(user_id, event):
 
 
 def get_feedback_stats(user_id, event):
-    """F-1405 (API設計書v1.17 §12b.6)。運営者限定。"""
+    """F-1405 (API設計書v1.17 §12b.6)。運営者限定。
+
+    Issue #85: QUICK評価(絵文字1クリック評価)は一覧表示から外す代わりに、
+    relatedFeature(該当機能)×rating(評価)で期間(週/月)ごとに集計し、
+    時系列グラフ表示に使う`quickStats`を追加する。既存のGSI2への1回の
+    Queryで全件取得できているため、新しいアクセスパターン・GSIは不要で
+    Lambda側の集計ロジックを増やすのみ。
+    """
     require_operator(event)
+
+    params = event.get("queryStringParameters") or {}
+    period = params.get("period") or "WEEK"
+    if period not in _QUICK_STATS_PERIODS:
+        return error_response(
+            "FEEDBACK_VALIDATION_ERROR", "periodはWEEK/MONTHのいずれかで指定してください"
+        )
 
     resp = get_table().query(
         IndexName="GSI2",
         KeyConditionExpression=Key("GSI2PK").eq("FEEDBACK"),
     )
+    items = resp.get("Items", [])
+
     by_category, by_status, by_priority = {}, {}, {}
-    for item in resp.get("Items", []):
+    quick_buckets = {}
+    for item in items:
         category = item.get("category")
         if category:
             by_category[category] = by_category.get(category, 0) + 1
@@ -232,9 +252,41 @@ def get_feedback_stats(user_id, event):
         if priority:
             by_priority[priority] = by_priority.get(priority, 0) + 1
 
+        if item.get("kind") == "QUICK":
+            rating = item.get("rating")
+            related_feature = item.get("relatedFeature")
+            created_at = item.get("createdAt")
+            if not (rating and related_feature and created_at):
+                continue
+            bucket_start = _quick_stats_bucket_start(created_at, period)
+            feature_ratings = quick_buckets.setdefault(bucket_start, {})
+            rating_counts = feature_ratings.setdefault(related_feature, {})
+            rating_counts[rating] = rating_counts.get(rating, 0) + 1
+
+    quick_stats_buckets = [
+        {"bucketStart": bucket_start, "byFeatureRating": feature_ratings}
+        for bucket_start, feature_ratings in sorted(quick_buckets.items())
+    ]
+
     return success_response(
-        {"byCategory": by_category, "byStatus": by_status, "byPriority": by_priority}
+        {
+            "byCategory": by_category,
+            "byStatus": by_status,
+            "byPriority": by_priority,
+            "quickStats": {"period": period, "buckets": quick_stats_buckets},
+        }
     )
+
+
+def _quick_stats_bucket_start(created_at, period):
+    """ISO8601文字列から、その週(月曜始まり)/月の開始日を`YYYY-MM-DD`
+    形式で返す(グラフのX軸ラベルとソートキーを兼ねる)。
+    """
+    dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    if period == "MONTH":
+        return dt.strftime("%Y-%m-01")
+    monday = dt - timedelta(days=dt.weekday())
+    return monday.strftime("%Y-%m-%d")
 
 
 def _to_api_feedback(item, *, include_reply=False):
