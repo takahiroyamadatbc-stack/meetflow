@@ -36,6 +36,11 @@ export function getEvent(eventId: string) {
   return apiClient.get<EventDetail>(`/events/${eventId}`);
 }
 
+/** PUT /events/{eventId}（Issue #87） */
+export function updateEventMemo(eventId: string, memo: string) {
+  return apiClient.put<EventDetail>(`/events/${eventId}`, { memo });
+}
+
 /**
  * POST /events/{eventId}/confirm
  * memberIds省略時は候補メンバー全員を参加者にする（後方互換）。

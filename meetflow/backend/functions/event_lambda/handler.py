@@ -7,6 +7,7 @@ _ROUTES = {
     ("POST", "/events"): events.create_event,
     ("GET", "/users/me/events"): events.list_my_events,
     ("GET", "/events/{eventId}"): events.get_event,
+    ("PUT", "/events/{eventId}"): events.update_event,
     ("POST", "/events/{eventId}/confirm"): events.confirm_event,
     ("POST", "/events/{eventId}/cancel"): events.cancel_event,
     ("POST", "/events/{eventId}/complete"): events.complete_event,
