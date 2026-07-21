@@ -64,6 +64,11 @@ export function completeEvent(eventId: string) {
   return apiClient.post<{ eventId: string; status: "COMPLETED" }>(`/events/${eventId}/complete`);
 }
 
+/** POST /events/{eventId}/reopen（Issue #89: 完了したイベントを開催予定に戻す。COMPLETED→CONFIRMEDのみ許可） */
+export function reopenEvent(eventId: string) {
+  return apiClient.post<{ eventId: string; status: "CONFIRMED" }>(`/events/${eventId}/reopen`);
+}
+
 /** GET /communities/{communityId}/events?status=... */
 export function listCommunityEvents(communityId: string, status?: string) {
   const query = status ? `?status=${status}` : "";

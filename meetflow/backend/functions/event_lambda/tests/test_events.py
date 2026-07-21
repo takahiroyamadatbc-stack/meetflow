@@ -874,6 +874,59 @@ def test_complete_event_already_completed(table):
     assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
 
 
+def test_reopen_event_success(table):
+    """Issue #89: 管理者が誤って「本日の対局を終了する」を押した場合の取り
+    消し。COMPLETED状態のイベントをreopen_eventでCONFIRMEDへ戻せる。"""
+    event_id = _create_confirmed_event(table)
+    with patch.object(events, "put_event"):
+        events.complete_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    with patch.object(events, "put_event") as mock_put_event:
+        response = events.reopen_event(
+            "user-1", api_event(path_params={"eventId": event_id})
+        )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["status"] == "CONFIRMED"
+    stored = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"})["Item"]
+    assert stored["status"] == "CONFIRMED"
+    mock_put_event.assert_called_once()
+
+
+def test_reopen_event_requires_admin_role(table):
+    event_id = _create_confirmed_event(table)
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    with patch.object(events, "put_event"):
+        events.complete_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    with pytest.raises(AuthError) as exc_info:
+        events.reopen_event(
+            "user-2", api_event(path_params={"eventId": event_id})
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_reopen_event_rejects_non_completed_status(table):
+    """COMPLETED以外（CONFIRMED含む）からの呼び出しは409で拒否する。"""
+    event_id = _create_confirmed_event(table)
+
+    response = events.reopen_event(
+        "user-1", api_event(path_params={"eventId": event_id})
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
+
+
+def test_reopen_event_not_found(table):
+    response = events.reopen_event(
+        "user-1", api_event(path_params={"eventId": "does-not-exist"})
+    )
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "EVENT_NOT_FOUND"
+
+
 def test_list_my_events_success(table):
     """#12: 予定タブのカレンダー表示用に、自分が参加者の確定イベントを
     コミュニティ横断で取得できること。"""

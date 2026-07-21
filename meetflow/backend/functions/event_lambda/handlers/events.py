@@ -680,6 +680,60 @@ def complete_event(user_id, event):
     return success_response({"eventId": event_id, "status": "COMPLETED"})
 
 
+def reopen_event(user_id, event):
+    """POST /events/{eventId}/reopen（Issue #89）。管理者が誤って「本日の
+    対局を終了する」を押してしまった場合の取り消し用に、COMPLETED→
+    CONFIRMEDのみを許可する逆方向遷移を提供する。他の状態からは呼び出せ
+    ない。対象イベントに既に登録済みの成績（GameResult）があってもそのまま
+    残す（CONFIRMED/IN_PROGRESSの間も成績編集自体は引き続き可能な設計の
+    ため、削除・ブロックする必要はない）。権限はcomplete_event/cancel_event
+    と同様OWNER/ADMIN限定。"""
+    event_id = event["pathParameters"]["eventId"]
+    table = get_table()
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+        "Item"
+    )
+    if event_item is None:
+        return error_response("EVENT_NOT_FOUND", "指定したイベントが見つかりません")
+
+    community_id = event_item["GSI1PK"].split("#", 1)[1]
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    status = event_item.get("status")
+    if status != "COMPLETED":
+        return error_response(
+            "INVALID_STATUS_TRANSITION",
+            "終了済みのイベントのみ開催予定に戻せます",
+            status_code=409,
+        )
+
+    table.update_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"},
+        UpdateExpression="SET #status = :confirmed",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={":confirmed": "CONFIRMED"},
+    )
+    write_status_history(table, event_id, status, "CONFIRMED", user_id)
+    write_operation_log(
+        action="REOPEN_EVENT",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Event",
+        target_id=event_id,
+    )
+
+    put_event(
+        EVENT_STATUS_CHANGED,
+        {
+            "eventId": event_id,
+            "communityId": community_id,
+            "fromStatus": status,
+            "toStatus": "CONFIRMED",
+        },
+    )
+    return success_response({"eventId": event_id, "status": "CONFIRMED"})
+
+
 def _cancel_participants(table, event_id):
     """Issue #63: イベント全体中止時、参加者のParticipant.statusが
     CONFIRMEDのまま残留していた（cancel_eventがEvent側のstatusしか更新して

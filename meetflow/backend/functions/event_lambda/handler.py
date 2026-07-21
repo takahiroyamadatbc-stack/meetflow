@@ -11,6 +11,7 @@ _ROUTES = {
     ("POST", "/events/{eventId}/confirm"): events.confirm_event,
     ("POST", "/events/{eventId}/cancel"): events.cancel_event,
     ("POST", "/events/{eventId}/complete"): events.complete_event,
+    ("POST", "/events/{eventId}/reopen"): events.reopen_event,
     ("GET", "/communities/{communityId}/events"): events.list_community_events,
     ("GET", "/events/{eventId}/participants"): participants.list_participants,
     ("POST", "/events/{eventId}/participants"): participants.add_participant,
