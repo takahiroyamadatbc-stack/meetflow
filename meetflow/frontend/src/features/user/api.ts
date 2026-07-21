@@ -41,3 +41,12 @@ export async function uploadAvatarImage(blob: Blob, contentType: string): Promis
   }
   return avatarUrl;
 }
+
+/**
+ * DELETE /users/me/avatar（Issue #76）
+ * DB上のicon参照とS3上のファイルの両方をバックエンドで削除し、
+ * 更新後のプロフィールを返す。
+ */
+export function deleteMyAvatar() {
+  return apiClient.delete<UserProfile>("/users/me/avatar");
+}
