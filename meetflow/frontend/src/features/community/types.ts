@@ -43,7 +43,28 @@ export type CommunityDetail = CommunityMutationResult & {
   role: MembershipRole;
   /** 未処理（PENDING）JoinRequest件数（Issue #29）。管理者向けバッジ表示用 */
   pendingRequestCount: number;
+  /** コミュニティ内ランキング（Issue #40）のデフォルト表示条件。未設定でもシステムデフォルト値が返る */
+  rankingDefaultGameType: GameType;
+  rankingDefaultPeriodType: RankingPeriodType;
+  rankingDefaultMetric: RankingMetric;
+  rankingDefaultMinGames: number;
 };
+
+/** F-805/F-806（Issue #40）: コミュニティ内ランキングの集計期間プリセット */
+export type RankingPeriodType = "MONTH" | "QUARTER" | "HALF_YEAR" | "YEAR" | "ALL_TIME";
+
+/** F-805/F-806（Issue #40）: コミュニティ内ランキングの対象指標 */
+export type RankingMetric =
+  | "AVERAGE_RANK"
+  | "TOTAL_POINTS"
+  | "FIRST_PLACE_RATE"
+  | "SECOND_PLACE_RATE"
+  | "TOP_TWO_RATE"
+  | "NON_LAST_RATE"
+  | "TOTAL_GAMES"
+  | "PARTICIPATED_EVENTS"
+  | "TOTAL_CHIPS"
+  | "AVERAGE_CHIPS";
 
 /** invites.py get_invite_preview() のレスポンス実体（Issue #23） */
 export type InvitePreview = {

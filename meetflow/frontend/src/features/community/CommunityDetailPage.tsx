@@ -101,6 +101,7 @@ export function CommunityDetailPage() {
 
       <NavCard to={paths.communityInvite(community.communityId)} label="メンバーを招待する" />
       <NavCard to={paths.eventList(community.communityId)} label="イベント一覧" />
+      <NavCard to={paths.communityRanking(community.communityId)} label="ランキングを見る" />
 
       <Accordion className="flex flex-col gap-2">
         {isAdmin && (
@@ -120,6 +121,10 @@ export function CommunityDetailPage() {
                 <NavCard
                   to={paths.communityProfileEdit(community.communityId)}
                   label="コミュニティプロフィールを編集"
+                />
+                <NavCard
+                  to={paths.communityRankingSettingsEdit(community.communityId)}
+                  label="ランキング設定を変更"
                 />
               </div>
             </AccordionContent>

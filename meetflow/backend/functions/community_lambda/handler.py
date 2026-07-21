@@ -12,6 +12,10 @@ _ROUTES = {
     ("DELETE", "/communities/{communityId}"): communities.delete_community,
     ("PUT", "/communities/{communityId}/theme-color"): communities.update_theme_color,
     (
+        "PUT",
+        "/communities/{communityId}/ranking-settings",
+    ): communities.update_ranking_settings,
+    (
         "POST",
         "/communities/{communityId}/icon/upload-url",
     ): communities.create_icon_upload_url,

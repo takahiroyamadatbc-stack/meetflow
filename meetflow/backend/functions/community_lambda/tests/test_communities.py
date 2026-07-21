@@ -65,6 +65,10 @@ def test_get_community_success(table):
         "icon": None,
         "role": "OWNER",
         "pendingRequestCount": 0,
+        "rankingDefaultGameType": "MAHJONG4",
+        "rankingDefaultPeriodType": "MONTH",
+        "rankingDefaultMetric": "AVERAGE_RANK",
+        "rankingDefaultMinGames": 0,
     }
 
 
@@ -499,3 +503,109 @@ def test_transfer_owner_target_not_active_member(table):
 
     assert response["statusCode"] == 400
     assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+# --- F-806 コミュニティ内ランキング設定 (Issue #40) -------------------------
+
+
+def test_update_ranking_settings_success(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_ranking_settings(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={
+                "gameType": "MAHJONG3",
+                "periodType": "QUARTER",
+                "metric": "TOTAL_POINTS",
+                "minGames": 5,
+            },
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"] == {
+        "communityId": "community-1",
+        "gameType": "MAHJONG3",
+        "periodType": "QUARTER",
+        "metric": "TOTAL_POINTS",
+        "minGames": 5,
+    }
+    community = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "METADATA"}
+    )["Item"]
+    assert community["rankingDefaultGameType"] == "MAHJONG3"
+    assert community["rankingDefaultMinGames"] == 5
+
+    detail = communities.get_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+    detail_data = body_of(detail)["data"]
+    assert detail_data["rankingDefaultGameType"] == "MAHJONG3"
+    assert detail_data["rankingDefaultPeriodType"] == "QUARTER"
+    assert detail_data["rankingDefaultMetric"] == "TOTAL_POINTS"
+    assert detail_data["rankingDefaultMinGames"] == 5
+
+
+def test_update_ranking_settings_invalid_metric(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_ranking_settings(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={
+                "gameType": "MAHJONG4",
+                "periodType": "MONTH",
+                "metric": "NOT_A_METRIC",
+                "minGames": 0,
+            },
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_ranking_settings_negative_min_games(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_ranking_settings(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={
+                "gameType": "MAHJONG4",
+                "periodType": "MONTH",
+                "metric": "AVERAGE_RANK",
+                "minGames": -1,
+            },
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_ranking_settings_forbidden_for_plain_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    with pytest.raises(AuthError) as exc_info:
+        communities.update_ranking_settings(
+            "user-2",
+            api_event(
+                path_params={"communityId": "community-1"},
+                body={
+                    "gameType": "MAHJONG4",
+                    "periodType": "MONTH",
+                    "metric": "AVERAGE_RANK",
+                    "minGames": 0,
+                },
+            ),
+        )
+    assert exc_info.value.code == "FORBIDDEN"

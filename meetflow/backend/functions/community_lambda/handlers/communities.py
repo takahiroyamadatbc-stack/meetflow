@@ -20,6 +20,28 @@ from meetflow_common import (
 _MAX_NAME_LENGTH = 50  # 設計書には明記されていない、MVP向け保守的な上限値
 _THEME_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+# F-806 コミュニティ内ランキング設定（Issue #40、API設計書v1.25 §4.2e）。
+_RANKING_GAME_TYPES = ("MAHJONG4", "MAHJONG3")
+_RANKING_PERIOD_TYPES = ("MONTH", "QUARTER", "HALF_YEAR", "YEAR", "ALL_TIME")
+_RANKING_METRICS = (
+    "AVERAGE_RANK",
+    "TOTAL_POINTS",
+    "FIRST_PLACE_RATE",
+    "SECOND_PLACE_RATE",
+    "TOP_TWO_RATE",
+    "NON_LAST_RATE",
+    "TOTAL_GAMES",
+    "PARTICIPATED_EVENTS",
+    "TOTAL_CHIPS",
+    "AVERAGE_CHIPS",
+)
+_RANKING_SETTINGS_DEFAULTS = {
+    "gameType": "MAHJONG4",
+    "periodType": "MONTH",
+    "metric": "AVERAGE_RANK",
+    "minGames": 0,
+}
+
 # Issue #52: コミュニティアイコンアップロード。許可フォーマットはUserLambdaの
 # アバターアップロード（user_lambda/handler.py、Issue #47）と揃える。
 # 同じバケット/CloudFrontディストリビューションをキープレフィックスで
@@ -160,6 +182,18 @@ def get_community(user_id, event):
             "icon": community.get("icon"),
             "role": membership.get("role"),
             "pendingRequestCount": pending_request_count,
+            "rankingDefaultGameType": community.get(
+                "rankingDefaultGameType", _RANKING_SETTINGS_DEFAULTS["gameType"]
+            ),
+            "rankingDefaultPeriodType": community.get(
+                "rankingDefaultPeriodType", _RANKING_SETTINGS_DEFAULTS["periodType"]
+            ),
+            "rankingDefaultMetric": community.get(
+                "rankingDefaultMetric", _RANKING_SETTINGS_DEFAULTS["metric"]
+            ),
+            "rankingDefaultMinGames": community.get(
+                "rankingDefaultMinGames", _RANKING_SETTINGS_DEFAULTS["minGames"]
+            ),
         }
     )
 
@@ -430,6 +464,72 @@ def update_theme_color(user_id, event):
     return success_response({"communityId": community_id, "themeColor": theme_color or None})
 
 
+def update_ranking_settings(user_id, event):
+    """PUT /communities/{communityId}/ranking-settings（API設計書v1.25
+    §4.2e、F-806）。
+
+    コミュニティ内ランキング（F-805、ResultLambda `get_community_ranking`）
+    のデフォルト表示条件（種目・集計期間プリセット・指標・足切り件数）を
+    OWNER/ADMINが設定する。update_theme_colorと同じ「単機能PUTエンドポイント、
+    未指定/nullでシステムデフォルトに解除」パターンを踏襲するが、4項目は
+    テーマカラーと異なり常にまとめて1回で更新する（部分更新は設けない、
+    Issue #40コメント決定事項）。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    body = parse_body(event)
+    validation_error = _validate_ranking_settings(body)
+    if validation_error:
+        return validation_error
+
+    game_type = body.get("gameType") or _RANKING_SETTINGS_DEFAULTS["gameType"]
+    period_type = body.get("periodType") or _RANKING_SETTINGS_DEFAULTS["periodType"]
+    metric = body.get("metric") or _RANKING_SETTINGS_DEFAULTS["metric"]
+    min_games = body.get("minGames")
+    if min_games is None:
+        min_games = _RANKING_SETTINGS_DEFAULTS["minGames"]
+
+    table.update_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"},
+        UpdateExpression=(
+            "SET rankingDefaultGameType = :gt, rankingDefaultPeriodType = :pt, "
+            "rankingDefaultMetric = :m, rankingDefaultMinGames = :mg"
+        ),
+        ConditionExpression="attribute_exists(PK)",
+        ExpressionAttributeValues={
+            ":gt": game_type,
+            ":pt": period_type,
+            ":m": metric,
+            ":mg": min_games,
+        },
+    )
+
+    write_operation_log(
+        action="UPDATE_RANKING_SETTINGS",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Community",
+        target_id=community_id,
+        after={
+            "rankingDefaultGameType": game_type,
+            "rankingDefaultPeriodType": period_type,
+            "rankingDefaultMetric": metric,
+            "rankingDefaultMinGames": min_games,
+        },
+    )
+    return success_response(
+        {
+            "communityId": community_id,
+            "gameType": game_type,
+            "periodType": period_type,
+            "metric": metric,
+            "minGames": min_games,
+        }
+    )
+
+
 def create_icon_upload_url(user_id, event):
     """POST /communities/{communityId}/icon/upload-url（Issue #52）。
 
@@ -525,6 +625,33 @@ def _validate_theme_color(value):
         return error_response(
             "INVALID_PARAMETER", "themeColorは#RRGGBB形式で指定してください"
         )
+    return None
+
+
+def _validate_ranking_settings(body):
+    if not isinstance(body, dict):
+        return error_response("INVALID_PARAMETER", "リクエスト内容が不正です")
+
+    game_type = body.get("gameType")
+    if game_type is not None and game_type not in _RANKING_GAME_TYPES:
+        return error_response("INVALID_PARAMETER", "gameTypeが不正です")
+
+    period_type = body.get("periodType")
+    if period_type is not None and period_type not in _RANKING_PERIOD_TYPES:
+        return error_response("INVALID_PARAMETER", "periodTypeが不正です")
+
+    metric = body.get("metric")
+    if metric is not None and metric not in _RANKING_METRICS:
+        return error_response("INVALID_PARAMETER", "metricが不正です")
+
+    min_games = body.get("minGames")
+    if min_games is not None and (
+        not isinstance(min_games, int)
+        or isinstance(min_games, bool)
+        or min_games < 0
+    ):
+        return error_response("INVALID_PARAMETER", "minGamesが不正です")
+
     return None
 
 

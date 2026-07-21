@@ -13,6 +13,7 @@ _ROUTES = {
         "/communities/{communityId}/game-sessions/last-settings",
     ): results.get_last_game_settings,
     ("GET", "/users/{userId}/results"): results.get_user_results,
+    ("GET", "/communities/{communityId}/rankings"): results.get_community_ranking,
 }
 
 

@@ -9,8 +9,11 @@ import type {
   InvitePreview,
   JoinRequest,
   Place,
+  RankingMetric,
+  RankingPeriodType,
   UpdateMemberInput,
 } from "@/features/community/types";
+import type { GameType } from "@/features/user/types";
 import type { FrequencyLimitPeriod } from "@/features/user/types";
 
 export const communityKeys = {
@@ -60,6 +63,28 @@ export function updateThemeColor(communityId: string, themeColor: string) {
     `/communities/${communityId}/theme-color`,
     { themeColor },
   );
+}
+
+/**
+ * PUT /communities/{communityId}/ranking-settings（Issue #40 F-806）。
+ * コミュニティ内ランキング（S-31）のデフォルト表示条件を4項目まとめて更新する。
+ */
+export function updateRankingSettings(
+  communityId: string,
+  input: {
+    gameType: GameType;
+    periodType: RankingPeriodType;
+    metric: RankingMetric;
+    minGames: number;
+  },
+) {
+  return apiClient.put<{
+    communityId: string;
+    gameType: GameType;
+    periodType: RankingPeriodType;
+    metric: RankingMetric;
+    minGames: number;
+  }>(`/communities/${communityId}/ranking-settings`, input);
 }
 
 /** POST /communities/{communityId}/icon/upload-url（Issue #52） */

@@ -1,9 +1,12 @@
+import calendar
+from datetime import date
 from decimal import Decimal
 
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
     error_response,
+    get_display_name,
     get_table,
     now_iso_ms,
     parse_body,
@@ -12,6 +15,9 @@ from meetflow_common import (
     transact_write,
     write_operation_log,
 )
+
+_RANKING_GAME_TYPES = ("MAHJONG4", "MAHJONG3")
+_RANKING_PERIOD_TYPES = ("MONTH", "QUARTER", "HALF_YEAR", "YEAR", "ALL_TIME")
 
 
 def create_session(user_id, event):
@@ -351,6 +357,196 @@ def get_user_results(user_id, event):
     )
 
 
+def get_community_ranking(user_id, event):
+    """F-805 (API設計書v1.25 §10.3、要件定義書v1.9 §32): コミュニティ内の
+    メンバーを横断したランキング。コミュニティメンバーであれば誰でも閲覧
+    可能（管理者限定にしない、Issue #40コメント決定事項10）。
+
+    get_user_results（個人単位、GSI1で1ユーザー分をQuery）とは異なり、
+    対象コミュニティ×種目×期間の全メンバー分のGameResult/GameResultChipを
+    GSI2への1回のQueryで取得する（DynamoDB物理設計書v1.19 §3.13の
+    GSI2相乗り）。メンバー一覧を起点にしないため、退会済みメンバー
+    （Membership行が既に存在しない）の対局記録も自動的に集計対象へ
+    含まれる（要件定義書v1.9 §32.5）。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id)
+
+    params = event.get("queryStringParameters") or {}
+    game_type = params.get("gameType")
+    if game_type not in _RANKING_GAME_TYPES:
+        return error_response("INVALID_PARAMETER", "gameTypeが不正です")
+
+    period_type = params.get("periodType")
+    if period_type not in _RANKING_PERIOD_TYPES:
+        return error_response("INVALID_PARAMETER", "periodTypeが不正です")
+
+    period, start_bound, end_bound = _resolve_ranking_period(period_type, params)
+    if period is None:
+        return error_response("INVALID_PARAMETER", "集計期間の指定が不正です")
+
+    key_condition = Key("GSI2PK").eq(f"COMMUNITY#{community_id}#{game_type}")
+    if start_bound is not None:
+        key_condition = key_condition & Key("GSI2SK").between(start_bound, end_bound)
+
+    items = []
+    resp = table.query(IndexName="GSI2", KeyConditionExpression=key_condition)
+    items.extend(resp.get("Items", []))
+    while "LastEvaluatedKey" in resp:
+        resp = table.query(
+            IndexName="GSI2",
+            KeyConditionExpression=key_condition,
+            ExclusiveStartKey=resp["LastEvaluatedKey"],
+        )
+        items.extend(resp.get("Items", []))
+
+    # GameResultとGameResultChipはGSI2PK/GSI2SKのプレフィックスを共有する
+    # ため、get_user_resultsと同様にSKの内容で明示的に判別する。
+    game_results = [item for item in items if "#RESULT#" in item["SK"]]
+    chip_results = [item for item in items if "#CHIP#" in item["SK"]]
+
+    completed_event_ids = _completed_event_ids(
+        table, {item["PK"].split("#", 1)[1] for item in game_results + chip_results}
+    )
+    game_results = [
+        r for r in game_results if r["PK"].split("#", 1)[1] in completed_event_ids
+    ]
+    chip_results = [
+        c for c in chip_results if c["PK"].split("#", 1)[1] in completed_event_ids
+    ]
+
+    by_user = {}
+    for r in game_results:
+        target_user_id = r["SK"].rsplit("#", 1)[1]
+        by_user.setdefault(target_user_id, {"results": [], "chips": []})["results"].append(r)
+    for c in chip_results:
+        target_user_id = c["SK"].rsplit("#", 1)[1]
+        by_user.setdefault(target_user_id, {"results": [], "chips": []})["chips"].append(c)
+
+    members = []
+    for target_user_id, bucket in by_user.items():
+        stats = _aggregate_ranking_metrics(bucket["results"], bucket["chips"])
+        members.append(
+            {
+                "userId": target_user_id,
+                "displayName": get_display_name(table, community_id, target_user_id),
+                **stats,
+            }
+        )
+
+    return success_response(
+        {
+            "communityId": community_id,
+            "gameType": game_type,
+            "period": period,
+            "members": members,
+        }
+    )
+
+
+def _resolve_ranking_period(period_type, params):
+    """periodType・年月/四半期/半期の指定から、期間メタ情報とGSI2SKの
+    範囲クエリ用bound（`{date}T00:00:00.000Z`〜`{date}T23:59:59.999Z`）を
+    組み立てる。指定が不正な場合は`(None, None, None)`を返す。
+    """
+    if period_type == "ALL_TIME":
+        return {"type": "ALL_TIME"}, None, None
+
+    year = _parse_int(params.get("year"))
+    if year is None:
+        return None, None, None
+
+    if period_type == "MONTH":
+        month = _parse_int(params.get("month"))
+        if month is None or not 1 <= month <= 12:
+            return None, None, None
+        start = date(year, month, 1)
+        end = date(year, month, calendar.monthrange(year, month)[1])
+        period = {"type": "MONTH", "year": year, "month": month}
+    elif period_type == "QUARTER":
+        quarter = _parse_int(params.get("quarter"))
+        if quarter is None or not 1 <= quarter <= 4:
+            return None, None, None
+        start_month = (quarter - 1) * 3 + 1
+        end_month = start_month + 2
+        start = date(year, start_month, 1)
+        end = date(year, end_month, calendar.monthrange(year, end_month)[1])
+        period = {"type": "QUARTER", "year": year, "quarter": quarter}
+    elif period_type == "HALF_YEAR":
+        half = _parse_int(params.get("half"))
+        if half is None or half not in (1, 2):
+            return None, None, None
+        start_month, end_month = (1, 6) if half == 1 else (7, 12)
+        start = date(year, start_month, 1)
+        end = date(year, end_month, calendar.monthrange(year, end_month)[1])
+        period = {"type": "HALF_YEAR", "year": year, "half": half}
+    elif period_type == "YEAR":
+        start = date(year, 1, 1)
+        end = date(year, 12, 31)
+        period = {"type": "YEAR", "year": year}
+    else:
+        return None, None, None
+
+    period["startDate"] = start.isoformat()
+    period["endDate"] = end.isoformat()
+    return (
+        period,
+        f"{start.isoformat()}T00:00:00.000Z",
+        f"{end.isoformat()}T23:59:59.999Z",
+    )
+
+
+def _parse_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _aggregate_ranking_metrics(results, chips):
+    """コミュニティ内ランキング（F-805）向けの10指標を計算する。個人成績
+    取得（`_aggregate`）とは別関数にしている -- 既存のGET /users/{id}/results
+    のレスポンス形（5指標）を変えないため。
+    """
+    total_games = len(results)
+    total_chips = sum(_as_int(c.get("chipCount", 0)) for c in chips)
+    if total_games == 0:
+        return {
+            "totalGames": 0,
+            "averageRank": 0,
+            "firstPlaceRate": 0,
+            "secondPlaceRate": 0,
+            "topTwoRate": 0,
+            "nonLastRate": 0,
+            "totalPoints": 0,
+            "participatedEvents": 0,
+            "totalChips": total_chips,
+            "averageChips": 0,
+        }
+
+    ranks = [r.get("rank", 0) for r in results]
+    points = sum(r.get("rankPoints", 0) for r in results)
+    # 近似値: 「最下位」の判定は_aggregateと同じ限界を持つ（GameResultには
+    # 各セッションの実際のプレイヤー数が保存されていないため、このユーザー
+    # が実際に記録した最も悪い着順を「最下位」とみなす）。
+    worst_rank = max(ranks)
+    participated_events = {r["PK"].split("#", 1)[1] for r in results}
+
+    return {
+        "totalGames": total_games,
+        "averageRank": round(sum(ranks) / total_games, 2),
+        "firstPlaceRate": round(sum(1 for r in ranks if r == 1) / total_games, 3),
+        "secondPlaceRate": round(sum(1 for r in ranks if r == 2) / total_games, 3),
+        "topTwoRate": round(sum(1 for r in ranks if r <= 2) / total_games, 3),
+        "nonLastRate": round(sum(1 for r in ranks if r != worst_rank) / total_games, 3),
+        "totalPoints": points,
+        "participatedEvents": len(participated_events),
+        "totalChips": total_chips,
+        "averageChips": round(total_chips / total_games, 2),
+    }
+
+
 def _completed_event_ids(table, event_ids):
     """引数のイベントIDのうち、既にCOMPLETED（本日の対局終了済み）になって
     いるものだけを返す。GameResult/GameResultChipにはイベントの状態が
@@ -597,6 +793,12 @@ def _write_session_items(table, event_id, community_id, session_no, body):
                 "SK": f"SESSION#{session_no}#RESULT#{r['userId']}",
                 "GSI1PK": f"USER#{r['userId']}",
                 "GSI1SK": f"COMMUNITY#{community_id}#{played_at}",
+                # コミュニティ内ランキング（F-805）用。GSI2は本来ID直接引き
+                # 専用だが、Feedback/Announcement（DynamoDB物理設計書v1.12）
+                # と同様に役割を拡張し、コミュニティ×種目単位の範囲クエリに
+                # 相乗りさせている（同v1.19 §3.13）。
+                "GSI2PK": f"COMMUNITY#{community_id}#{game_type}",
+                "GSI2SK": played_at,
                 "rank": r["rank"],
                 "score": r["score"],
                 "rankPoints": _to_decimal(r["rankPoints"]),
@@ -614,6 +816,8 @@ def _write_session_items(table, event_id, community_id, session_no, body):
                 "SK": f"SESSION#{session_no}#CHIP#{c['userId']}",
                 "GSI1PK": f"USER#{c['userId']}",
                 "GSI1SK": f"COMMUNITY#{community_id}#{played_at}",
+                "GSI2PK": f"COMMUNITY#{community_id}#{game_type}",
+                "GSI2SK": played_at,
                 "chipCount": c["chipCount"],
                 "playedAt": played_at,
                 "gameType": game_type,

@@ -1,7 +1,7 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.18
+# MeetFlow DynamoDB 物理テーブル設計書 v1.19
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
-> v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.10→v1.11の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
+> v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.18→v1.19の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
 
 ---
 
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | （プライマリ） | PK | SK | エンティティ本体・親子関係の取得 |
 | GSI1（ByUser） | GSI1PK | GSI1SK | 「あるユーザーの○○一覧」を横断的に取得 |
-| GSI2（ByAltId） | GSI2PK | GSI2SK | コミュニティIDを介さない直接ID検索（候補詳細など）。**[v1.12追加]** 種別横断の一覧化（例：全フィードバック一覧）にも、GSI2PKへ種別を表す固定文字列を入れる形で流用する（3.19/3.20参照） |
+| GSI2（ByAltId） | GSI2PK | GSI2SK | コミュニティIDを介さない直接ID検索（候補詳細など）。**[v1.12追加]** 種別横断の一覧化（例：全フィードバック一覧）にも、GSI2PKへ種別を表す固定文字列を入れる形で流用する（3.19/3.20参照）。**[v1.19追加]** コミュニティ×種目単位の範囲クエリ（コミュニティ内ランキング集計）にも流用する（3.13参照） |
 
 ---
 
@@ -74,9 +74,15 @@ SK:   METADATA
 | **communityType** | **S** | **PERSONAL / STORE / OFFICIAL（デフォルト PERSONAL）[v1.1新規]** |
 | ownerId | S | 現在のOWNER userId |
 | **themeColor** | **S** | **（任意）コミュニティのテーマカラー。`#RRGGBB`形式の7文字hexカラーコード（例："#6366F1"）。未設定時はアプリの既定色にフォールバックする [v1.7追加]** |
+| **rankingDefaultGameType** | **S** | **（任意）コミュニティ内ランキング（3.13参照）のデフォルト表示種目。`MAHJONG4` / `MAHJONG3`。未設定時はシステムデフォルト（`MAHJONG4`）にフォールバック [v1.19新規]** |
+| **rankingDefaultPeriodType** | **S** | **（任意）ランキングのデフォルト集計期間プリセット。`MONTH` / `QUARTER` / `HALF_YEAR` / `YEAR` / `ALL_TIME`。未設定時はシステムデフォルト（`MONTH`）にフォールバック [v1.19新規]** |
+| **rankingDefaultMetric** | **S** | **（任意）ランキングのデフォルト表示指標。`AVERAGE_RANK` / `TOTAL_POINTS` / `FIRST_PLACE_RATE` / `SECOND_PLACE_RATE` / `TOP_TWO_RATE` / `NON_LAST_RATE` / `TOTAL_GAMES` / `PARTICIPATED_EVENTS` / `TOTAL_CHIPS` / `AVERAGE_CHIPS`の10種類のいずれか。未設定時はシステムデフォルト（`AVERAGE_RANK`）にフォールバック [v1.19新規]** |
+| **rankingDefaultMinGames** | **N** | **（任意）ランキングのデフォルト足切り閾値（最低対局数）。率・平均系指標にのみ適用。未設定時はシステムデフォルト（0＝足切りなし）にフォールバック [v1.19新規]** |
 | createdAt | S | ISO8601 |
 
 > F-101 に対応。
+>
+> **[v1.19追加]** F-806（機能要件書v1.11）コミュニティ内ランキング設定に対応。`themeColor`と同じ「任意属性・未設定時はシステムデフォルトへフォールバック」方針を踏襲する。4属性をまとめて1つの設定機能として扱い、個別のON/OFFや部分更新は設けない（`PUT /communities/{communityId}/ranking-settings`で4項目一括更新。API設計書v1.25 §10.4参照）。
 >
 > **[v1.1追加]** 将来の店舗展開（フリー雀荘・公式コミュニティ等）を見据え、`communityType`属性を追加。MVPでは全件`PERSONAL`固定で保存する。値を文字列として持つだけでキー構造への影響はなく、将来STORE/OFFICIAL向けの機能分岐（公開ディレクトリ掲載、決済連携等）をアプリ層で追加する際の起点にする。
 >
@@ -420,12 +426,16 @@ PK:      EVENT#{eventId}
 SK:      SESSION#{sessionNo}#RESULT#{userId}
 GSI1PK:  USER#{userId}
 GSI1SK:  COMMUNITY#{communityId}#{playedAt}
+GSI2PK:  COMMUNITY#{communityId}#{gameType}
+GSI2SK:  {playedAt}
 
 GameResultChip
 PK:      EVENT#{eventId}
 SK:      SESSION#{sessionNo}#CHIP#{userId}
 GSI1PK:  USER#{userId}
 GSI1SK:  COMMUNITY#{communityId}#{playedAt}
+GSI2PK:  COMMUNITY#{communityId}#{gameType}
+GSI2SK:  {playedAt}
 ```
 
 | 属性(GameSession) | 型 | 説明 |
@@ -457,12 +467,15 @@ GSI1SK:  COMMUNITY#{communityId}#{playedAt}
 **アクセスパターン**
 - イベント内の全セッション・結果取得：`PK=EVENT#{id}, SK begins_with SESSION#`
 - ユーザーの特定コミュニティ内の成績一覧：`GSI1PK=USER#{userId}, GSI1SK begins_with COMMUNITY#{communityId}`（API設計書10.2の権限方針「同一コミュニティ内でのみ閲覧可」をキー設計レベルで担保）。GameResultとGameResultChipはGSI1PK/GSI1SKのプレフィックスを共有するため、アプリ側はSKの`#RESULT#`/`#CHIP#`で判別する
+- **[v1.19新規]** コミュニティ内ランキング（対局データ横断集計）：`GSI2PK=COMMUNITY#{communityId}#{gameType}`固定 + `GSI2SK between {startDate} and {endDate}`（通算期間の場合は`GSI2SK`の範囲条件なし）の1回のQueryで、指定した種目・期間に該当する全メンバー分のGameResult/GameResultChipを一括取得する。メンバー一覧を経由せず対局データそのものを起点にするため、退会済みメンバー（Membership行が既に存在しない）の対局記録も自動的に含まれる（要件定義書v1.9 §32.5）
 
 > F-801〜F-804に対応。ゲーム固有結果（ポーカーのBuy-in等）は`extra`属性（Map型）に格納し、基本キー構造は変えずに拡張する（F-902の設計方針）。
 >
 > **[v1.13追加]** `GameResult.gameType`/`GameResultChip.gameType`は、四麻と三麻で平均着順のスケールが異なり合算すると指標として意味を持たなくなる問題（ResultLambda `_aggregate`）に対応するために追加した。GameResultにはイベント/セッションの状態が保持されておらず`GameSession`への都度JOINが必要になるため、GSI1で1回のQueryのまま種別ごとに集計できるよう書き込み時に非正規化した（読み取り時に都度GameSessionを引く方式は、コミュニティの通算成績集計のような多件数アクセスパターンでは高コストになるため採用しない）。
 >
 > **[v1.16追加]** `boxUnderSettlement`/`tobiPoints`/`tobiAssignments`はIssue #66（飛び賞）・#67（箱下精算）対応で追加した。いずれも新規のPK/SK/GSIは不要（GameSession本体への属性追加のみ）。`tobiAssignments`は「誰が誰をトビにしたか」という最終スコアだけからは導けない情報のため、フロントのUIで管理者に明示的に選んでもらった結果をそのまま保存する（GameResult側には非正規化しない。`rankPoints`は書き込み時にサーバー側で加減点済みの最終値のみを保持する）。
+>
+> **[v1.19追加]** F-805（機能要件書v1.11）コミュニティ内ランキングに対応するため、`GSI2PK`/`GSI2SK`を追加した。GSI2は本来「コミュニティのパーティションを介さない直接IDルックアップ」（2章）用途だが、3.19 Feedback/3.20 Announcementで既に「GSI2PKに固定文字列を入れる種別横断の一覧化」という用途拡張の前例があり（v1.12）、本エンティティも同様にGSI2の役割を拡張して相乗りさせる形とした。メンバー数分のQueryをループする案（読み取り時にメンバー一覧→ユーザーごとGSI1個別Query）ではなく、コミュニティ×種目単位の範囲クエリを1回で完結させることを優先し、GSI本数を2本に保ったまま（新規GSI3は追加しない）N+1クエリを回避している。**注意（既存データへの影響）**：本属性追加前に登録済みのGameResult/GameResultChipアイテムには`GSI2PK`/`GSI2SK`が存在しないため、GSI2経由のランキング集計からは漏れる。デプロイ済み環境に既存データがある場合は、当該アイテムへ属性を後付けする一度限りのバックフィルが必要（バックフィル要否は実装時に確認する）。
 
 ---
 
@@ -687,6 +700,7 @@ GSI2SK:  {createdAt}#{announcementId}
 | 33 | 運営者向け・全フィードバック一覧（種別/ステータス絞り込みはFilterExpression） [v1.12] | GSI2PK=FEEDBACK |
 | 34 | 投稿者自身のフィードバック投稿履歴 [v1.12] | GSI1PK=USER#{id}, SK begins_with FEEDBACK# |
 | 35 | アップデート予告一覧（一般ユーザーはstatus=PUBLISHEDのみFilterExpressionで絞り込み） [v1.12] | GSI2PK=ANNOUNCEMENT |
+| 36 | コミュニティ内ランキング（対象コミュニティ×種目の全メンバー対局データを一括取得。3.13参照） [v1.19] | GSI2PK=COMMUNITY#{communityId}#{gameType}, GSI2SK between {startDate}~{endDate} |
 
 ---
 
@@ -719,7 +733,7 @@ GSI2SK:  {createdAt}#{announcementId}
 | 本書のエンティティ | 対応する機能要件書 | 対応するAPI |
 |---|---|---|
 | User | F-001〜F-003 | 3.1, 3.2 |
-| Community / Membership | F-101, F-104〜F-106 | 4.1, 4.2, 4.5 |
+| Community / Membership | F-101, F-104〜F-106, F-806 [v1.19] | 4.1, 4.2, 4.5, 4.2e |
 | Invite / JoinRequest | F-102, F-103, F-104b, F-104c | 4.3, 4.4, 4.4b, 4.4c |
 | Availability | F-201〜F-204 | 5.1〜5.4 |
 | EventTemplate | F-301〜F-304 | 7.1, 7.2 |
@@ -729,6 +743,7 @@ GSI2SK:  {createdAt}#{announcementId}
 | Participant | F-502, F-502b, F-502c [v1.10], ダブルブッキング防止（Lambda設計書v1.6 7.2b） | 9.1, 8.3, 8.3b, 8.3c |
 | CancelRequest | F-601, F-602 | 9.2, 9.3 |
 | GameSession / GameResult | F-801〜F-804 | 10.1, 10.2 |
+| GameResult / GameResultChip（GSI2相乗り） [v1.19] | F-805 | 10.3 |
 | Notification | F-701, F-702 | 11.1, 11.2 |
 | OperationLog | F-1301, F-1302 | 12.1, 12.2 |
 | EventStatusHistory | 要件定義書14章 | （内部利用、API非公開） |
@@ -742,6 +757,7 @@ GSI2SK:  {createdAt}#{announcementId}
 ## 8. 未決事項・次の検討ポイント
 
 1. **F-603欠員補充（Phase2）のデータ構造**：候補検索結果の一時保存が必要になった場合、`SUBSTITUTE#{userId}`のようなSKを追加する形で拡張予定（実装段階で決定）
+1b. **GameResult/GameResultChipへのGSI2属性バックフィル** [v1.19]：デプロイ済み環境に既に対局データが存在する場合、`GSI2PK`/`GSI2SK`未設定の既存アイテムはランキング集計（アクセスパターン36）から漏れる。デプロイ環境ごとに既存データの有無を確認し、必要なら一度限りのバックフィルスクリプトを実行する（実装時に対応）
 2. **フロントエンド構成（SPA/SSR）確定後**、S3/CloudFrontのキャッシュ無効化パターンとAPIレスポンスの整合を再確認
 3. **信頼スコア・NG設定（Phase2）**：User配下に`TRUST#{communityId}`、`NG#{userId}#{targetUserId}`のような項目追加を想定。マッチング処理（F-403）のスコア計算関数を先に分離しておくと拡張がスムーズ
 4. **店舗展開時の権限マトリクス**：`STORE_ADMIN`／`STAFF`ロールの具体的な操作範囲は、STORE型コミュニティの機能要件が固まった段階で別途定義する（スキーマ上は対応済み）
@@ -931,3 +947,16 @@ GSI2SK:  {createdAt}#{announcementId}
 | No | 変更内容 | 理由 |
 |---|---|---|
 | 1 | 3.14 Notificationに`relatedCommunityId`（S、任意）を追加 | Issue #73：空き予定提出リクエスト（`AVAILABILITY_REQUEST`）通知は特定のイベントではなくコミュニティに紐づくため、既存の`relatedEventId`だけでは遷移先を表現できず、通知タップ後に画面遷移しない導線切れになっていた |
+
+---
+
+## 27. v1.18 → v1.19 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.2 Communityに`rankingDefaultGameType`/`rankingDefaultPeriodType`/`rankingDefaultMetric`/`rankingDefaultMinGames`（いずれも任意属性）を追加 | Issue #40：コミュニティ内ランキング機能で、管理者(OWNER/ADMIN)が設定するデフォルト表示条件を保持するため。`themeColor`と同じ「任意・未設定時はシステムデフォルトへフォールバック」方針 |
+| 2 | 3.13 GameResult/GameResultChipに`GSI2PK=COMMUNITY#{communityId}#{gameType}`/`GSI2SK={playedAt}`を追加。2章のGSI2説明にコミュニティ×種目単位の範囲クエリという用途拡張を追記 | Issue #40：コミュニティ内ランキング集計を、メンバー数分のQueryをループする方式ではなく1回のQueryで完結させるため。3.19 Feedback/3.20 Announcement（v1.12）で確立済みの「GSI2の役割拡張による相乗り」パターンを踏襲し、GSI本数を2本に保った（新規GSI3は追加しない） |
+| 3 | 4章アクセスパターン一覧にNo.36（コミュニティ内ランキング）を追加 | 上記2と同一の決定事項 |
+| 4 | 8章未決事項に、既存GameResult/GameResultChipへのGSI2属性バックフィルに関する検討事項を追加 | 属性追加前に登録済みのデータはGSI2経由のランキング集計から漏れるため、デプロイ環境ごとに既存データの有無を確認しバックフィルの要否を判断する必要がある |
+
+Issue #40「コミュニティ内ランキング表示機能の追加」に対応。

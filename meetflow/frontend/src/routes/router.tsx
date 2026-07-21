@@ -14,6 +14,7 @@ import { CommunityCreatePage } from "@/features/community/CommunityCreatePage";
 import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
 import { DisplayNameEditPage } from "@/features/community/DisplayNameEditPage";
 import { AutoApproveEditPage } from "@/features/community/AutoApproveEditPage";
+import { RankingSettingsEditPage } from "@/features/community/RankingSettingsEditPage";
 import { FrequencyLimitEditPage } from "@/features/community/FrequencyLimitEditPage";
 import { CommunityProfileEditPage } from "@/features/community/CommunityProfileEditPage";
 import { InvitePage } from "@/features/community/InvitePage";
@@ -36,6 +37,7 @@ import { CancelRequestCreatePage } from "@/features/event/CancelRequestCreatePag
 import { CancelRequestListPage } from "@/features/event/CancelRequestListPage";
 import { ResultSessionCreatePage } from "@/features/result/ResultSessionCreatePage";
 import { ResultSummaryPage } from "@/features/result/ResultSummaryPage";
+import { RankingPage } from "@/features/result/RankingPage";
 import { NotificationListPage } from "@/features/notification/NotificationListPage";
 import { FeedbackFormPage } from "@/features/feedback/FeedbackFormPage";
 import { FeedbackAdminPage } from "@/features/feedback/FeedbackAdminPage";
@@ -142,6 +144,11 @@ export const router = createBrowserRouter([
         handle: { title: "参加頻度上限を変更" },
       },
       {
+        path: "/communities/:communityId/ranking-settings",
+        element: <RankingSettingsEditPage />,
+        handle: { title: "ランキング設定を変更" },
+      },
+      {
         path: "/communities/:communityId/availability/new",
         element: <AvailabilityCalendarPage />,
         handle: { title: "空き予定登録" },
@@ -230,6 +237,11 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/results/:userId",
         element: <ResultSummaryPage />,
         handle: { title: "成績" },
+      },
+      {
+        path: "/communities/:communityId/ranking",
+        element: <RankingPage />,
+        handle: { title: "ランキング" },
       },
       {
         path: "/feedback",
