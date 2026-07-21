@@ -45,7 +45,6 @@ export function CandidateCard({
             {candidate.members.map((member) => (
               <Badge key={member.userId} variant="secondary">
                 {member.nickname}
-                {member.fairnessCount > 0 && `（候補止まり${member.fairnessCount}回）`}
               </Badge>
             ))}
           </div>
