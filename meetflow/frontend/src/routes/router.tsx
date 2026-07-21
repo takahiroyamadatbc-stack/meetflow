@@ -11,6 +11,7 @@ import { HomePage } from "@/features/home/HomePage";
 import { MyPage } from "@/features/user/MyPage";
 import { ProfileEditPage } from "@/features/user/ProfileEditPage";
 import { PasswordChangePage } from "@/features/user/PasswordChangePage";
+import { AccountDeletePage } from "@/features/user/AccountDeletePage";
 import { CommunityListPage } from "@/features/community/CommunityListPage";
 import { CommunityCreatePage } from "@/features/community/CommunityCreatePage";
 import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
@@ -187,6 +188,11 @@ export const router = createBrowserRouter([
         path: "/mypage/password",
         element: <PasswordChangePage />,
         handle: { title: "パスワードを変更" },
+      },
+      {
+        path: "/mypage/delete-account",
+        element: <AccountDeletePage />,
+        handle: { title: "アカウント削除" },
       },
       {
         path: "/communities/:communityId/event-templates",

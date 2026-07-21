@@ -1,10 +1,18 @@
 import os
+from unittest.mock import MagicMock, patch
 
 import boto3
 
 import handler
 
-from _factories import api_event, body_of, cognito_post_confirmation_event, put_profile
+from _factories import (
+    api_event,
+    body_of,
+    cognito_post_confirmation_event,
+    put_membership,
+    put_profile,
+    put_reserved_participant,
+)
 
 
 def test_get_profile_success(table):
@@ -332,3 +340,73 @@ def test_post_confirmation_is_idempotent_on_cognito_retry(table):
 
     item = table.get_item(Key={"PK": "USER#user-1", "SK": "PROFILE"})["Item"]
     assert item["nickname"] == "たろう"
+
+
+def test_delete_account_success(table):
+    put_profile(table, "user-1")
+
+    with patch.object(handler, "_get_cognito_client") as mock_get_client:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        response = handler._delete_account("user-1")
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["deleted"] is True
+    mock_client.admin_delete_user.assert_called_once_with(
+        UserPoolId="ap-northeast-1_testpool", Username="user-1"
+    )
+    assert table.get_item(Key={"PK": "USER#user-1", "SK": "PROFILE"}).get("Item") is None
+
+
+def test_delete_account_leaves_all_non_owner_communities(table):
+    put_profile(table, "user-1")
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_membership(table, "community-2", "user-1", role="ADMIN")
+
+    with patch.object(handler, "_get_cognito_client") as mock_get_client:
+        mock_get_client.return_value = MagicMock()
+        response = handler._delete_account("user-1")
+
+    assert response["statusCode"] == 200
+    for community_id in ("community-1", "community-2"):
+        membership = table.get_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": "MEMBER#user-1"}
+        ).get("Item")
+        assert membership is None
+
+
+def test_delete_account_blocks_if_owner(table):
+    put_profile(table, "user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    with patch.object(handler, "_get_cognito_client") as mock_get_client:
+        response = handler._delete_account("user-1")
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "LAST_OWNER_CANNOT_LEAVE"
+    mock_get_client.assert_not_called()
+    assert table.get_item(Key={"PK": "USER#user-1", "SK": "PROFILE"}).get("Item") is not None
+    assert (
+        table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-1"}).get("Item")
+        is not None
+    )
+
+
+def test_delete_account_blocks_if_upcoming_reserved_participation(table):
+    put_profile(table, "user-1")
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_reserved_participant(
+        table, "community-1", "user-1", start_time="2099-01-01T10:00:00.000Z"
+    )
+
+    with patch.object(handler, "_get_cognito_client") as mock_get_client:
+        response = handler._delete_account("user-1")
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "MEMBER_HAS_UPCOMING_EVENTS"
+    mock_get_client.assert_not_called()
+    assert (
+        table.get_item(Key={"PK": "COMMUNITY#community-1", "SK": "MEMBER#user-1"}).get("Item")
+        is not None
+    )

@@ -43,5 +43,47 @@ def put_profile(table, user_id, *, nickname="ぷれいやー", icon=""):
     )
 
 
+def put_membership(table, community_id, user_id, *, role="MEMBER", status="ACTIVE"):
+    table.put_item(
+        Item={
+            "PK": f"COMMUNITY#{community_id}",
+            "SK": f"MEMBER#{user_id}",
+            "GSI1PK": f"USER#{user_id}",
+            "GSI1SK": f"COMMUNITY#{community_id}",
+            "role": role,
+            "status": status,
+            "joinedAt": now_iso_ms(),
+        }
+    )
+
+
+def put_reserved_participant(
+    table, community_id, user_id, *, event_id="event-1", start_time, status="CONFIRMED"
+):
+    """Issue #82のアカウント削除テスト用: あるコミュニティのイベントに
+    予約済み(CONFIRMED/AWAITING_APPROVAL)なParticipant行を投入し、
+    has_upcoming_reserved_participation()のハードチェックを発火させる。
+    """
+    table.put_item(
+        Item={
+            "PK": f"EVENT#{event_id}",
+            "SK": "METADATA",
+            "GSI1PK": f"COMMUNITY#{community_id}",
+            "status": "CONFIRMED",
+            "startTime": start_time,
+        }
+    )
+    table.put_item(
+        Item={
+            "PK": f"EVENT#{event_id}",
+            "SK": f"PARTICIPANT#{user_id}",
+            "GSI1PK": f"USER#{user_id}",
+            "GSI1SK": f"PARTICIPANT#{start_time}#{event_id}",
+            "status": status,
+            "startTime": start_time,
+        }
+    )
+
+
 def body_of(response):
     return json.loads(response["body"])

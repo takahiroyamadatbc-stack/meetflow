@@ -93,7 +93,7 @@ class MeetFlowComputeStack(Stack):
         # 追加コストに見合わないと判断した。
         self.avatar_bucket, self.avatar_distribution = self._build_avatar_bucket()
 
-        self.user_lambda = self._build_user_lambda()
+        self.user_lambda = self._build_user_lambda(user_pool)
         self._grant_cognito_invoke(user_pool)
 
         self.community_lambda = self._build_community_lambda()
@@ -189,7 +189,7 @@ class MeetFlowComputeStack(Stack):
         )
         return avatar_bucket, avatar_distribution
 
-    def _build_user_lambda(self) -> lambda_.Function:
+    def _build_user_lambda(self, user_pool: cognito.IUserPool) -> lambda_.Function:
         avatar_bucket = self.avatar_bucket
         avatar_distribution = self.avatar_distribution
 
@@ -205,6 +205,8 @@ class MeetFlowComputeStack(Stack):
             extra_environment={
                 "AVATAR_BUCKET_NAME": avatar_bucket.bucket_name,
                 "AVATAR_CLOUDFRONT_DOMAIN": avatar_distribution.domain_name,
+                # Issue #82: アカウント削除(AdminDeleteUser)用。
+                "USER_POOL_ID": user_pool.user_pool_id,
             },
         )
 
@@ -215,11 +217,19 @@ class MeetFlowComputeStack(Stack):
         # フェデレーテッド/Cognito Identity Pool認証情報によるID単位の
         # アクセスに使われる) -- Lambda実行ロールに対して"PK begins_with
         # USER#"という条件を表現することはできない。そのため、ここで
-        # 強制可能なIAM境界はaction単位(DeleteItem/Query/Scanは許可しない)
-        # に留まり、設計書が記述するPKプレフィックスによる分離は、IAMでは
-        # なくこのLambda自身のコードによって強制される。
+        # 強制可能なIAM境界はaction単位に留まり、設計書が記述するPK
+        # プレフィックスによる分離は、IAMではなくこのLambda自身のコードに
+        # よって強制される。
+        # Issue #82: アカウント削除で、自分の所属コミュニティ横断検索
+        # (Query、GSI1)と、Membership/Profile行の削除(DeleteItem)が
+        # 新たに必要になったため追加。
         self.table.grant(
-            fn, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"
+            fn,
+            "dynamodb:GetItem",
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem",
+            "dynamodb:DeleteItem",
+            "dynamodb:Query",
         )
         if self.table.encryption_key:
             self.table.encryption_key.grant_encrypt_decrypt(fn)
@@ -231,6 +241,15 @@ class MeetFlowComputeStack(Stack):
         # grant_deleteも付与する。
         avatar_bucket.grant_put(fn)
         avatar_bucket.grant_delete(fn)
+
+        # Issue #82: アカウント削除時、Cognitoユーザー自体をAdminDeleteUser
+        # で削除する。このUser Poolに対してのみスコープする。
+        fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["cognito-idp:AdminDeleteUser"],
+                resources=[user_pool.user_pool_arn],
+            )
+        )
 
         CfnOutput(
             self,

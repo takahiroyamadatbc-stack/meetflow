@@ -56,6 +56,7 @@ export const paths = {
   myPage: "/mypage",
   profileEdit: "/mypage/profile",
   passwordChange: "/mypage/password",
+  accountDelete: "/mypage/delete-account",
 
   feedbackNew: "/feedback",
   feedbackAdmin: "/feedback/admin",
