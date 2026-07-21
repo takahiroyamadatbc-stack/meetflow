@@ -39,6 +39,7 @@ import {
   listParticipants,
   rejectParticipation,
   removeParticipant,
+  reopenEvent,
   updateEventMemo,
 } from "@/features/event/api";
 import { EVENT_STATUS_LABELS, PARTICIPANT_STATUS_LABELS } from "@/features/event/types";
@@ -59,6 +60,7 @@ export function EventDetailPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [showReopenConfirm, setShowReopenConfirm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [newMemberId, setNewMemberId] = useState("");
   const [removeTargetUserId, setRemoveTargetUserId] = useState<string | null>(null);
@@ -158,6 +160,16 @@ export function EventDetailPage() {
     },
     onError: handleApiError,
     onSettled: () => setShowCompleteConfirm(false),
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: () => reopenEvent(eventId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId!) });
+      toast.success("イベントを開催予定に戻しました");
+    },
+    onError: handleApiError,
+    onSettled: () => setShowReopenConfirm(false),
   });
 
   const approveParticipationMutation = useMutation({
@@ -493,6 +505,16 @@ export function EventDetailPage() {
         </>
       )}
 
+      {event.status === "COMPLETED" && isAdmin && (
+        <Button
+          variant="outline"
+          onClick={() => setShowReopenConfirm(true)}
+          disabled={reopenMutation.isPending}
+        >
+          開催予定に戻す
+        </Button>
+      )}
+
       {canManageResults && (
         <Card>
           <CardContent className="flex flex-col gap-2">
@@ -539,6 +561,23 @@ export function EventDetailPage() {
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction onClick={() => completeMutation.mutate()}>
               終了する
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReopenConfirm} onOpenChange={setShowReopenConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>このイベントを開催予定に戻しますか？</AlertDialogTitle>
+          </AlertDialogHeader>
+          <p className="text-muted-foreground px-4 text-sm">
+            誤って「本日の対局を終了する」を押してしまった場合の取り消し用です。登録済みの成績はそのまま残ります。
+          </p>
+          <div className="flex justify-end gap-2 px-4 pb-4">
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => reopenMutation.mutate()}>
+              開催予定に戻す
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
