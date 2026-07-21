@@ -3,6 +3,7 @@ export const paths = {
   login: "/login",
   signup: "/signup",
   signupConfirm: "/signup/confirm",
+  passwordReset: "/password-reset",
   inviteAccept: (token: string) => `/invite/${token}`,
 
   home: "/",
@@ -54,6 +55,7 @@ export const paths = {
 
   myPage: "/mypage",
   profileEdit: "/mypage/profile",
+  passwordChange: "/mypage/password",
 
   feedbackNew: "/feedback",
   feedbackAdmin: "/feedback/admin",

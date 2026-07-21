@@ -108,6 +108,12 @@ export function LoginPage() {
                   </FormItem>
                 )}
               />
+              <Link
+                to={paths.passwordReset}
+                className="text-primary -mt-2 text-right text-sm underline underline-offset-4"
+              >
+                パスワードをお忘れですか？
+              </Link>
               {submitError && <p className="text-destructive text-sm">{submitError}</p>}
               <Button type="submit" disabled={form.formState.isSubmitting}>
                 ログイン

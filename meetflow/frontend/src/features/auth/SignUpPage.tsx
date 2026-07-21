@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { resendSignUpConfirmationCode, signUpUser } from "@/features/auth/api";
+import { passwordSchema } from "@/features/auth/passwordSchema";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -23,12 +24,7 @@ const signUpSchema = z
   .object({
     nickname: z.string().min(1, "ニックネームを入力してください").max(30, "30文字以内で入力してください"),
     email: z.string().min(1, "メールアドレスを入力してください").email("メールアドレスの形式が正しくありません"),
-    password: z
-      .string()
-      .min(8, "8文字以上で入力してください")
-      .regex(/[a-z]/, "小文字を含めてください")
-      .regex(/[A-Z]/, "大文字を含めてください")
-      .regex(/[0-9]/, "数字を含めてください"),
+    password: passwordSchema,
     confirmPassword: z.string().min(1, "確認用パスワードを入力してください"),
   })
   .refine((data) => data.password === data.confirmPassword, {
