@@ -14,6 +14,7 @@ from _factories import (
     put_community,
     put_confirmed_participant,
     put_event_status,
+    put_event_template,
     put_membership,
     put_place,
     put_profile,
@@ -150,6 +151,100 @@ def test_confirm_event_success(table):
             Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}
         )["Item"]
         assert participant["status"] == "AWAITING_APPROVAL"
+
+
+def test_confirm_event_with_selected_member_ids_only_confirms_selection(table):
+    """Issue #79: `memberIds`を指定した場合、候補メンバー全員ではなく選択
+    されたメンバーのみがParticipantになる。
+    """
+    put_event_template(table, "community-1", "template-1", min_players=2, max_players=4)
+    event_id = _create_pending_event(table)
+
+    response = events.confirm_event(
+        "user-1",
+        api_event(
+            path_params={"eventId": event_id},
+            body={"memberIds": ["user-1", "user-2"]},
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    for uid in ("user-1", "user-2"):
+        participant = table.get_item(
+            Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}
+        )["Item"]
+        assert participant["status"] == "AWAITING_APPROVAL"
+    for uid in ("user-3", "user-4"):
+        assert (
+            table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{uid}"}).get(
+                "Item"
+            )
+            is None
+        )
+
+
+def test_confirm_event_selected_member_ids_not_in_candidate_rejected(table):
+    put_event_template(table, "community-1", "template-1", min_players=2, max_players=4)
+    event_id = _create_pending_event(table)
+
+    response = events.confirm_event(
+        "user-1",
+        api_event(
+            path_params={"eventId": event_id},
+            body={"memberIds": ["user-1", "someone-else"]},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_confirm_event_selected_member_ids_below_min_players_rejected(table):
+    put_event_template(table, "community-1", "template-1", min_players=3, max_players=4)
+    event_id = _create_pending_event(table)
+
+    response = events.confirm_event(
+        "user-1",
+        api_event(
+            path_params={"eventId": event_id},
+            body={"memberIds": ["user-1", "user-2"]},
+        ),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_confirm_event_selected_member_ids_empty_list_rejected(table):
+    event_id = _create_pending_event(table)
+
+    response = events.confirm_event(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"memberIds": []}),
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_confirm_event_manual_candidate_allows_any_selected_count(table):
+    """Issue #79: 手動作成候補(templateId無し)にはminPlayersが無いため、
+    1人以上選択されていれば下限チェックは行わない。
+    """
+    event_id = _create_pending_event(table, template_id=None)
+
+    response = events.confirm_event(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"memberIds": ["user-1"]}),
+    )
+
+    assert response["statusCode"] == 200
+    assert (
+        table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "PARTICIPANT#user-1"})["Item"][
+            "status"
+        ]
+        == "CONFIRMED"
+    )
 
 
 def test_confirm_event_manual_candidate_skips_approval_flow(table):

@@ -111,6 +111,20 @@ def put_candidate(
     return start_time, end_time
 
 
+def put_event_template(table, community_id, template_id, *, min_players=2, max_players=4):
+    table.put_item(
+        Item={
+            "PK": f"COMMUNITY#{community_id}",
+            "SK": f"TEMPLATE#{template_id}",
+            "gameType": "MAHJONG4",
+            "minPlayers": min_players,
+            "maxPlayers": max_players,
+            "priority": 1,
+            "createdAt": now_iso_ms(),
+        }
+    )
+
+
 def put_event_status(table, event_id, status):
     """Directly overrides an already-created Event's status -- for states
     (e.g. COMPLETED) that no handler in this domain can produce yet."""
