@@ -244,3 +244,60 @@ def test_get_feedback_stats_aggregates(table):
     assert data["byCategory"] == {"BUG": 2}
     assert data["byStatus"] == {"UNHANDLED": 2}
     assert data["byPriority"] == {"LOW": 2}
+    assert data["quickStats"] == {"period": "WEEK", "buckets": []}
+
+
+def test_get_feedback_stats_quick_stats_groups_by_week_feature_and_rating(table):
+    # 文字列ベースのpatch("handlers.feedback.now_iso_ms")はpytestが全ドメインを
+    # まとめて収集・実行する下ではsys.modules['handlers']が別ドメインのものに
+    # 上書きされた後に再解決されうるため使わない(CLAUDE.md記載の既知の罠)。
+    # 既にimport済みのモジュールオブジェクトを経由してpatch.objectする。
+    with patch.object(
+        feedback,
+        "now_iso_ms",
+        side_effect=[
+            "2026-07-06T10:00:00.000Z",  # 2026-07-06(月)週
+            "2026-07-08T10:00:00.000Z",  # 同じ週の別の日
+            "2026-07-14T10:00:00.000Z",  # 翌週(2026-07-13(月)週)
+        ],
+    ):
+        feedback.create_feedback(
+            "user-1",
+            api_event(
+                body={"kind": "QUICK", "relatedFeature": "MATCHING", "rating": "GOOD"}
+            ),
+        )
+        feedback.create_feedback(
+            "user-2",
+            api_event(
+                body={"kind": "QUICK", "relatedFeature": "MATCHING", "rating": "BAD"}
+            ),
+        )
+        feedback.create_feedback(
+            "user-3",
+            api_event(
+                body={"kind": "QUICK", "relatedFeature": "EVENT_DETAIL", "rating": "GOOD"}
+            ),
+        )
+
+    resp = feedback.get_feedback_stats(
+        "op-1", api_event(groups=["Operators"], query={"period": "WEEK"})
+    )
+    data = body_of(resp)["data"]
+    buckets = data["quickStats"]["buckets"]
+    assert data["quickStats"]["period"] == "WEEK"
+    assert [b["bucketStart"] for b in buckets] == ["2026-07-06", "2026-07-13"]
+    assert buckets[0]["byFeatureRating"] == {
+        "MATCHING": {"GOOD": 1, "BAD": 1},
+    }
+    assert buckets[1]["byFeatureRating"] == {
+        "EVENT_DETAIL": {"GOOD": 1},
+    }
+
+
+def test_get_feedback_stats_rejects_invalid_period(table):
+    resp = feedback.get_feedback_stats(
+        "op-1", api_event(groups=["Operators"], query={"period": "DAY"})
+    )
+    assert resp["statusCode"] == 400
+    assert body_of(resp)["error"]["code"] == "FEEDBACK_VALIDATION_ERROR"

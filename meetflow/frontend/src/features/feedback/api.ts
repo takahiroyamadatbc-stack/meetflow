@@ -4,13 +4,14 @@ import type {
   FeedbackItem,
   FeedbackRating,
   FeedbackStats,
+  QuickStatsPeriod,
 } from "@/features/feedback/types";
 
 export const feedbackKeys = {
   all: ["feedback"] as const,
   list: (filters: FeedbackListFilters) => ["feedback", "list", filters] as const,
   detail: (feedbackId: string) => ["feedback", "detail", feedbackId] as const,
-  stats: ["feedback", "stats"] as const,
+  stats: (period: QuickStatsPeriod) => ["feedback", "stats", period] as const,
 };
 
 type CreateQuickFeedbackInput = {
@@ -91,7 +92,7 @@ export function updateFeedback(
   );
 }
 
-/** GET /feedback/stats（運営者限定、F-1405） */
-export function getFeedbackStats() {
-  return apiClient.get<FeedbackStats>("/feedback/stats");
+/** GET /feedback/stats（運営者限定、F-1405）。periodはQUICK評価の集計粒度（Issue #85） */
+export function getFeedbackStats(period: QuickStatsPeriod = "WEEK") {
+  return apiClient.get<FeedbackStats>(`/feedback/stats?period=${period}`);
 }
