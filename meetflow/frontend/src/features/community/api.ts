@@ -242,3 +242,13 @@ export function listPlaces(communityId: string) {
 export function createPlace(communityId: string, input: CreatePlaceInput) {
   return apiClient.post<Place>(`/communities/${communityId}/locations`, input);
 }
+
+/** PUT /communities/{communityId}/locations/{placeId} */
+export function updatePlace(communityId: string, placeId: string, input: CreatePlaceInput) {
+  return apiClient.put<Place>(`/communities/${communityId}/locations/${placeId}`, input);
+}
+
+/** DELETE /communities/{communityId}/locations/{placeId} */
+export function deletePlace(communityId: string, placeId: string) {
+  return apiClient.delete(`/communities/${communityId}/locations/${placeId}`);
+}

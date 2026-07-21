@@ -56,6 +56,14 @@ _ROUTES = {
     ): join_requests.reject_join_request,
     ("GET", "/communities/{communityId}/locations"): places.list_places,
     ("POST", "/communities/{communityId}/locations"): places.create_place,
+    (
+        "PUT",
+        "/communities/{communityId}/locations/{placeId}",
+    ): places.update_place,
+    (
+        "DELETE",
+        "/communities/{communityId}/locations/{placeId}",
+    ): places.delete_place,
     ("GET", "/communities/{communityId}/logs"): logs.list_community_logs,
     # URLパスは/users/だが、権限判定がコミュニティのMembership/roleに依存する
     # ためCommunityLambdaが担当する（handlers/logs.pyのget_user_logs docstring参照）。

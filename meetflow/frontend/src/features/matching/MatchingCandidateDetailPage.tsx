@@ -20,8 +20,24 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { communityKeys, createPlace, listPlaces } from "@/features/community/api";
+import {
+  communityKeys,
+  createPlace,
+  deletePlace,
+  getCommunity,
+  listPlaces,
+  updatePlace,
+} from "@/features/community/api";
+import type { Place } from "@/features/community/types";
 import { getCandidateDetail, matchingKeys } from "@/features/matching/api";
 import { createEvent } from "@/features/event/api";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
@@ -47,12 +63,21 @@ export function MatchingCandidateDetailPage() {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [locationNote, setLocationNote] = useState("");
   const [showNewPlaceForm, setShowNewPlaceForm] = useState(false);
+  const [editingPlace, setEditingPlace] = useState<Place | null>(null);
+  const [deleteTargetPlaceId, setDeleteTargetPlaceId] = useState<string | null>(null);
 
   const { data: candidate, isLoading } = useQuery({
     queryKey: matchingKeys.candidateDetail(candidateId!),
     queryFn: () => getCandidateDetail(candidateId!),
     enabled: !!candidateId,
   });
+
+  const { data: community } = useQuery({
+    queryKey: communityKeys.detail(communityId!),
+    queryFn: () => getCommunity(communityId!),
+    enabled: !!communityId,
+  });
+  const isAdmin = community?.role === "OWNER" || community?.role === "ADMIN";
 
   const { data: places } = useQuery({
     queryKey: communityKeys.places(communityId!),
@@ -61,6 +86,11 @@ export function MatchingCandidateDetailPage() {
   });
 
   const placeForm = useForm<PlaceFormValues>({
+    resolver: zodResolver(placeSchema),
+    defaultValues: { name: "", address: "", note: "" },
+  });
+
+  const editPlaceForm = useForm<PlaceFormValues>({
     resolver: zodResolver(placeSchema),
     defaultValues: { name: "", address: "", note: "" },
   });
@@ -74,6 +104,30 @@ export function MatchingCandidateDetailPage() {
       toast.success("会場を登録しました");
     },
     onError: handleApiError,
+  });
+
+  const updatePlaceMutation = useMutation({
+    mutationFn: (values: PlaceFormValues) =>
+      updatePlace(communityId!, editingPlace!.placeId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.places(communityId!) });
+      setEditingPlace(null);
+      toast.success("会場を更新しました");
+    },
+    onError: handleApiError,
+  });
+
+  const deletePlaceMutation = useMutation({
+    mutationFn: (placeId: string) => deletePlace(communityId!, placeId),
+    onSuccess: (_, placeId) => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.places(communityId!) });
+      if (selectedPlaceId === placeId) {
+        setSelectedPlaceId(null);
+      }
+      toast.success("会場を削除しました");
+    },
+    onError: handleApiError,
+    onSettled: () => setDeleteTargetPlaceId(null),
   });
 
   const createEventMutation = useMutation({
@@ -163,19 +217,139 @@ export function MatchingCandidateDetailPage() {
       <div className="flex flex-col gap-4 p-4">
         <p className="text-sm font-medium">会場を選択してください</p>
         <div className="flex flex-col gap-2">
-          {(places ?? []).map((place) => (
-            <Card
-              key={place.placeId}
-              className={selectedPlaceId === place.placeId ? "border-primary" : undefined}
-              onClick={() => setSelectedPlaceId(place.placeId)}
-            >
-              <CardContent>
-                <p className="text-sm font-medium">{place.name}</p>
-                {place.note && <p className="text-muted-foreground text-xs">{place.note}</p>}
-              </CardContent>
-            </Card>
-          ))}
+          {(places ?? []).map((place) =>
+            editingPlace?.placeId === place.placeId ? (
+              <Card key={place.placeId}>
+                <CardContent>
+                  <Form {...editPlaceForm}>
+                    <form
+                      onSubmit={editPlaceForm.handleSubmit((values) =>
+                        updatePlaceMutation.mutate(values)
+                      )}
+                      className="grid gap-3"
+                    >
+                      <FormField
+                        control={editPlaceForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>会場名</FormLabel>
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={editPlaceForm.control}
+                        name="address"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>住所（任意）</FormLabel>
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={editPlaceForm.control}
+                        name="note"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>補足（任意）</FormLabel>
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="flex gap-2">
+                        <Button type="submit" size="sm" disabled={updatePlaceMutation.isPending}>
+                          保存する
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingPlace(null)}
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card
+                key={place.placeId}
+                className={selectedPlaceId === place.placeId ? "border-primary" : undefined}
+                onClick={() => setSelectedPlaceId(place.placeId)}
+              >
+                <CardContent className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">{place.name}</p>
+                    {place.note && <p className="text-muted-foreground text-xs">{place.note}</p>}
+                  </div>
+                  {isAdmin && (
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPlace(place);
+                          editPlaceForm.reset({
+                            name: place.name,
+                            address: place.address,
+                            note: place.note,
+                          });
+                        }}
+                      >
+                        編集
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTargetPlaceId(place.placeId);
+                        }}
+                      >
+                        削除
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          )}
         </div>
+
+        <AlertDialog
+          open={deleteTargetPlaceId !== null}
+          onOpenChange={(open) => !open && setDeleteTargetPlaceId(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>この会場を削除しますか？</AlertDialogTitle>
+            </AlertDialogHeader>
+            <div className="flex justify-end gap-2 px-4 pb-4">
+              <AlertDialogCancel>キャンセル</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteTargetPlaceId && deletePlaceMutation.mutate(deleteTargetPlaceId)}
+              >
+                削除する
+              </AlertDialogAction>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {showNewPlaceForm ? (
           <Form {...placeForm}>

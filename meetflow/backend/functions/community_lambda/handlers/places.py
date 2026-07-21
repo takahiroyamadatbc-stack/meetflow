@@ -68,6 +68,111 @@ def create_place(user_id, event):
     return success_response(_to_api_place(item), status_code=201)
 
 
+def update_place(user_id, event):
+    """PUT /communities/{communityId}/locations/{placeId}（Issue #86）。
+    権限は登録（create_place）と同じくOWNER/ADMIN限定。"""
+    community_id = event["pathParameters"]["communityId"]
+    place_id = event["pathParameters"]["placeId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    place = _get_place_in_community(table, community_id, place_id)
+    if place is None:
+        return error_response("LOCATION_NOT_FOUND", "会場が見つかりません")
+
+    body = parse_body(event)
+    names = {}
+    values = {}
+    set_clauses = []
+
+    if "name" in body:
+        name = body["name"]
+        if not isinstance(name, str) or not (1 <= len(name) <= _MAX_NAME_LENGTH):
+            return error_response("INVALID_PARAMETER", "会場名が不正です")
+        names["#name"] = "name"
+        values[":name"] = name
+        set_clauses.append("#name = :name")
+    if "address" in body:
+        names["#address"] = "address"
+        values[":address"] = body["address"]
+        set_clauses.append("#address = :address")
+    if "note" in body:
+        names["#note"] = "note"
+        values[":note"] = body["note"]
+        set_clauses.append("#note = :note")
+
+    if not set_clauses:
+        return error_response("INVALID_PARAMETER", "更新する項目がありません")
+
+    resp = table.update_item(
+        Key={"PK": f"PLACE#{place_id}", "SK": "METADATA"},
+        UpdateExpression="SET " + ", ".join(set_clauses),
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues=values,
+        ReturnValues="ALL_NEW",
+    )
+    write_operation_log(
+        action="UPDATE_PLACE",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Place",
+        target_id=place_id,
+    )
+    return success_response(_to_api_place(resp["Attributes"]))
+
+
+def delete_place(user_id, event):
+    """DELETE /communities/{communityId}/locations/{placeId}（Issue #86）。
+    権限はOWNER/ADMIN限定。中止・完了以外のステータスのイベントで使用中の
+    会場は削除できない（過去の利用履歴は削除の妨げにしない）。"""
+    community_id = event["pathParameters"]["communityId"]
+    place_id = event["pathParameters"]["placeId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    place = _get_place_in_community(table, community_id, place_id)
+    if place is None:
+        return error_response("LOCATION_NOT_FOUND", "会場が見つかりません")
+
+    if _is_place_in_use(table, community_id, place_id):
+        return error_response(
+            "LOCATION_IN_USE", "開催予定のイベントで使用中の会場は削除できません"
+        )
+
+    table.delete_item(Key={"PK": f"PLACE#{place_id}", "SK": "METADATA"})
+    write_operation_log(
+        action="DELETE_PLACE",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Place",
+        target_id=place_id,
+    )
+    return success_response({"placeId": place_id})
+
+
+def _get_place_in_community(table, community_id, place_id):
+    place = table.get_item(Key={"PK": f"PLACE#{place_id}", "SK": "METADATA"}).get("Item")
+    if place is None or place.get("ownerId") != community_id:
+        return None
+    return place
+
+
+_INACTIVE_EVENT_STATUSES = ("CANCELLED", "COMPLETED")
+
+
+def _is_place_in_use(table, community_id, place_id):
+    resp = table.query(
+        IndexName="GSI1",
+        KeyConditionExpression=Key("GSI1PK").eq(f"COMMUNITY#{community_id}")
+        & Key("GSI1SK").begins_with("EVENT#"),
+    )
+    return any(
+        item.get("locationId") == place_id
+        and item.get("status") not in _INACTIVE_EVENT_STATUSES
+        for item in resp.get("Items", [])
+    )
+
+
 def _to_api_place(item):
     return {
         "placeId": item["PK"].split("#", 1)[1],

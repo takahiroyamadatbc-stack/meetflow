@@ -1,6 +1,6 @@
-# MeetFlow エラーコード一覧 v1.11
+# MeetFlow エラーコード一覧 v1.12
 
-> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。v1.5→v1.6はAPI設計書v1.12で追加された参加承認・辞退のエンドポイントを踏まえて更新。v1.6→v1.7はAPI設計書v1.13で招待URL発行・無効化の権限が変更されたこと（Issue #22）を踏まえて更新。v1.7→v1.8はAPI設計書v1.16で追加されたメンバー自主退会のエンドポイントを踏まえて更新。v1.8→v1.9はAPI設計書v1.17で追加されたFeedback/Announcement APIを踏まえて更新。v1.9→v1.10はAPI設計書v1.18で追加された「本日の対局を終了する」エンドポイントを踏まえて更新。v1.10→v1.11はAPI設計書v1.25で追加されたコミュニティ内ランキング関連エンドポイントを踏まえて更新（新規コード追加なし、既存コードの流用方針を明記）。
+> 機能要件書v1.1 6章（共通エラー4種）を土台に、API設計書v1.2の各エンドポイントで発生しうるドメイン固有エラーを洗い出したもの。v1.1→v1.2はAPI設計書v1.5で追加された空き予定提出リクエスト・プッシュ通知購読のエンドポイントを踏まえて更新。v1.2→v1.3はAPI設計書v1.7で追加されたコミュニティ表示名設定のエンドポイントを踏まえて更新。v1.3→v1.4はAPI設計書v1.8で追加された招待URL無効化のエンドポイントを踏まえて更新。v1.4→v1.5はAPI設計書v1.11で追加された参加頻度上限設定のエンドポイントを踏まえて更新。v1.5→v1.6はAPI設計書v1.12で追加された参加承認・辞退のエンドポイントを踏まえて更新。v1.6→v1.7はAPI設計書v1.13で招待URL発行・無効化の権限が変更されたこと（Issue #22）を踏まえて更新。v1.7→v1.8はAPI設計書v1.16で追加されたメンバー自主退会のエンドポイントを踏まえて更新。v1.8→v1.9はAPI設計書v1.17で追加されたFeedback/Announcement APIを踏まえて更新。v1.9→v1.10はAPI設計書v1.18で追加された「本日の対局を終了する」エンドポイントを踏まえて更新。v1.10→v1.11はAPI設計書v1.25で追加されたコミュニティ内ランキング関連エンドポイントを踏まえて更新（新規コード追加なし、既存コードの流用方針を明記）。v1.11→v1.12はAPI設計書v1.26で追加された会場（Place）更新・削除エンドポイントを踏まえて更新。
 > レスポンス形式はAPI設計書v1.2 2章に準拠：
 
 ```json
@@ -49,7 +49,8 @@
 | `JOIN_REQUEST_ALREADY_PROCESSED` | 409 | 既に承認/却下済みの参加リクエストを再処理しようとした（二重承認防止） | 同上 |
 | `LAST_OWNER_CANNOT_LEAVE` | 409 | コミュニティに1人しかいないOWNERが退出・降格しようとした | `PUT /communities/{id}/members/{userId}`, `POST .../owner-transfer` |
 | `MEMBER_SUSPENDED` | 403 | 一時停止中のメンバーによる操作 | 全メンバー操作系API |
-| `LOCATION_NOT_FOUND` | 404 | 指定した会場（Place）が存在しない | `POST /events`（locationId指定時）, `GET/POST /communities/{id}/locations` |
+| `LOCATION_NOT_FOUND` | 404 | 指定した会場（Place）が存在しない | `POST /events`（locationId指定時）, `GET/POST /communities/{id}/locations`, `PUT/DELETE /communities/{id}/locations/{placeId}`（[v1.12追加]） |
+| `LOCATION_IN_USE` **[v1.12新規]** | 409 | 中止・完了以外のステータスのイベントで使用中の会場を削除しようとした | `DELETE /communities/{id}/locations/{placeId}` |
 | `DISPLAY_NAME_ALREADY_TAKEN` **[v1.3新規]** | 409 | 同一コミュニティ内で実効表示名（設定済みdisplayName、または未設定メンバーのUser.nickname）が重複している | `PUT /communities/{id}/members/me/display-name` |
 | `FREQUENCY_LIMIT_VALIDATION_ERROR` **[v1.5新規]** | 400 | 参加頻度上限のコミュニティ単位上書き設定で、`frequencyLimitCount`/`frequencyLimitPeriod`の片方のみを指定した等の不正 | `PUT /communities/{id}/members/me/frequency-limit` |
 | `MEMBER_HAS_UPCOMING_EVENTS` **[v1.8新規]** | 409 | 対象メンバーが、そのコミュニティ発のイベントで開催日時が未来のCONFIRMED（または仮確定＝AWAITING_APPROVAL）な参加を1件以上持っている | `POST /communities/{id}/members/me/leave`, `PUT /communities/{id}/members/{userId}`（remove指定時） |
@@ -275,3 +276,11 @@
 | 1 | 7章Resultドメインに、コミュニティ内ランキング関連2エンドポイントの発生エラーは新規コードを追加せず`RESULT_ACCESS_DENIED`/`INVALID_PARAMETER`/`FORBIDDEN`を流用する旨を注記 | Issue #40：コミュニティ内ランキング表示機能の追加（API設計書v1.25 §4.2e, §10.3） |
 
 Issue #40「コミュニティ内ランキング表示機能の追加」に対応。
+
+---
+
+## v1.11 → v1.12 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | 3章Communityドメインに`LOCATION_IN_USE`（409）を新設 | Issue #86：会場（Place）の編集・削除機能の追加（API設計書v1.26 §8.6b, §8.6c）。中止・完了以外のステータスのイベントで使用中の会場の削除をブロックする |
