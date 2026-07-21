@@ -7,6 +7,7 @@ from meetflow_common import (
     EVENT_STATUS_AWAITING_MEMBER_APPROVAL,
     PARTICIPANT_STATUS_AWAITING_APPROVAL,
     PARTICIPANT_STATUS_REJECTED,
+    RESERVED_PARTICIPANT_STATUSES,
     error_response,
     get_display_name,
     get_table,
@@ -438,3 +439,223 @@ def _finalize_if_all_approved(table, event_id, community_id, approved_by):
         },
     )
     return "CONFIRMED"
+
+
+def _check_confirmed_and_not_started(event_item):
+    """Issue #78 (F-603のMVP前倒し): 確定後のメンバー追加・削除どちらも、
+    対象イベントがCONFIRMEDかつ開始前であることを共通の前提とする
+    （開始後・成績確定後は不可）。
+    """
+    if event_item.get("status") != "CONFIRMED":
+        return error_response(
+            "INVALID_STATUS_TRANSITION",
+            "確定済みのイベントのみ参加者を変更できます",
+            status_code=409,
+        )
+    if event_item.get("startTime", "") <= now_iso_ms():
+        return error_response(
+            "INVALID_STATUS_TRANSITION",
+            "開始済みのイベントの参加者は変更できません",
+            status_code=409,
+        )
+    return None
+
+
+def _count_reserved_participants(table, event_id):
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"EVENT#{event_id}")
+        & Key("SK").begins_with("PARTICIPANT#")
+    )
+    return sum(
+        1 for item in resp.get("Items", []) if item.get("status") in RESERVED_PARTICIPANT_STATUSES
+    )
+
+
+def add_participant(user_id, event):
+    """9.6 (Issue #78、F-603のMVP前倒し)。管理者が確定済みイベントに、
+    コミュニティメンバーを1名任意に追加する。候補ベースの承認フロー
+    （confirm_event）とは別の、管理者主導・即時確定の経路。
+    """
+    event_id = event["pathParameters"]["eventId"]
+    table = get_table()
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+        "Item"
+    )
+    if event_item is None:
+        return error_response("EVENT_NOT_FOUND", "指定したイベントが見つかりません")
+    community_id = event_item["GSI1PK"].split("#", 1)[1]
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    status_error = _check_confirmed_and_not_started(event_item)
+    if status_error:
+        return status_error
+
+    body = parse_body(event)
+    target_user_id = body.get("userId")
+    if not isinstance(target_user_id, str) or not target_user_id:
+        return error_response("INVALID_PARAMETER", "userIdは必須です")
+
+    membership = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": f"MEMBER#{target_user_id}"}
+    ).get("Item")
+    if membership is None or membership.get("status") != "ACTIVE":
+        return error_response(
+            "INVALID_PARAMETER", "対象ユーザーはこのコミュニティのアクティブなメンバーではありません"
+        )
+
+    existing = table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{target_user_id}"}
+    ).get("Item")
+    if existing is not None and existing.get("status") in RESERVED_PARTICIPANT_STATUSES:
+        return error_response(
+            "INVALID_PARAMETER", "既にこのイベントの参加者です", status_code=409
+        )
+
+    start_time = event_item["startTime"]
+    end_time = event_item["endTime"]
+
+    template_id = event_item.get("templateId")
+    if template_id is not None:
+        template = table.get_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": f"TEMPLATE#{template_id}"}
+        ).get("Item")
+        if template is not None:
+            max_players = template.get("maxPlayers")
+            if max_players is not None and _count_reserved_participants(
+                table, event_id
+            ) + 1 > max_players:
+                return error_response(
+                    "INVALID_PARAMETER",
+                    f"参加者の上限({max_players}人)を超えるため追加できません",
+                    status_code=409,
+                )
+
+    # confirm_eventと同じ同期ハードチェック（要件定義書v1.2 §17）。
+    resp = table.query(
+        IndexName="GSI1",
+        KeyConditionExpression=Key("GSI1PK").eq(f"USER#{target_user_id}")
+        & Key("GSI1SK").between(f"PARTICIPANT#{start_time}", f"PARTICIPANT#{end_time}"),
+    )
+    for p in resp.get("Items", []):
+        if p.get("status") not in RESERVED_PARTICIPANT_STATUSES:
+            continue
+        conflicting_event_id = p["PK"].split("#", 1)[1]
+        conflicting_event = table.get_item(
+            Key={"PK": f"EVENT#{conflicting_event_id}", "SK": "METADATA"}
+        ).get("Item")
+        if conflicting_event and conflicting_event.get("status") == "CANCELLED":
+            continue
+        return error_response(
+            "PARTICIPANT_SCHEDULE_CONFLICT",
+            "対象ユーザーは、既に確定済みまたは承認待ちの別イベントと時間が重複しています",
+            status_code=409,
+        )
+
+    community_item = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
+    ).get("Item") or {}
+
+    joined_at = now_iso_ms()
+    table.put_item(
+        Item={
+            "PK": f"EVENT#{event_id}",
+            "SK": f"PARTICIPANT#{target_user_id}",
+            "GSI1PK": f"USER#{target_user_id}",
+            "GSI1SK": f"PARTICIPANT#{start_time}#{event_id}",
+            "status": "CONFIRMED",
+            "startTime": start_time,
+            "endTime": end_time,
+            "joinedAt": joined_at,
+            "communityGenre": community_item.get("genre", ""),
+        }
+    )
+
+    write_operation_log(
+        action="ADD_PARTICIPANT",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Participant",
+        target_id=target_user_id,
+    )
+
+    return success_response(
+        {
+            "eventId": event_id,
+            "userId": target_user_id,
+            "nickname": get_display_name(table, community_id, target_user_id),
+            "status": "CONFIRMED",
+        },
+        status_code=201,
+    )
+
+
+def remove_participant(user_id, event):
+    """9.7 (Issue #78、F-603のMVP前倒し)。管理者が確定済みイベントから、
+    本人同意なしに参加者を強制的に取り消す。既存のキャンセル申請
+    （F-601/602、本人発・管理者承認）とは別の、管理者主導の経路。
+    削除の結果minPlayersを割り込んでもイベントは自動中止しない
+    （`belowMinPlayers`フラグで管理者に警告表示するのみ、要件はブレスト
+    時の合意事項）。
+    """
+    event_id = event["pathParameters"]["eventId"]
+    target_user_id = event["pathParameters"]["userId"]
+    table = get_table()
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+        "Item"
+    )
+    if event_item is None:
+        return error_response("EVENT_NOT_FOUND", "指定したイベントが見つかりません")
+    community_id = event_item["GSI1PK"].split("#", 1)[1]
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    status_error = _check_confirmed_and_not_started(event_item)
+    if status_error:
+        return status_error
+
+    participant = table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{target_user_id}"}
+    ).get("Item")
+    if participant is None or participant.get("status") not in RESERVED_PARTICIPANT_STATUSES:
+        return error_response(
+            "PARTICIPANT_NOT_FOUND", "指定した参加者が見つかりません"
+        )
+
+    table.update_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": f"PARTICIPANT#{target_user_id}"},
+        UpdateExpression="SET #status = :cancelled, removedBy = :by, removedAt = :now",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={
+            ":cancelled": "CANCELLED",
+            ":by": user_id,
+            ":now": now_iso_ms(),
+        },
+    )
+
+    write_operation_log(
+        action="REMOVE_PARTICIPANT",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Participant",
+        target_id=target_user_id,
+    )
+
+    remaining_count = _count_reserved_participants(table, event_id)
+    below_min_players = False
+    template_id = event_item.get("templateId")
+    if template_id is not None:
+        template = table.get_item(
+            Key={"PK": f"COMMUNITY#{community_id}", "SK": f"TEMPLATE#{template_id}"}
+        ).get("Item")
+        min_players = (template or {}).get("minPlayers")
+        if min_players is not None and remaining_count < min_players:
+            below_min_players = True
+
+    return success_response(
+        {
+            "eventId": event_id,
+            "userId": target_user_id,
+            "status": "CANCELLED",
+            "remainingParticipantCount": remaining_count,
+            "belowMinPlayers": below_min_players,
+        }
+    )

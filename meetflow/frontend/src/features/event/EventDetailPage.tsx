@@ -3,12 +3,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
+import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,8 +26,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { communityKeys, getCommunity } from "@/features/community/api";
+import { communityKeys, getCommunity, listMembers } from "@/features/community/api";
 import {
+  addParticipant,
   approveParticipation,
   cancelEvent,
   completeEvent,
@@ -29,6 +38,7 @@ import {
   listCancelRequests,
   listParticipants,
   rejectParticipation,
+  removeParticipant,
 } from "@/features/event/api";
 import { EVENT_STATUS_LABELS, PARTICIPANT_STATUS_LABELS } from "@/features/event/types";
 import { getCandidateDetail, matchingKeys } from "@/features/matching/api";
@@ -49,6 +59,8 @@ export function EventDetailPage() {
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [newMemberId, setNewMemberId] = useState("");
+  const [removeTargetUserId, setRemoveTargetUserId] = useState<string | null>(null);
 
   const { data: event, isLoading } = useQuery({
     queryKey: eventKeys.detail(eventId!),
@@ -90,6 +102,13 @@ export function EventDetailPage() {
       setSelectedMemberIds(new Set(candidate.members.map((m) => m.userId)));
     }
   }, [candidate]);
+
+  // Issue #78(F-603のMVP前倒し): 確定後のメンバー追加候補一覧。
+  const { data: communityMembers } = useQuery({
+    queryKey: communityKeys.members(event?.communityId ?? ""),
+    queryFn: () => listMembers(event!.communityId),
+    enabled: !!event?.communityId && event?.status === "CONFIRMED" && isAdmin,
+  });
 
   // COMPLETED/IN_PROGRESSへの状態遷移が未実装なため、実運用で唯一到達
   // 可能なCONFIRMED状態を成績入力の解禁条件にしている（Issue #20）。
@@ -166,6 +185,32 @@ export function EventDetailPage() {
     },
   });
 
+  const addParticipantMutation = useMutation({
+    mutationFn: () => addParticipant(eventId!, newMemberId),
+    onSuccess: (added) => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.participants(eventId!) });
+      toast.success(`${added.nickname}さんを参加者に追加しました`);
+      setNewMemberId("");
+    },
+    onError: handleApiError,
+  });
+
+  const removeParticipantMutation = useMutation({
+    mutationFn: (targetUserId: string) => removeParticipant(eventId!, targetUserId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.participants(eventId!) });
+      if (result.belowMinPlayers) {
+        toast.warning(
+          `参加者を削除しました。参加人数が開催条件の最低人数を下回っています(残り${result.remainingParticipantCount}人)`,
+        );
+      } else {
+        toast.success("参加者を削除しました");
+      }
+    },
+    onError: handleApiError,
+    onSettled: () => setRemoveTargetUserId(null),
+  });
+
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4 p-4">
@@ -217,11 +262,59 @@ export function EventDetailPage() {
               ) : (
                 <span>{participant.nickname}</span>
               )}
-              {participant.status !== "CONFIRMED" && (
-                <Badge variant="outline">{PARTICIPANT_STATUS_LABELS[participant.status]}</Badge>
-              )}
+              <div className="flex items-center gap-1">
+                {participant.status !== "CONFIRMED" && (
+                  <Badge variant="outline">{PARTICIPANT_STATUS_LABELS[participant.status]}</Badge>
+                )}
+                {event.status === "CONFIRMED" && isAdmin && participant.status === "CONFIRMED" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    aria-label={`${participant.nickname}さんを削除`}
+                    onClick={() => setRemoveTargetUserId(participant.userId)}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
+
+          {event.status === "CONFIRMED" && isAdmin && (
+            <div className="flex gap-2 border-t pt-2">
+              <Select value={newMemberId} onValueChange={(v) => setNewMemberId(v ?? "")}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="追加するメンバーを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(communityMembers ?? [])
+                    .filter(
+                      (m) =>
+                        m.status === "ACTIVE" &&
+                        !(participants ?? []).some(
+                          (p) =>
+                            p.userId === m.userId &&
+                            (p.status === "CONFIRMED" || p.status === "AWAITING_APPROVAL"),
+                        ),
+                    )
+                    .map((m) => (
+                      <SelectItem key={m.userId} value={m.userId}>
+                        {m.nickname}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                disabled={!newMemberId || addParticipantMutation.isPending}
+                onClick={() => addParticipantMutation.mutate()}
+              >
+                追加
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -419,6 +512,30 @@ export function EventDetailPage() {
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction onClick={() => rejectParticipationMutation.mutate()}>
               辞退する
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={removeTargetUserId !== null}
+        onOpenChange={(open) => !open && setRemoveTargetUserId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>この参加者を削除しますか？</AlertDialogTitle>
+          </AlertDialogHeader>
+          <p className="text-muted-foreground px-4 text-sm">
+            本人の同意なく参加を取り消します。元に戻すには再度追加してください。
+          </p>
+          <div className="flex justify-end gap-2 px-4 pb-4">
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                removeTargetUserId && removeParticipantMutation.mutate(removeTargetUserId)
+              }
+            >
+              削除する
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
