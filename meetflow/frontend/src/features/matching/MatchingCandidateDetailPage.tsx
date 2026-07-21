@@ -185,9 +185,6 @@ export function MatchingCandidateDetailPage() {
                   <span>{member.nickname}</span>
                   <div className="flex gap-1">
                     {member.conflictWarning && <Badge variant="destructive">重複の可能性</Badge>}
-                    {member.fairnessCount > 0 && (
-                      <Badge variant="outline">候補止まり{member.fairnessCount}回</Badge>
-                    )}
                   </div>
                 </div>
               ))}
