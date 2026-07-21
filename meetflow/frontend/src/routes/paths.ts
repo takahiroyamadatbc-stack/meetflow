@@ -46,6 +46,9 @@ export const paths = {
     `/events/${eventId}/sessions/${sessionNo}/edit`,
   resultSummary: (communityId: string, userId: string) =>
     `/communities/${communityId}/results/${userId}`,
+  communityRanking: (communityId: string) => `/communities/${communityId}/ranking`,
+  communityRankingSettingsEdit: (communityId: string) =>
+    `/communities/${communityId}/ranking-settings`,
 
   notifications: "/notifications",
 
