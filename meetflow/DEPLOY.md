@@ -56,6 +56,19 @@ IAMロール変更を伴うため、途中で `Do wish to deploy these changes (
 
 `FrontendStack`だけを個別にデプロイしたい場合は `cdk deploy dev-MeetFlowFrontendStack -c env=dev --profile personal` でも良い（手順7参照）。
 
+## 3b. 既存GameResult/GameResultChipへのGSI2バックフィル（Issue #40、初回のみ）
+
+コミュニティ内ランキング機能（Issue #40）は、GameResult/GameResultChipに新規属性`GSI2PK`/`GSI2SK`を追加した（DynamoDB物理設計書v1.19 §3.13）。この変更より前に登録済みの対局データには当該属性が無く、そのままではランキング集計（`GET /communities/{communityId}/rankings`）から漏れる。対象環境に既存の対局データがある場合（無い、またはこの変更以降に構築した環境なら不要）、一度だけ`backend/scripts/backfill_game_result_gsi2.py`を実行する：
+
+```bash
+cd backend
+.venv/Scripts/python.exe scripts/backfill_game_result_gsi2.py --table dev-MeetFlowTable --profile personal --dry-run
+# 対象件数・更新内容を確認したら --dry-run を外して再実行
+.venv/Scripts/python.exe scripts/backfill_game_result_gsi2.py --table dev-MeetFlowTable --profile personal
+```
+
+テーブル全件をScanするため、データ量が多い環境では時間・RCU消費に留意すること（個人開発のMVP検証規模を想定した簡易実装で、ページング以上の最適化はしていない）。
+
 ## 4. デプロイ結果を控える
 
 以下を後続手順で使用する。
