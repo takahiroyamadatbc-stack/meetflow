@@ -1,12 +1,15 @@
 import {
   autoSignIn,
+  confirmResetPassword,
   confirmSignUp,
   fetchAuthSession,
   getCurrentUser,
   resendSignUpCode,
+  resetPassword,
   signIn,
   signOut,
   signUp,
+  updatePassword,
 } from "aws-amplify/auth";
 
 /**
@@ -76,6 +79,31 @@ export async function completeAutoSignIn() {
 /** ログアウト */
 export async function signOutUser() {
   return signOut();
+}
+
+/**
+ * パスワードリセット申請（Issue #81）。UserPoolClientは
+ * prevent_user_existence_errors=trueのため、未登録のメールアドレスでも
+ * Cognitoは確認コード送信済みであるかのような応答を返す（ユーザー
+ * 列挙攻撃対策、MeetFlowAuthStack側の既存設定）。呼び出し元はエラー時
+ * のみ特別扱いすればよい。
+ */
+export async function requestPasswordReset(email: string) {
+  return resetPassword({ username: email });
+}
+
+/** パスワードリセットの確認コード検証と新パスワードの設定（Issue #81） */
+export async function confirmPasswordReset(
+  email: string,
+  confirmationCode: string,
+  newPassword: string,
+) {
+  return confirmResetPassword({ username: email, confirmationCode, newPassword });
+}
+
+/** ログイン中のパスワード変更（Issue #81） */
+export async function changePassword(oldPassword: string, newPassword: string) {
+  return updatePassword({ oldPassword, newPassword });
 }
 
 /**

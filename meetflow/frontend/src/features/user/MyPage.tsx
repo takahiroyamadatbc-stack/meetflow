@@ -68,6 +68,15 @@ export function MyPage() {
         </Card>
       </Link>
 
+      <Link to={paths.passwordChange}>
+        <Card>
+          <CardContent className="flex items-center justify-between">
+            <span className="text-sm">パスワードを変更する</span>
+            <ChevronRight className="text-muted-foreground size-4" />
+          </CardContent>
+        </Card>
+      </Link>
+
       <PushNotificationSetting />
 
       <Link to={paths.feedbackNew}>

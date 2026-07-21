@@ -6,9 +6,11 @@ import { RedirectIfAuthenticated } from "@/features/auth/RedirectIfAuthenticated
 import { LoginPage } from "@/features/auth/LoginPage";
 import { SignUpPage } from "@/features/auth/SignUpPage";
 import { ConfirmSignUpPage } from "@/features/auth/ConfirmSignUpPage";
+import { PasswordResetPage } from "@/features/auth/PasswordResetPage";
 import { HomePage } from "@/features/home/HomePage";
 import { MyPage } from "@/features/user/MyPage";
 import { ProfileEditPage } from "@/features/user/ProfileEditPage";
+import { PasswordChangePage } from "@/features/user/PasswordChangePage";
 import { CommunityListPage } from "@/features/community/CommunityListPage";
 import { CommunityCreatePage } from "@/features/community/CommunityCreatePage";
 import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
@@ -66,6 +68,14 @@ export const router = createBrowserRouter([
     element: (
       <RedirectIfAuthenticated>
         <ConfirmSignUpPage />
+      </RedirectIfAuthenticated>
+    ),
+  },
+  {
+    path: paths.passwordReset,
+    element: (
+      <RedirectIfAuthenticated>
+        <PasswordResetPage />
       </RedirectIfAuthenticated>
     ),
   },
@@ -172,6 +182,11 @@ export const router = createBrowserRouter([
         path: "/mypage/profile",
         element: <ProfileEditPage />,
         handle: { title: "プロフィール編集" },
+      },
+      {
+        path: "/mypage/password",
+        element: <PasswordChangePage />,
+        handle: { title: "パスワードを変更" },
       },
       {
         path: "/communities/:communityId/event-templates",
