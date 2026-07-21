@@ -20,6 +20,13 @@ from meetflow_common import (
 _MAX_NAME_LENGTH = 50  # 設計書には明記されていない、MVP向け保守的な上限値
 _THEME_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+# Issue #92: コミュニティのジャンルを自由入力から固定選択制へ変更
+# （1コミュニティ=1ジャンル）。将来ジャンルを追加する際はこの配列に足す
+# だけでよい設計にしてある。既存の（テスト・開発用）コミュニティの自由
+# テキストgenre値からのバックフィルは、本番データがまだ存在しないため
+# 対応不要（ブレスト時の合意事項）。
+_ALLOWED_GENRES = ("麻雀", "ポーカー", "ボードゲーム", "TRPG", "スポーツ", "その他")
+
 # F-806 コミュニティ内ランキング設定（Issue #40、API設計書v1.25 §4.2e）。
 _RANKING_GAME_TYPES = ("MAHJONG4", "MAHJONG3")
 _RANKING_PERIOD_TYPES = ("MONTH", "QUARTER", "HALF_YEAR", "YEAR", "ALL_TIME")
@@ -76,7 +83,9 @@ def create_community(user_id, event):
         return _invalid_name()
 
     description = body.get("description", "")
-    genre = body.get("genre", "")
+    genre = body.get("genre")
+    if genre not in _ALLOWED_GENRES:
+        return error_response("INVALID_PARAMETER", "ジャンルを選択してください")
     member_approval_required = bool(body.get("memberApprovalRequired", False))
 
     theme_color = body.get("themeColor")
@@ -298,8 +307,11 @@ def update_community(user_id, event):
         values[":description"] = body["description"]
         set_clauses.append("#description = :description")
     if "genre" in body:
+        genre = body["genre"]
+        if genre not in _ALLOWED_GENRES:
+            return error_response("INVALID_PARAMETER", "ジャンルを選択してください")
         names["#genre"] = "genre"
-        values[":genre"] = body["genre"]
+        values[":genre"] = genre
         set_clauses.append("#genre = :genre")
     if "memberApprovalRequired" in body:
         names["#mar"] = "memberApprovalRequired"

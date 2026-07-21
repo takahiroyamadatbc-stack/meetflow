@@ -2,6 +2,23 @@ import type { MembershipRole } from "@/types/api";
 import type { GameType } from "@/features/user/types";
 
 /**
+ * Issue #92: コミュニティのジャンル（1コミュニティ=1ジャンルの固定選択制）。
+ * 値自体が表示用ラベルを兼ねる。将来ジャンルを追加する際はこの配列に
+ * 足すだけでよい設計にしてある（backend/communities.pyの_ALLOWED_GENRES
+ * と一致させること）。
+ */
+export const COMMUNITY_GENRES = [
+  "麻雀",
+  "ポーカー",
+  "ボードゲーム",
+  "TRPG",
+  "スポーツ",
+  "その他",
+] as const;
+
+export type CommunityGenre = (typeof COMMUNITY_GENRES)[number];
+
+/**
  * backend/functions/community_lambda/handlers/communities.py の list_communities()
  * レスポンス実体。memberApprovalRequired・メンバー数・communityTypeは
  * 一覧には含まれない（Phase1実装計画の食い違い#2/#3を参照）。
@@ -13,7 +30,7 @@ export type CommunitySummary = {
   communityId: string;
   name: string;
   description: string;
-  genre: string;
+  genre: CommunityGenre;
   role: MembershipRole;
   themeColor: string | null;
 };
@@ -29,7 +46,7 @@ export type CommunityMutationResult = {
   communityId: string;
   name: string;
   description: string;
-  genre: string;
+  genre: CommunityGenre;
   memberApprovalRequired: boolean;
   themeColor?: string | null;
   /** Issue #52: コミュニティアイコン画像の公開URL */
@@ -83,7 +100,7 @@ export type InvitePreview = {
 export type CreateCommunityInput = {
   name: string;
   description?: string;
-  genre?: string;
+  genre: CommunityGenre;
   memberApprovalRequired?: boolean;
   themeColor?: string;
   /** Issue #52: updateCommunity()経由でのみ使う（作成時は未対応） */

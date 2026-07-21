@@ -22,16 +22,19 @@ import {
   matchingKeys,
   updateEventTemplate,
 } from "@/features/matching/api";
+import { gameTypeLabel, type EventTemplate } from "@/features/matching/types";
 import { GAME_TYPE_LABELS, type GameType } from "@/features/user/types";
+import { communityKeys, getCommunity } from "@/features/community/api";
+import type { CommunityGenre } from "@/features/community/types";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { getErrorDisplay, ApiError } from "@/api/errors";
 import { paths } from "@/routes/paths";
 
-const GAME_TYPES: GameType[] = ["MAHJONG4", "MAHJONG3"];
+const MAHJONG_GAME_TYPES: GameType[] = ["MAHJONG4", "MAHJONG3"];
 
 const templateSchema = z
   .object({
-    gameType: z.enum(["MAHJONG4", "MAHJONG3"]),
+    gameType: z.string().min(1, "ゲーム種別を選択してください"),
     minPlayers: z.coerce.number().int().min(2, "2以上を指定してください"),
     maxPlayers: z.coerce.number().int().min(2, "2以上を指定してください"),
     priority: z.coerce.number().int().min(0).max(100),
@@ -48,13 +51,18 @@ type TemplateFormValues = z.output<typeof templateSchema>;
 /** S-11 開催条件 作成・編集画面 */
 export function EventTemplateFormPage() {
   const { communityId, templateId } = useParams<{ communityId: string; templateId?: string }>();
-  const { data: templates, isLoading } = useQuery({
+  const { data: community, isLoading: isCommunityLoading } = useQuery({
+    queryKey: communityKeys.detail(communityId!),
+    queryFn: () => getCommunity(communityId!),
+    enabled: !!communityId,
+  });
+  const { data: templates, isLoading: isTemplatesLoading } = useQuery({
     queryKey: matchingKeys.templates(communityId!),
     queryFn: () => listEventTemplates(communityId!),
     enabled: !!communityId && !!templateId,
   });
 
-  if (templateId && isLoading) {
+  if (isCommunityLoading || (templateId && isTemplatesLoading)) {
     return (
       <div className="flex flex-col gap-4 p-4">
         <Skeleton className="h-24 w-full" />
@@ -64,32 +72,38 @@ export function EventTemplateFormPage() {
 
   const existing = templateId ? templates?.find((t) => t.templateId === templateId) : undefined;
 
-  return <TemplateForm communityId={communityId!} templateId={templateId} existing={existing} />;
+  return (
+    <TemplateForm
+      communityId={communityId!}
+      templateId={templateId}
+      existing={existing}
+      genre={community?.genre ?? "麻雀"}
+    />
+  );
 }
 
 function TemplateForm({
   communityId,
   templateId,
   existing,
+  genre,
 }: {
   communityId: string;
   templateId?: string;
-  existing?: {
-    gameType: GameType;
-    minPlayers: number;
-    maxPlayers: number;
-    priority: number;
-    conditions: { beginnerOk?: boolean };
-  };
+  existing?: EventTemplate;
+  /** Issue #92: 麻雀以外のジャンルではEventTemplate.gameTypeはコミュニティの
+   * ジャンルと同じ固定値1つのみ（細分類は設けない）。 */
+  genre: CommunityGenre;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
+  const isMahjongCommunity = genre === "麻雀";
 
   const form = useForm<TemplateFormInput, unknown, TemplateFormValues>({
     resolver: zodResolver(templateSchema),
     defaultValues: {
-      gameType: existing?.gameType ?? "MAHJONG4",
+      gameType: existing?.gameType ?? (isMahjongCommunity ? "MAHJONG4" : genre),
       minPlayers: existing?.minPlayers ?? 4,
       maxPlayers: existing?.maxPlayers ?? 4,
       priority: existing?.priority ?? 50,
@@ -138,18 +152,24 @@ function TemplateForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>ゲーム種別</FormLabel>
-                <div className="flex gap-2">
-                  {GAME_TYPES.map((gameType) => (
-                    <Button
-                      key={gameType}
-                      type="button"
-                      variant={field.value === gameType ? "default" : "outline"}
-                      onClick={() => field.onChange(gameType)}
-                    >
-                      {GAME_TYPE_LABELS[gameType]}
-                    </Button>
-                  ))}
-                </div>
+                {isMahjongCommunity ? (
+                  <div className="flex gap-2">
+                    {MAHJONG_GAME_TYPES.map((gameType) => (
+                      <Button
+                        key={gameType}
+                        type="button"
+                        variant={field.value === gameType ? "default" : "outline"}
+                        onClick={() => field.onChange(gameType)}
+                      >
+                        {GAME_TYPE_LABELS[gameType]}
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    {gameTypeLabel(field.value)}（コミュニティのジャンルに固定）
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
