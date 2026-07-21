@@ -58,6 +58,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("PUT", "/communities/{communityId}", "community"),
     ("DELETE", "/communities/{communityId}", "community"),
     ("PUT", "/communities/{communityId}/theme-color", "community"),
+    ("PUT", "/communities/{communityId}/ranking-settings", "community"),
     ("POST", "/communities/{communityId}/icon/upload-url", "community"),
     ("POST", "/communities/{communityId}/owner-transfer", "community"),
     ("POST", "/communities/{communityId}/invite", "community"),
@@ -128,6 +129,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("DELETE", "/events/{eventId}/sessions/{sessionNo}", "result"),
     ("GET", "/communities/{communityId}/game-sessions/last-settings", "result"),
     ("GET", "/users/{userId}/results", "result"),
+    ("GET", "/communities/{communityId}/rankings", "result"),
     # NotificationLambda
     ("GET", "/notifications", "notification"),
     ("PUT", "/notifications/{notificationId}/read", "notification"),

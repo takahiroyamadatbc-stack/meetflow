@@ -487,6 +487,11 @@ class MeetFlowComputeStack(Stack):
         # (Issue #42)でGameSession本体+GameResult+GameResultChipを
         # まとめて消すために追加(TransactWriteItems内のDelete操作には
         # dynamodb:DeleteItemも別途必要、他ドメインLambdaと同じ理由)。
+        # [v1.9] コミュニティ内ランキング(Issue #40)でGameResult/
+        # GameResultChipにGSI2PK/GSI2SKを追加しGSI2へのQueryも行うが、
+        # `grant()`はテーブル本体+全インデックス(`{tableArn}/index/*`)を
+        # まとめて許可するため、追加のgrant呼び出しは不要(MatchingLambda
+        # がGSI2を使う際と同じ理由、Lambda設計書v1.9 §8.4参照)。
         self.table.grant(
             fn,
             "dynamodb:GetItem",
