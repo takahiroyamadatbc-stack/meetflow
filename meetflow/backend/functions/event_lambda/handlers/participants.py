@@ -441,10 +441,28 @@ def _finalize_if_all_approved(table, event_id, community_id, approved_by):
     return "CONFIRMED"
 
 
-def _check_confirmed_and_not_started(event_item):
-    """Issue #78 (F-603のMVP前倒し): 確定後のメンバー追加・削除どちらも、
-    対象イベントがCONFIRMEDかつ開始前であることを共通の前提とする
-    （開始後・成績確定後は不可）。
+def _check_addable_status(event_item):
+    """Issue #90: 対局が始まった後に急遽もう1人参加することになった、と
+    いったケースに対応するため、追加のみ開始前後どちらも許可する
+    （CONFIRMED/IN_PROGRESSの間）。COMPLETEDになった後は引き続き不可
+    （対局終了後に人を足す意味が無いため）。削除側は元の制約
+    （`_check_removable_status`）のまま変更しない -- トラブルの小さい
+    追加側だけを解禁する方針（Issue #90）。
+    """
+    if event_item.get("status") not in ("CONFIRMED", "IN_PROGRESS"):
+        return error_response(
+            "INVALID_STATUS_TRANSITION",
+            "確定済み・進行中のイベントのみ参加者を追加できます",
+            status_code=409,
+        )
+    return None
+
+
+def _check_removable_status(event_item):
+    """Issue #78 (F-603のMVP前倒し): 参加者の削除は、対象イベントが
+    CONFIRMEDかつ開始前であることを前提とする（開始後・成績確定後は
+    不可）。追加側（`_check_addable_status`）とは異なりIssue #90でも
+    緩和していない。
     """
     if event_item.get("status") != "CONFIRMED":
         return error_response(
@@ -486,7 +504,7 @@ def add_participant(user_id, event):
     community_id = event_item["GSI1PK"].split("#", 1)[1]
     require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
 
-    status_error = _check_confirmed_and_not_started(event_item)
+    status_error = _check_addable_status(event_item)
     if status_error:
         return status_error
 
@@ -608,7 +626,7 @@ def remove_participant(user_id, event):
     community_id = event_item["GSI1PK"].split("#", 1)[1]
     require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
 
-    status_error = _check_confirmed_and_not_started(event_item)
+    status_error = _check_removable_status(event_item)
     if status_error:
         return status_error
 

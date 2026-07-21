@@ -11,6 +11,7 @@ from _factories import (
     body_of,
     put_candidate,
     put_confirmed_participant,
+    put_event_status,
     put_event_template,
     put_membership,
     put_profile,
@@ -433,7 +434,11 @@ def test_add_participant_event_not_confirmed(table):
     assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
 
 
-def test_add_participant_after_start_time_rejected(table):
+def test_add_participant_after_start_time_allowed(table):
+    """Issue #90: 対局が始まった後に急遽もう1人参加することになった場合に
+    対応するため、追加のみ開始時刻を過ぎていてもCONFIRMED状態なら許可する
+    （削除側は`test_remove_participant_after_start_time_rejected`の通り
+    引き続き不可のまま）。"""
     put_membership(table, "community-1", "user-1", role="OWNER")
     for uid in ("user-1", "user-2"):
         put_profile(table, uid, auto_approve=True)
@@ -450,6 +455,39 @@ def test_add_participant_after_start_time_rejected(table):
     )
     event_id = body_of(create_response)["data"]["eventId"]
     events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+    put_membership(table, "community-1", "user-5")
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+    )
+
+    assert response["statusCode"] == 201
+    participant = table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": "PARTICIPANT#user-5"}
+    )["Item"]
+    assert participant["status"] == "CONFIRMED"
+
+
+def test_add_participant_in_progress_allowed(table):
+    """Issue #90: IN_PROGRESS状態のイベントにも参加者を追加できる。"""
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    put_event_status(table, event_id, "IN_PROGRESS")
+    put_membership(table, "community-1", "user-5")
+
+    response = participants.add_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id}, body={"userId": "user-5"}),
+    )
+
+    assert response["statusCode"] == 201
+
+
+def test_add_participant_after_completed_rejected(table):
+    """Issue #90: COMPLETEDになった後は引き続き参加者を追加できない
+    （対局終了後に人を足す意味が無いため）。"""
+    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    put_event_status(table, event_id, "COMPLETED")
     put_membership(table, "community-1", "user-5")
 
     response = participants.add_participant(
@@ -567,6 +605,36 @@ def test_remove_participant_below_min_players_flags_response(table):
         "Item"
     ]
     assert event_item["status"] == "CONFIRMED"
+
+
+def test_remove_participant_after_start_time_rejected(table):
+    """Issue #90: 追加側と異なり、削除は開始時刻を過ぎたイベントでは
+    引き続き不可のまま（元の`_check_confirmed_and_not_started`相当の
+    制約を`_check_removable_status`として維持）。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    for uid in ("user-1", "user-2"):
+        put_profile(table, uid, auto_approve=True)
+    put_candidate(
+        table,
+        "community-1",
+        "candidate-1",
+        ["user-1", "user-2"],
+        start_time="2020-01-01T10:00:00.000Z",
+        end_time="2020-01-01T14:00:00.000Z",
+    )
+    create_response = events.create_event(
+        "user-1", api_event(body={"candidateId": "candidate-1"})
+    )
+    event_id = body_of(create_response)["data"]["eventId"]
+    events.confirm_event("user-1", api_event(path_params={"eventId": event_id}))
+
+    response = participants.remove_participant(
+        "user-1",
+        api_event(path_params={"eventId": event_id, "userId": "user-2"}),
+    )
+
+    assert response["statusCode"] == 409
+    assert body_of(response)["error"]["code"] == "INVALID_STATUS_TRANSITION"
 
 
 def test_remove_participant_requires_admin(table):
