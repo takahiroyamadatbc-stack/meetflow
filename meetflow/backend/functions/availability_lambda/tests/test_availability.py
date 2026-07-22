@@ -1,3 +1,7 @@
+from unittest.mock import patch
+
+from meetflow_common import AVAILABILITY_UPDATED
+
 from handlers import availability
 
 from _factories import (
@@ -97,3 +101,69 @@ def test_list_availability_excludes_other_community(table):
 
     entries = body_of(response)["data"]["availabilities"]
     assert [e["availabilityId"] for e in entries] == ["avail-c1"]
+
+
+def test_create_availability_publishes_availability_updated(table):
+    """Issue #97専用の狭い例外：登録の都度AVAILABILITY_UPDATEDを発行する
+    （F-401マッチング自動実行のトリガーにはしない、という既存方針とは別物）。
+    """
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1")
+
+    with patch.object(availability, "put_event") as mock_put_event:
+        availability.create_availability(
+            "user-1",
+            api_event(path_params={"communityId": "community-1"}, body=_ENTRY),
+        )
+
+    mock_put_event.assert_called_once()
+    detail_type, detail = mock_put_event.call_args.args
+    assert detail_type == AVAILABILITY_UPDATED
+    assert detail["communityId"] == "community-1"
+    assert detail["userId"] == "user-1"
+    assert detail["startTime"] == _ENTRY["startTime"]
+    assert detail["endTime"] == _ENTRY["endTime"]
+
+
+def test_create_availability_batch_publishes_one_event_per_entry(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1")
+
+    with patch.object(availability, "put_event") as mock_put_event:
+        availability.create_availability_batch(
+            "user-1",
+            api_event(
+                path_params={"communityId": "community-1"},
+                body={
+                    "availabilities": [
+                        _ENTRY,
+                        {**_ENTRY, "startTime": "2026-08-02T10:00:00.000Z", "endTime": "2026-08-02T12:00:00.000Z"},
+                    ]
+                },
+            ),
+        )
+
+    assert mock_put_event.call_count == 2
+
+
+def test_update_availability_publishes_availability_updated(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1")
+    created = availability.create_availability(
+        "user-1",
+        api_event(path_params={"communityId": "community-1"}, body=_ENTRY),
+    )
+    availability_id = body_of(created)["data"]["availabilityId"]
+
+    with patch.object(availability, "put_event") as mock_put_event:
+        availability.update_availability(
+            "user-1",
+            api_event(
+                path_params={"availabilityId": availability_id},
+                body={**_ENTRY, "comment": "変更後"},
+            ),
+        )
+
+    mock_put_event.assert_called_once()
+    detail_type, _detail = mock_put_event.call_args.args
+    assert detail_type == AVAILABILITY_UPDATED

@@ -6,6 +6,7 @@ from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
     AVAILABILITY_REQUEST_CREATED,
+    CONFIRMED_EVENT_CANDIDATE_AVAILABLE,
     EVENT_AWAITING_APPROVAL,
     EVENT_CONFIRMED,
     EVENT_PARTICIPANT_REJECTED,
@@ -182,6 +183,33 @@ def test_event_participant_rejected_notifies_admins_only(table):
         notifications = _notifications_for(table, user_id)
         assert len(notifications) == 1
         assert notifications[0]["type"] == "PARTICIPANT_REJECTED"
+    assert _notifications_for(table, "user-3") == []
+
+
+def test_confirmed_event_candidate_available_notifies_admins_only(table):
+    """Issue #97: 確定済み・定員未充足イベントへの追加候補検知は、参加者
+    ではなく管理者（OWNER/ADMIN）にのみ通知する（HITL：実際の追加は管理者
+    操作を経る）。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="ADMIN")
+    put_membership(table, "community-1", "user-3", role="MEMBER")
+
+    event_subscriber.handle_domain_event(
+        domain_event(
+            CONFIRMED_EVENT_CANDIDATE_AVAILABLE,
+            {
+                "eventId": "event-1",
+                "communityId": "community-1",
+                "candidateUserId": "user-3",
+            },
+        )
+    )
+
+    for user_id in ("user-1", "user-2"):
+        notifications = _notifications_for(table, user_id)
+        assert len(notifications) == 1
+        assert notifications[0]["type"] == "CONFIRMED_EVENT_CANDIDATE_AVAILABLE"
+        assert notifications[0]["relatedEventId"] == "event-1"
     assert _notifications_for(table, "user-3") == []
 
 

@@ -361,6 +361,9 @@ class MeetFlowComputeStack(Stack):
         # (`AvailabilityRequestCreated`発行用)。AvailabilityRequest自体は
         # Availabilityと同じテーブルの別PK/SKプレフィックスなので、上記の
         # DynamoDB権限に追加のgrantは不要。
+        # [v1.10追加] Issue #97: `AvailabilityUpdated`（空き予定登録/更新の
+        # たびに発行し、EventLambdaが確定済み・定員未充足イベントとの合致を
+        # 判定する）も同じgrantで賄える。
         events.EventBus.grant_all_put_events(fn)
 
         CfnOutput(
@@ -483,9 +486,38 @@ class MeetFlowComputeStack(Stack):
             self.table.encryption_key.grant_encrypt_decrypt(fn)
 
         # §7.4: EventConfirmed/EventCancelled/CancelApproved、および
-        # Issue #10で追加したEventAwaitingApproval/EventParticipantRejected
-        # 用の`events:PutEvents`。
+        # Issue #10で追加したEventAwaitingApproval/EventParticipantRejected、
+        # Issue #97で追加したConfirmedEventCandidateAvailable用の
+        # `events:PutEvents`。
         events.EventBus.grant_all_put_events(fn)
+
+        # Issue #97: 確定済み・定員未充足イベントへの追加候補検知のため、
+        # AvailabilityLambdaが発行する`AvailabilityUpdated`を購読する。
+        # マッチング候補生成(F-401)の自動実行トリガーとは無関係 -- あくまで
+        # 「追加できる候補を見つけて管理者に知らせる」だけの狭い例外
+        # （Lambda設計書v1.10 §5.2）。処理が失敗し続けた場合にEventBridgeの
+        # 既定リトライ後サイレントに消えるのを防ぐため、他のRuleと同様に
+        # DLQへ退避させる。
+        event_availability_updated_dlq = sqs.Queue(
+            self,
+            "EventAvailabilityUpdatedDLQ",
+            queue_name=f"{self.env_name}-meetflow-event-availability-updated-dlq",
+            retention_period=Duration.days(14),
+        )
+        events.Rule(
+            self,
+            "EventAvailabilityUpdatedRule",
+            rule_name=f"{self.env_name}-meetflow-event-availability-updated",
+            event_pattern=events.EventPattern(
+                source=["meetflow.events"],
+                detail_type=["AvailabilityUpdated"],
+            ),
+            targets=[
+                events_targets.LambdaFunction(
+                    fn, dead_letter_queue=event_availability_updated_dlq
+                )
+            ],
+        )
 
         CfnOutput(
             self,
@@ -621,6 +653,8 @@ class MeetFlowComputeStack(Stack):
                     "EventAwaitingApproval",
                     "EventParticipantRejected",
                     "FeedbackReplied",
+                    # Issue #97
+                    "ConfirmedEventCandidateAvailable",
                 ],
             ),
             targets=[
