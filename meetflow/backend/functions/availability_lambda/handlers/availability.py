@@ -3,11 +3,13 @@ from datetime import datetime
 from boto3.dynamodb.conditions import Key
 
 from meetflow_common import (
+    AVAILABILITY_UPDATED,
     error_response,
     generate_id,
     get_table,
     now_iso_ms,
     parse_body,
+    put_event,
     require_membership,
     success_response,
     transact_write,
@@ -39,6 +41,7 @@ def create_availability(user_id, event):
     availability_id = generate_id()
     item = _build_item(community_id, user_id, availability_id, body, now_iso_ms())
     table.put_item(Item=item)
+    _publish_availability_updated(community_id, user_id, item)
     write_operation_log(
         action="CREATE_AVAILABILITY",
         user_id=user_id,
@@ -83,6 +86,9 @@ def create_availability_batch(user_id, event):
             item = _build_item(community_id, user_id, availability_id, entry, created_at)
             batch.put_item(Item=item)
             created.append((item, availability_id))
+
+    for item, _availability_id in created:
+        _publish_availability_updated(community_id, user_id, item)
 
     write_operation_log(
         action="CREATE_AVAILABILITY_BATCH",
@@ -175,6 +181,7 @@ def update_availability(user_id, event):
                 {"Delete": {"Key": {"PK": existing["PK"], "SK": existing["SK"]}}},
             ]
         )
+    _publish_availability_updated(community_id, user_id, new_item)
 
     write_operation_log(
         action="UPDATE_AVAILABILITY",
@@ -203,6 +210,24 @@ def delete_availability(user_id, event):
         target_id=availability_id,
     )
     return success_response({"availabilityId": availability_id, "deleted": True})
+
+
+def _publish_availability_updated(community_id, user_id, item):
+    """Issue #97専用の狭い例外（Lambda設計書v1.10 §5.2「MVP方針確認」注記
+    参照）。EventLambdaが購読し、確定済み・定員未充足イベントへの追加候補
+    検知にのみ使う -- F-401マッチング候補生成の自動実行トリガーには使わない
+    （その方針自体は変更していない）。
+    """
+    put_event(
+        AVAILABILITY_UPDATED,
+        {
+            "communityId": community_id,
+            "userId": user_id,
+            "startTime": item["SK"].split("#", 2)[1],
+            "endTime": item.get("endTime"),
+            "gameTypes": sorted(item["gameTypes"]) if item.get("gameTypes") else [],
+        },
+    )
 
 
 def _find_own_availability(table, user_id, availability_id):

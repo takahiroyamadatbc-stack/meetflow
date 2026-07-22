@@ -11,6 +11,10 @@ def api_event(*, path_params=None, body=None, query=None):
     }
 
 
+def domain_event(detail_type, detail):
+    return {"detail-type": detail_type, "source": "meetflow.events", "detail": detail}
+
+
 def put_community(table, community_id, *, owner_id="user-1", genre="麻雀"):
     table.put_item(
         Item={
@@ -160,6 +164,34 @@ def put_availability(
     if game_types:
         item["gameTypes"] = set(game_types)
     table.put_item(Item=item)
+
+
+def put_confirmed_event(
+    table,
+    community_id,
+    event_id,
+    *,
+    template_id="template-1",
+    start_time="2026-08-05T19:00:00.000Z",
+    end_time="2026-08-05T23:00:00.000Z",
+    status="CONFIRMED",
+):
+    """Issue #97のavailability_subscriberテスト用: `events.create_event`を
+    経由せず、実際のEvent Item（DynamoDB物理設計書v1.23 §3.10）と同じ形
+    （PK/SK + GSI1）を直接投入する。"""
+    table.put_item(
+        Item={
+            "PK": f"EVENT#{event_id}",
+            "SK": "METADATA",
+            "GSI1PK": f"COMMUNITY#{community_id}",
+            "GSI1SK": f"EVENT#{start_time}#{event_id}",
+            "templateId": template_id,
+            "status": status,
+            "startTime": start_time,
+            "endTime": end_time,
+            "createdAt": now_iso_ms(),
+        }
+    )
 
 
 def put_confirmed_participant(

@@ -1,6 +1,6 @@
 from meetflow_common import dispatch
 
-from handlers import events, participants
+from handlers import availability_subscriber, events, participants
 
 # EventLambda (Lambda設計書v1.1 §7).
 _ROUTES = {
@@ -43,4 +43,9 @@ _ROUTES = {
 
 
 def handler(event, context):
+    # EventBridgeイベント（Issue #97: `AvailabilityUpdated`購読）は
+    # `detail-type`/`source`を持つが、`httpMethod`は持たない
+    # （matching_lambda/handler.pyの`EventConfirmed`購読と同じ判定パターン）。
+    if "detail-type" in event:
+        return availability_subscriber.handle_availability_updated(event)
     return dispatch(_ROUTES, event)

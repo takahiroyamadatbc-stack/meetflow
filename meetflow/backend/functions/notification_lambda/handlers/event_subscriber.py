@@ -14,6 +14,7 @@ from meetflow_common import (
     AVAILABILITY_REQUEST_CREATED,
     CANCEL_APPROVED,
     CANDIDATE_CONFLICT_DETECTED,
+    CONFIRMED_EVENT_CANDIDATE_AVAILABLE,
     EVENT_AWAITING_APPROVAL,
     EVENT_CANCELLED,
     EVENT_CONFIRMED,
@@ -40,6 +41,7 @@ _MESSAGES = {
     "AWAITING_APPROVAL": "参加予定のイベントについて、参加承認をお願いします。",
     "PARTICIPANT_REJECTED": "参加予定者が承認待ちの参加を辞退しました。イベントの継続についてご確認ください。",
     "FEEDBACK_REPLIED": "投稿したフィードバックに運営者から返信がありました。",
+    "CONFIRMED_EVENT_CANDIDATE_AVAILABLE": "確定済みイベントに追加できるメンバーが見つかりました。",
 }
 
 
@@ -103,6 +105,16 @@ def handle_domain_event(event):
         target_user_id = detail.get("targetUserId")
         if target_user_id:
             _create_notification(table, target_user_id, "FEEDBACK_REPLIED", None)
+    elif detail_type == CONFIRMED_EVENT_CANDIDATE_AVAILABLE:
+        community_id = detail.get("communityId")
+        if community_id:
+            for admin_id in _list_admin_user_ids(table, community_id):
+                _create_notification(
+                    table,
+                    admin_id,
+                    "CONFIRMED_EVENT_CANDIDATE_AVAILABLE",
+                    detail.get("eventId"),
+                )
 
 
 def _list_admin_user_ids(table, community_id):
