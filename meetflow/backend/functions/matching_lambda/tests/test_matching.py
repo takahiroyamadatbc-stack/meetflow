@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -702,3 +703,139 @@ def test_create_manual_candidate_forbidden_for_plain_member(table):
             ),
         )
     assert exc_info.value.code == "FORBIDDEN"
+
+
+def test_list_near_miss_windows_reports_needed_count(table):
+    """Issue #96: 4人枠のテンプレートに3人分の空きが重なっていれば
+    「あと1人」が返る。"""
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3"])
+
+    response = matching.list_near_miss_windows(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"templateId": "template-1"}
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    windows = body_of(response)["data"]["windows"]
+    assert len(windows) == 1
+    assert windows[0]["startTime"] == _START
+    assert windows[0]["endTime"] == _END
+    assert windows[0]["neededCount"] == 1
+
+
+def test_list_near_miss_windows_never_leaks_member_identities(table):
+    """相互非公開型マッチングの原則：レスポンスに他メンバーの識別子（氏名・
+    userId等）が一切含まれないことを明示的に検証する。"""
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3"])
+
+    response = matching.list_near_miss_windows(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"templateId": "template-1"}
+        ),
+    )
+
+    window = body_of(response)["data"]["windows"][0]
+    assert set(window.keys()) == {"startTime", "endTime", "neededCount"}
+    assert "user-2" not in json.dumps(window)
+    assert "user-3" not in json.dumps(window)
+
+
+def test_list_near_miss_windows_hidden_from_members_who_havent_submitted(table):
+    """このコミュニティで（今日以降の日時の）空き予定を1件も提出していない
+    傍観者には、自分が含まれない窓はもちろん、一切何も見せない。後出し
+    防止のための最重要制約（要件定義書v1.9 §29.4）。"""
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-2", "user-3"])
+
+    response = matching.list_near_miss_windows(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"templateId": "template-1"}
+        ),
+    )
+
+    assert body_of(response)["data"]["windows"] == []
+
+
+def test_list_near_miss_windows_visible_even_when_caller_not_in_that_window(table):
+    """Issue #96の設計方針：一度どこかで空き予定を提出したメンバーは、自分が
+    まだ入っていない窓（＝自分が1枠足せば成立させられる窓）も見える。
+    「既に提出済み＝もう後出しできない」ことがゲートであり、対象の窓に
+    自分が含まれているかどうかは問わない。"""
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_template(table, "community-1", "template-1", min_players=4, max_players=4)
+    # user-1は別日時に自分の空きを提出済み（このコミュニティへのコミット
+    # 自体は済ませている）。近接窓(_START〜_END)にはuser-2/3/4のみが重なる。
+    _elsewhere_start = add_days_iso(_START, 10)
+    put_availability(
+        table,
+        "community-1",
+        "user-1",
+        start_time=_elsewhere_start,
+        end_time=_add_hours_iso(_elsewhere_start, 4),
+        availability_id="avail-user-1-elsewhere",
+    )
+    _seed_matching_group(table, "community-1", ["user-2", "user-3", "user-4"])
+
+    response = matching.list_near_miss_windows(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"templateId": "template-1"}
+        ),
+    )
+
+    windows = body_of(response)["data"]["windows"]
+    # user-1自身の窓(_elsewhere_start、neededCount=3)も別途返るが、ここで
+    # 検証したいのは「自分が入っていない窓」が見えること。
+    matching_window = next(w for w in windows if w["startTime"] == _START)
+    assert matching_window["neededCount"] == 1
+
+
+def test_list_near_miss_windows_excludes_already_satisfied_window(table):
+    """既にminPlayersを満たしている窓は「あと0人」ではなく非表示にする
+    （成立済みは候補生成の対象であってnear-missではない）。"""
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+    put_template(table, "community-1", "template-1", min_players=3, max_players=4)
+    _seed_matching_group(table, "community-1", ["user-1", "user-2", "user-3"])
+
+    response = matching.list_near_miss_windows(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"templateId": "template-1"}
+        ),
+    )
+
+    assert body_of(response)["data"]["windows"] == []
+
+
+def test_list_near_miss_windows_missing_template_id(table):
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+
+    response = matching.list_near_miss_windows(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_list_near_miss_windows_template_not_found(table):
+    put_membership(table, "community-1", "user-1", role="MEMBER")
+
+    response = matching.list_near_miss_windows(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"templateId": "missing"}
+        ),
+    )
+
+    assert response["statusCode"] == 404
+    assert body_of(response)["error"]["code"] == "EVENT_TEMPLATE_NOT_FOUND"
