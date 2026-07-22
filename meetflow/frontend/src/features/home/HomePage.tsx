@@ -14,6 +14,7 @@ import { AnnouncementCard } from "@/features/announcement/AnnouncementCard";
 import { getMyProfile, userKeys } from "@/features/user/api";
 import { ProfileCard } from "@/features/user/components/ProfileCard";
 import { eventKeys, listMyEvents } from "@/features/event/api";
+import { AvailabilitySubmitPrompt } from "@/features/availability/AvailabilitySubmitPrompt";
 import { paths } from "@/routes/paths";
 
 /** S-02 ホーム画面 */
@@ -81,7 +82,11 @@ export function HomePage() {
         <div className="flex flex-col gap-3">
           <h2 className="text-muted-foreground text-sm font-medium">所属コミュニティ</h2>
           {communities.map((community) => (
-            <CommunityCard key={community.communityId} community={community} />
+            <div key={community.communityId} className="flex flex-col gap-2">
+              <CommunityCard community={community} />
+              {/* Issue #95: 未提出のコミュニティにのみ次回の空き予定提出を促す */}
+              <AvailabilitySubmitPrompt communityId={community.communityId} />
+            </div>
           ))}
         </div>
       )}
