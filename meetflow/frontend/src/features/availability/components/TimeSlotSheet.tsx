@@ -56,6 +56,8 @@ export function TimeSlotSheet({
   const [endHour, setEndHour] = useState(initialValue?.endHour ?? "22:00");
   const [gameTypes, setGameTypes] = useState<GameType[]>(initialValue?.gameTypes ?? []);
   const [comment, setComment] = useState(initialValue?.comment ?? "");
+  // "HH:MM"形式（type="time"の値）はゼロ埋め固定長のため文字列比較で前後判定できる。
+  const isValidRange = endHour > startHour;
 
   useEffect(() => {
     if (!open) return;
@@ -94,9 +96,13 @@ export function TimeSlotSheet({
                 type="time"
                 value={endHour}
                 onChange={(e) => setEndHour(e.target.value)}
+                aria-invalid={!isValidRange}
               />
             </div>
           </div>
+          {!isValidRange && (
+            <p className="text-destructive text-xs">終了時刻は開始時刻より後にしてください</p>
+          )}
           <div>
             <Label className="mb-2">プレイしたいゲーム</Label>
             <GameTypeCheckboxGroup value={gameTypes} onChange={setGameTypes} />
@@ -110,7 +116,7 @@ export function TimeSlotSheet({
         </div>
         <SheetFooter>
           <Button
-            disabled={submitting}
+            disabled={submitting || !isValidRange}
             onClick={() => onSubmit({ startHour, endHour, gameTypes, comment })}
           >
             {isEditMode ? "変更を保存する" : "登録する"}
