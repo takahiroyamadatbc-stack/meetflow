@@ -112,6 +112,8 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("POST", "/communities/{communityId}/matching/candidates/manual", "matching"),
     ("GET", "/communities/{communityId}/matching/candidates", "matching"),
     ("GET", "/matching/candidates/{candidateId}", "matching"),
+    # Issue #96: 「あと〇人で成立」集計取得（API設計書v1.30 §6.4）
+    ("GET", "/communities/{communityId}/matching/near-miss", "matching"),
     # EventLambda
     ("POST", "/events", "event"),
     ("GET", "/users/me/events", "event"),

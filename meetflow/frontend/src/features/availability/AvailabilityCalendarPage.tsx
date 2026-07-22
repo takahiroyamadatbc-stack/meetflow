@@ -16,6 +16,7 @@ import {
   TimeSlotSheet,
   type TimeSlotValue,
 } from "@/features/availability/components/TimeSlotSheet";
+import { NearMissBanner } from "@/features/availability/NearMissBanner";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import type { AvailabilityInput } from "@/features/availability/types";
 import type { GameType } from "@/features/user/types";
@@ -94,6 +95,9 @@ export function AvailabilityCalendarPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      {/* Issue #96: 既に空き予定を提出済みのメンバーにのみ「あと〇人で
+          成立」を見せ、ワンタップで空きを追加する導線を出す */}
+      {communityId && <NearMissBanner communityId={communityId} />}
       <Calendar
         mode="multiple"
         selected={selectedDates}

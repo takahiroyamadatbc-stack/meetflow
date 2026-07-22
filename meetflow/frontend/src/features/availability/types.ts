@@ -44,3 +44,14 @@ export type PendingMember = {
   userId: string;
   nickname: string;
 };
+
+/**
+ * matching.py list_near_miss_windows() のレスポンス実体（Issue #96）。
+ * 相互非公開型マッチングの原則により、集計値(neededCount)のみで、
+ * どのメンバーが空きを出しているかは一切含まれない。
+ */
+export type NearMissWindow = {
+  startTime: string;
+  endTime: string;
+  neededCount: number;
+};

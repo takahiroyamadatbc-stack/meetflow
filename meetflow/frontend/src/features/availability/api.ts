@@ -4,6 +4,7 @@ import type {
   AvailabilityInput,
   AvailabilityRequest,
   CreateAvailabilityRequestInput,
+  NearMissWindow,
   PendingMember,
 } from "@/features/availability/types";
 
@@ -66,4 +67,18 @@ export function listPendingMembers(communityId: string, requestId: string) {
       `/communities/${communityId}/availability-requests/${requestId}/pending-members`,
     )
     .then((data) => data.pendingMembers);
+}
+
+/**
+ * GET /communities/{communityId}/matching/near-miss?templateId={templateId}
+ * （Issue #96）。このコミュニティで空き予定を1件も提出していない呼び出し
+ * 元には常に空配列が返る（相互非公開型マッチングの維持、バックエンド側の
+ * ゲート）。
+ */
+export function listNearMissWindows(communityId: string, templateId: string) {
+  return apiClient
+    .get<{ windows: NearMissWindow[] }>(
+      `/communities/${communityId}/matching/near-miss?templateId=${encodeURIComponent(templateId)}`,
+    )
+    .then((data) => data.windows);
 }

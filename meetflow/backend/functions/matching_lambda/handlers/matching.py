@@ -204,6 +204,87 @@ def get_candidate_detail(user_id, event):
     return success_response(_to_api_candidate(table, community_id, items[0]))
 
 
+def list_near_miss_windows(user_id, event):
+    """Issue #96: 「あと〇人で成立」の集計。CandidateMemberは管理者が候補
+    生成（F-401）を手動実行した後にしか存在しないため使えない -- 全メンバーの
+    提出済みAvailabilityを起点に、_run_matchingと同じオーバーラップ計算
+    （_overlapping_member_windows）をその場で走らせるリアルタイム集計として
+    実装する。
+
+    相互非公開型マッチング（要件定義書v1.9 §19/§29.4）の原則により、まだ
+    このコミュニティで（今日以降の日時の）空き予定を1件も提出していない
+    呼び出し元には空リストしか返さない -- 後出しの傍観者に「どこに滑り込め
+    ば決定打になれるか」を教えないための唯一の防波堤（Issue #96のNote：
+    表示対象の限定が後出し防止の肝）。一度自分の空きを提出したメンバーは
+    既に自分の手の内を晒しており、以降は駆け引きの対象にならないため、
+    この関門さえ通れば「自分がまだ入っていない窓（＝自分が1枠足せば成立
+    させられる窓）」も含めて全件返す（Issue #96 設計方針：「彼らは自分が
+    枠を1つ足せば成立させられる場合、その導線から即コミットできる」）。
+    レスポンスは「あと何人必要か」という集計値のみで、member_ids（誰が
+    空きを出しているか）は一切含めない。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id)
+
+    query_params = event.get("queryStringParameters") or {}
+    template_id = query_params.get("templateId")
+    if not isinstance(template_id, str) or not template_id:
+        return error_response("INVALID_PARAMETER", "templateIdが不正です")
+
+    template = table.get_item(
+        Key={"PK": f"COMMUNITY#{community_id}", "SK": f"TEMPLATE#{template_id}"}
+    ).get("Item")
+    if template is None:
+        return error_response(
+            "EVENT_TEMPLATE_NOT_FOUND", "指定した開催条件が見つかりません"
+        )
+
+    from_time = now_iso_ms()
+    to_time = add_days_iso(from_time, _MATCHING_WINDOW_DAYS)
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"COMMUNITY#{community_id}")
+        & Key("SK").between(f"AVAIL#{from_time}", f"AVAIL#{to_time}")
+    )
+    availability_items = resp.get("Items", [])
+
+    # ゲーム種別を問わない「提出済みか」の判定（#95のホーム/成績入力後導線と
+    # 同じ基準）。このテンプレートのgameTypeに絞る前の全件で見る -- 傍観者
+    # 判定はこのコミュニティに対するコミット有無の話であり、テンプレート単位
+    # の話ではないため。
+    if not any(item["userId"] == user_id for item in availability_items):
+        return success_response({"windows": []})
+
+    game_type = template.get("gameType")
+    filtered_items = [
+        item
+        for item in availability_items
+        if not item.get("gameTypes") or game_type in item["gameTypes"]
+    ]
+
+    # _run_matching（408行目）と同じ下限処理・必須メンバー判定。必須メンバーが
+    # 不在の窓を「あとN人で成立」と誤って見せないための二重チェック。
+    min_players = max(template.get("minPlayers", 2), 2)
+    required_members = set(
+        (template.get("conditions") or {}).get("requiredMembers", []) or []
+    )
+
+    windows = []
+    for start_time, end_time, member_ids in _overlapping_member_windows(filtered_items):
+        if required_members and not required_members.issubset(member_ids):
+            continue
+        if len(member_ids) >= min_players:
+            continue
+        windows.append(
+            {
+                "startTime": start_time,
+                "endTime": end_time,
+                "neededCount": min_players - len(member_ids),
+            }
+        )
+    return success_response({"windows": windows})
+
+
 def _existing_candidates_for_template(table, community_id, template_id):
     """同一community内の既存CANDIDATE系アイテムを1回のQueryでまとめて取得し、
     (1) 完全一致判定用の署名(startTime, endTime, memberIds)→アイテムの

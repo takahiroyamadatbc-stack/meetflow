@@ -34,6 +34,10 @@ _ROUTES = {
         "/communities/{communityId}/matching/candidates",
     ): matching.list_candidates,
     ("GET", "/matching/candidates/{candidateId}"): matching.get_candidate_detail,
+    (
+        "GET",
+        "/communities/{communityId}/matching/near-miss",
+    ): matching.list_near_miss_windows,
 }
 
 
