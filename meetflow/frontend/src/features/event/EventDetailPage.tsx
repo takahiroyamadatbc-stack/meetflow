@@ -47,6 +47,7 @@ import { getCandidateDetail, matchingKeys } from "@/features/matching/api";
 import { listEventSessions, resultKeys } from "@/features/result/api";
 import { GAME_TYPE_LABELS } from "@/features/user/types";
 import { QuickFeedbackPrompt } from "@/features/feedback/QuickFeedbackPrompt";
+import { AvailabilitySubmitPrompt } from "@/features/availability/AvailabilitySubmitPrompt";
 import { useAuthUser } from "@/features/auth/useAuthUser";
 import { useApiErrorToast } from "@/components/feedback/useApiErrorToast";
 import { paths } from "@/routes/paths";
@@ -506,13 +507,18 @@ export function EventDetailPage() {
       )}
 
       {event.status === "COMPLETED" && isAdmin && (
-        <Button
-          variant="outline"
-          onClick={() => setShowReopenConfirm(true)}
-          disabled={reopenMutation.isPending}
-        >
-          開催予定に戻す
-        </Button>
+        <>
+          {/* Issue #95: 成績入力(対局終了)を終えた直後が最も変換率の高い
+              タイミングのため、ここで次回の空き予定提出を後押しする。 */}
+          <AvailabilitySubmitPrompt communityId={event.communityId} />
+          <Button
+            variant="outline"
+            onClick={() => setShowReopenConfirm(true)}
+            disabled={reopenMutation.isPending}
+          >
+            開催予定に戻す
+          </Button>
+        </>
       )}
 
       {canManageResults && (
