@@ -105,7 +105,7 @@ export function PasswordResetPage() {
               <p className="text-muted-foreground mb-4 text-sm">
                 登録済みのメールアドレスを入力してください。確認コードを送信します。
               </p>
-              <Form {...emailForm}>
+              <Form key="email-step" {...emailForm}>
                 <form onSubmit={emailForm.handleSubmit(onSubmitEmail)} className="grid gap-4">
                   <FormField
                     control={emailForm.control}
@@ -132,7 +132,7 @@ export function PasswordResetPage() {
               <p className="text-muted-foreground mb-4 text-sm">
                 {email}宛に届いた確認コードと、新しいパスワードを入力してください。
               </p>
-              <Form {...resetForm}>
+              <Form key="reset-step" {...resetForm}>
                 <form onSubmit={resetForm.handleSubmit(onSubmitReset)} className="grid gap-4">
                   <FormField
                     control={resetForm.control}
