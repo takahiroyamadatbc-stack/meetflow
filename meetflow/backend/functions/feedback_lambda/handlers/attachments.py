@@ -11,6 +11,10 @@ _ALLOWED_CONTENT_TYPES = {
     "image/jpeg": "jpg",
     "image/webp": "webp",
 }
+# Issue #103: スクリーンショットはアバター/コミュニティアイコンと違い
+# フロントエンドでリサイズされないため、高解像度スクリーンショットを
+# 見込んでやや大きめの上限にしている。
+_MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
 
 _s3_client = None
 
@@ -24,9 +28,13 @@ def _get_s3_client():
 
 def create_attachment_upload_url(user_id, event):
     """F-1402 (API設計書v1.17 §12b.2)。スクリーンショットはAPI Gateway/
-    Lambda経由でバイナリを中継せず、フロントエンドがS3へ直接PUTする
-    (Lambda設計書v1.7 §9b.3)。フロントは返却された`uploadUrl`へ画像を
-    PUTした後、`attachmentKey`を`POST /feedback`のattachmentKeysに含める。
+    Lambda経由でバイナリを中継せず、フロントエンドがS3へ直接POSTする
+    (Lambda設計書v1.7 §9b.3)。フロントは返却された`uploadUrl`/`uploadFields`
+    で画像をアップロードした後、`attachmentKey`を`POST /feedback`の
+    attachmentKeysに含める。
+    presigned PUT方式はConditionsを指定できずS3側でファイルサイズを
+    強制できないため、Issue #103でpresigned POST方式に切り替えて
+    content-length-range条件を付与している。
     """
     body = parse_body(event)
     content_type = body.get("contentType")
@@ -35,19 +43,21 @@ def create_attachment_upload_url(user_id, event):
 
     ext = _ALLOWED_CONTENT_TYPES[content_type]
     attachment_key = f"feedback/{user_id}/{uuid.uuid4().hex}.{ext}"
-    upload_url = _get_s3_client().generate_presigned_url(
-        "put_object",
-        Params={
-            "Bucket": os.environ["FEEDBACK_ATTACHMENTS_BUCKET_NAME"],
-            "Key": attachment_key,
-            "ContentType": content_type,
-        },
+    presigned_post = _get_s3_client().generate_presigned_post(
+        Bucket=os.environ["FEEDBACK_ATTACHMENTS_BUCKET_NAME"],
+        Key=attachment_key,
+        Fields={"Content-Type": content_type},
+        Conditions=[
+            {"Content-Type": content_type},
+            ["content-length-range", 0, _MAX_ATTACHMENT_SIZE_BYTES],
+        ],
         ExpiresIn=_EXPIRES_IN_SECONDS,
     )
 
     return success_response(
         {
-            "uploadUrl": upload_url,
+            "uploadUrl": presigned_post["url"],
+            "uploadFields": presigned_post["fields"],
             "attachmentKey": attachment_key,
             "expiresIn": _EXPIRES_IN_SECONDS,
         }

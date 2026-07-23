@@ -36,24 +36,29 @@ export function createFeedback(
 
 /** POST /feedback/attachments/presign（F-1402） */
 function presignFeedbackAttachment(contentType: string) {
-  return apiClient.post<{ uploadUrl: string; attachmentKey: string; expiresIn: number }>(
-    "/feedback/attachments/presign",
-    { contentType },
-  );
+  return apiClient.post<{
+    uploadUrl: string;
+    uploadFields: Record<string, string>;
+    attachmentKey: string;
+    expiresIn: number;
+  }>("/feedback/attachments/presign", { contentType });
 }
 
 /**
- * スクリーンショットをS3へ直接PUTする。apiClientは経由しない
+ * スクリーンショットをS3へ直接POSTする。apiClientは経由しない
  * （アップロード先の認可はCognitoトークンではなく署名付きURL自体が
  * 担うため。Lambda設計書v1.7 §9b.3）。
+ * Issue #103: S3側でファイルサイズ上限（content-length-range）を強制する
+ * ためpresigned POST方式（`uploadFields`をFormDataに詰めて送る）に切り替えた。
  */
 export async function uploadFeedbackAttachment(file: File): Promise<string> {
-  const { uploadUrl, attachmentKey } = await presignFeedbackAttachment(file.type);
-  const res = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type },
-    body: file,
-  });
+  const { uploadUrl, uploadFields, attachmentKey } = await presignFeedbackAttachment(file.type);
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(uploadFields)) {
+    formData.append(key, value);
+  }
+  formData.append("file", file);
+  const res = await fetch(uploadUrl, { method: "POST", body: formData });
   if (!res.ok) {
     throw new Error("スクリーンショットのアップロードに失敗しました");
   }

@@ -60,6 +60,10 @@ _ALLOWED_ICON_CONTENT_TYPES = {
     "image/webp": "webp",
 }
 _ICON_UPLOAD_EXPIRES_IN_SECONDS = 300
+# Issue #103: user_lambdaの`_MAX_AVATAR_SIZE_BYTES`と同じ理由・同じ上限
+# （フロントは常にリサイズ後の小さいWebPをアップロードするため、S3側の
+# content-length-range条件として十分な余裕を持たせている）。
+_MAX_ICON_SIZE_BYTES = 5 * 1024 * 1024
 
 _s3_client = None
 
@@ -545,11 +549,14 @@ def update_ranking_settings(user_id, event):
 def create_icon_upload_url(user_id, event):
     """POST /communities/{communityId}/icon/upload-url（Issue #52）。
 
-    コミュニティアイコン画像アップロード用の署名付きPUT URLを発行する。
+    コミュニティアイコン画像アップロード用の署名付きPOST URLを発行する。
     UserLambdaのアバターアップロード（Issue #47、user_lambda/handler.py
     `_create_avatar_upload_url`）と同じバケット・CloudFrontディストリ
     ビューションを、キープレフィックス（`communities/{communityId}/...`）
     で分けて共用する。OWNER/ADMIN限定（テーマカラー変更等と同じ権限）。
+    presigned PUT方式はConditionsを指定できずS3側でファイルサイズを
+    強制できないため、Issue #103でpresigned POST方式に切り替えて
+    content-length-range条件を付与している。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
@@ -564,20 +571,22 @@ def create_icon_upload_url(user_id, event):
 
     ext = _ALLOWED_ICON_CONTENT_TYPES[content_type]
     icon_key = f"communities/{community_id}/{uuid.uuid4().hex}.{ext}"
-    upload_url = _get_s3_client().generate_presigned_url(
-        "put_object",
-        Params={
-            "Bucket": os.environ["AVATAR_BUCKET_NAME"],
-            "Key": icon_key,
-            "ContentType": content_type,
-        },
+    presigned_post = _get_s3_client().generate_presigned_post(
+        Bucket=os.environ["AVATAR_BUCKET_NAME"],
+        Key=icon_key,
+        Fields={"Content-Type": content_type},
+        Conditions=[
+            {"Content-Type": content_type},
+            ["content-length-range", 0, _MAX_ICON_SIZE_BYTES],
+        ],
         ExpiresIn=_ICON_UPLOAD_EXPIRES_IN_SECONDS,
     )
     icon_url = f"https://{os.environ['AVATAR_CLOUDFRONT_DOMAIN']}/{icon_key}"
 
     return success_response(
         {
-            "uploadUrl": upload_url,
+            "uploadUrl": presigned_post["url"],
+            "uploadFields": presigned_post["fields"],
             "iconUrl": icon_url,
             "expiresIn": _ICON_UPLOAD_EXPIRES_IN_SECONDS,
         }

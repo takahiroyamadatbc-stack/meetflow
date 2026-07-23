@@ -159,15 +159,18 @@ class MeetFlowComputeStack(Stack):
             encryption=s3.BucketEncryption.S3_MANAGED,
             removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
             auto_delete_objects=not is_prod,
-            # Issue #62: ブラウザから署名付きURLへ直接PUTする(UserLambdaの
-            # プロフィール画像アップロード、CommunityLambdaのコミュニティ
-            # アイコンアップロードが共にこのバケットを使う)ため、CORS未設定
-            # だとブラウザにブロックされる。API Gatewayのdefault_cors_preflight_
-            # optionsと同じ判断(MVP規模のためオリジンは絞り込まない)でALL_
-            # ORIGINSにする。
+            # Issue #62: ブラウザから署名付きURLへ直接アップロードする
+            # (UserLambdaのプロフィール画像アップロード、CommunityLambdaの
+            # コミュニティアイコンアップロードが共にこのバケットを使う)ため、
+            # CORS未設定だとブラウザにブロックされる。API Gatewayの
+            # default_cors_preflight_optionsと同じ判断(MVP規模のためオリジンは
+            # 絞り込まない)でALL_ORIGINSにする。
+            # Issue #103: presigned PUT方式はConditions(content-length-range)を
+            # 指定できずファイルサイズ上限をS3側で強制できないため、presigned
+            # POST方式に切り替えた。許可メソッドもPOSTに変更する。
             cors=[
                 s3.CorsRule(
-                    allowed_methods=[s3.HttpMethods.PUT],
+                    allowed_methods=[s3.HttpMethods.POST],
                     allowed_origins=["*"],
                     allowed_headers=["*"],
                 )
@@ -713,11 +716,13 @@ class MeetFlowComputeStack(Stack):
             removal_policy=RemovalPolicy.RETAIN if is_prod else RemovalPolicy.DESTROY,
             auto_delete_objects=not is_prod,
             # Issue #62: AvatarBucketと同じ構造的な問題(ブラウザから署名付き
-            # URLへの直接PUTがCORS未設定でブロックされる)がこのバケットにも
-            # あるため、同様にCORSを設定する。
+            # URLへの直接アップロードがCORS未設定でブロックされる)がこの
+            # バケットにもあるため、同様にCORSを設定する。
+            # Issue #103: AvatarBucketと同じ理由でpresigned POST方式に
+            # 切り替えたため、許可メソッドもPOSTに変更する。
             cors=[
                 s3.CorsRule(
-                    allowed_methods=[s3.HttpMethods.PUT],
+                    allowed_methods=[s3.HttpMethods.POST],
                     allowed_origins=["*"],
                     allowed_headers=["*"],
                 )

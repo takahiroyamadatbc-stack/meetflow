@@ -89,30 +89,38 @@ export function updateRankingSettings(
 
 /** POST /communities/{communityId}/icon/upload-url（Issue #52） */
 function presignCommunityIconUpload(communityId: string, contentType: string) {
-  return apiClient.post<{ uploadUrl: string; iconUrl: string; expiresIn: number }>(
-    `/communities/${communityId}/icon/upload-url`,
-    { contentType },
-  );
+  return apiClient.post<{
+    uploadUrl: string;
+    uploadFields: Record<string, string>;
+    iconUrl: string;
+    expiresIn: number;
+  }>(`/communities/${communityId}/icon/upload-url`, { contentType });
 }
 
 /**
- * コミュニティアイコン画像をS3へ直接PUTし、確定後の公開URLを返す。
+ * コミュニティアイコン画像をS3へ直接POSTし、確定後の公開URLを返す。
  * ユーザーアバターのアップロード（uploadAvatarImage、Issue #47）と同じ方式
  * （apiClientは経由せず、署名付きURL自体が書き込み認可を担う）。
  * 呼び出し元はこのURLを`updateCommunity(communityId, { icon: iconUrl })`に
  * そのまま渡して確定する。
+ * Issue #103: S3側でファイルサイズ上限（content-length-range）を強制する
+ * ためpresigned POST方式（`uploadFields`をFormDataに詰めて送る）に切り替えた。
  */
 export async function uploadCommunityIconImage(
   communityId: string,
   blob: Blob,
   contentType: string,
 ): Promise<string> {
-  const { uploadUrl, iconUrl } = await presignCommunityIconUpload(communityId, contentType);
-  const res = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: blob,
-  });
+  const { uploadUrl, uploadFields, iconUrl } = await presignCommunityIconUpload(
+    communityId,
+    contentType,
+  );
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(uploadFields)) {
+    formData.append(key, value);
+  }
+  formData.append("file", blob);
+  const res = await fetch(uploadUrl, { method: "POST", body: formData });
   if (!res.ok) {
     throw new Error("コミュニティアイコン画像のアップロードに失敗しました");
   }

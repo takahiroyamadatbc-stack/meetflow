@@ -1,3 +1,5 @@
+import base64
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -229,6 +231,11 @@ def test_create_avatar_upload_url_success(table):
     )
     assert data["avatarUrl"].endswith(".webp")
     assert data["expiresIn"] == 300
+
+    # Issue #103: S3側でファイルサイズ上限を強制するcontent-length-range
+    # 条件がpresigned POSTのpolicyに含まれていることを検証する。
+    policy = json.loads(base64.b64decode(data["uploadFields"]["policy"]))
+    assert ["content-length-range", 0, handler._MAX_AVATAR_SIZE_BYTES] in policy["conditions"]
 
 
 def test_create_avatar_upload_url_rejects_unsupported_content_type(table):

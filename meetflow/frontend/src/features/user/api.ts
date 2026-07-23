@@ -28,25 +28,30 @@ export function deleteMyAccount() {
 
 /** POST /users/me/avatar/upload-url（Issue #47） */
 function presignAvatarUpload(contentType: string) {
-  return apiClient.post<{ uploadUrl: string; avatarUrl: string; expiresIn: number }>(
-    "/users/me/avatar/upload-url",
-    { contentType },
-  );
+  return apiClient.post<{
+    uploadUrl: string;
+    uploadFields: Record<string, string>;
+    avatarUrl: string;
+    expiresIn: number;
+  }>("/users/me/avatar/upload-url", { contentType });
 }
 
 /**
- * アバター画像をS3へ直接PUTし、確定後の公開URLを返す。apiClientは経由しない
+ * アバター画像をS3へ直接POSTし、確定後の公開URLを返す。apiClientは経由しない
  * （アップロード先の認可はCognitoトークンではなく署名付きURL自体が担うため。
  * feedback機能の添付アップロードと同じ方式）。呼び出し元はこのURLを
  * `updateMyProfile({ icon: avatarUrl })`にそのまま渡して確定する。
+ * Issue #103: S3側でファイルサイズ上限（content-length-range）を強制する
+ * ためpresigned POST方式（`uploadFields`をFormDataに詰めて送る）に切り替えた。
  */
 export async function uploadAvatarImage(blob: Blob, contentType: string): Promise<string> {
-  const { uploadUrl, avatarUrl } = await presignAvatarUpload(contentType);
-  const res = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: blob,
-  });
+  const { uploadUrl, uploadFields, avatarUrl } = await presignAvatarUpload(contentType);
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(uploadFields)) {
+    formData.append(key, value);
+  }
+  formData.append("file", blob);
+  const res = await fetch(uploadUrl, { method: "POST", body: formData });
   if (!res.ok) {
     throw new Error("アバター画像のアップロードに失敗しました");
   }

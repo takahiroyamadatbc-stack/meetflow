@@ -28,6 +28,11 @@ _ALLOWED_AVATAR_CONTENT_TYPES = {
     "image/webp": "webp",
 }
 _AVATAR_UPLOAD_EXPIRES_IN_SECONDS = 300
+# Issue #103: フロントエンドは常に256px・WebPへリサイズしてから
+# アップロードするため十分に余裕を持たせた上限。S3側で強制する
+# (presigned POSTのcontent-length-range条件)ことが目的で、リサイズ後の
+# 実サイズより厳密である必要はない。
+_MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024
 
 _ROUTES = {
     ("GET", "/users/me"): lambda user_id, event: _get_profile(user_id),
@@ -289,14 +294,17 @@ def _delete_account(user_id):
 
 
 def _create_avatar_upload_url(user_id, event):
-    """Issue #47: アバター画像アップロード用の署名付きPUT URLを発行する。
+    """Issue #47: アバター画像アップロード用の署名付きPOST URLを発行する。
 
-    フロントエンドはS3へ直接PUTした後、返却された`avatarUrl`をそのまま
+    フロントエンドはS3へ直接POSTした後、返却された`avatarUrl`をそのまま
     `PUT /users/me`の`icon`に渡して確定する（バイナリはAPI Gateway/Lambdaを
     経由しない、feedback_lambdaの添付機能と同じ方式）。アバター用バケットは
     CloudFront(OAC)経由の公開読み取りのため、フィードバック添付と異なり
     閲覧用の署名付きGET URLは不要で、CloudFrontドメインから直接組み立てた
     URLをそのまま返せる。
+    presigned PUT方式はConditionsを指定できずS3側でファイルサイズを
+    強制できないため、Issue #103でpresigned POST方式に切り替えて
+    content-length-range条件を付与している。
     """
     body = parse_body(event)
     content_type = body.get("contentType")
@@ -307,20 +315,22 @@ def _create_avatar_upload_url(user_id, event):
 
     ext = _ALLOWED_AVATAR_CONTENT_TYPES[content_type]
     avatar_key = f"avatars/{user_id}/{uuid.uuid4().hex}.{ext}"
-    upload_url = _get_s3_client().generate_presigned_url(
-        "put_object",
-        Params={
-            "Bucket": os.environ["AVATAR_BUCKET_NAME"],
-            "Key": avatar_key,
-            "ContentType": content_type,
-        },
+    presigned_post = _get_s3_client().generate_presigned_post(
+        Bucket=os.environ["AVATAR_BUCKET_NAME"],
+        Key=avatar_key,
+        Fields={"Content-Type": content_type},
+        Conditions=[
+            {"Content-Type": content_type},
+            ["content-length-range", 0, _MAX_AVATAR_SIZE_BYTES],
+        ],
         ExpiresIn=_AVATAR_UPLOAD_EXPIRES_IN_SECONDS,
     )
     avatar_url = f"https://{os.environ['AVATAR_CLOUDFRONT_DOMAIN']}/{avatar_key}"
 
     return success_response(
         {
-            "uploadUrl": upload_url,
+            "uploadUrl": presigned_post["url"],
+            "uploadFields": presigned_post["fields"],
             "avatarUrl": avatar_url,
             "expiresIn": _AVATAR_UPLOAD_EXPIRES_IN_SECONDS,
         }
