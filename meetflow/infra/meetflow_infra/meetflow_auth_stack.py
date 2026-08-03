@@ -69,6 +69,18 @@ class MeetFlowAuthStack(Stack):
             # のはPhase2の通知メールチャネル（AWSシステム構成設計書v1.2
             # §11）のみであり、Cognito自体の確認メールとは別の関心事。
             email=cognito.UserPoolEmail.with_cognito(),
+            # 確認コードメールの文面を日本語固定にする（Issue #107）。
+            # 「アクセス時の情報から日本語話者かどうかを自動判定する」案も
+            # 検討したが、現在の認証方式（Amplifyの直接SRP、Hosted UI不
+            # 使用）ではCognitoのメッセージ生成にIPアドレス／Accept-Language
+            # ヘッダーが渡ってこず技術的に困難なため、ユーザーは日本語話者
+            # 前提という既存方針（本ファイル冒頭コメント参照）に合わせて
+            # 固定文言とする。
+            user_verification=cognito.UserVerificationConfig(
+                email_subject="【MeetFlow】確認コードのお知らせ",
+                email_body="MeetFlowへのご登録ありがとうございます。確認コードは {####} です。",
+                email_style=cognito.VerificationEmailStyle.CODE,
+            ),
             # 要件定義書24章「セキュリティ」に対する妥当な既定値。docs内に
             # 具体的なパスワードポリシーの規定はないため、一般的な安全な
             # 最低ラインを設定する。
