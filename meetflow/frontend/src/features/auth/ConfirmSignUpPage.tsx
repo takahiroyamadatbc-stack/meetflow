@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +14,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { completeAutoSignIn, confirmSignUpCode } from "@/features/auth/api";
+import {
+  completeAutoSignIn,
+  confirmSignUpCode,
+  resendSignUpConfirmationCode,
+} from "@/features/auth/api";
 import { peekPendingInvitePath } from "@/features/auth/pendingInvite";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -33,6 +37,7 @@ export function ConfirmSignUpPage() {
   const email = state?.email ?? "";
   const nickname = state?.nickname;
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const form = useForm<ConfirmFormValues>({
     resolver: zodResolver(confirmSchema),
@@ -71,6 +76,19 @@ export function ConfirmSignUpPage() {
     }
   }
 
+  async function handleResend() {
+    if (!email || resendState === "sending") {
+      return;
+    }
+    setResendState("sending");
+    try {
+      await resendSignUpConfirmationCode(email);
+      setResendState("sent");
+    } catch {
+      setResendState("error");
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col justify-center px-6 py-10">
       <BrandLogo />
@@ -80,7 +98,7 @@ export function ConfirmSignUpPage() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground mb-4 text-sm">
-            {email || "登録したメールアドレス"}宛に届いた確認コードを入力してください。
+            {email || "登録したメールアドレス"}宛に届いた確認コードを入力してください。数分待っても届かない場合は、迷惑メールフォルダもご確認ください。
           </p>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
@@ -103,6 +121,26 @@ export function ConfirmSignUpPage() {
               </Button>
             </form>
           </Form>
+          <div className="mt-4 flex flex-col items-center gap-2 text-sm">
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0"
+              disabled={!email || resendState === "sending"}
+              onClick={handleResend}
+            >
+              確認コードを再送信する
+            </Button>
+            {resendState === "sent" && (
+              <p className="text-muted-foreground">確認コードを再送信しました</p>
+            )}
+            {resendState === "error" && (
+              <p className="text-destructive">確認コードの再送信に失敗しました</p>
+            )}
+            <Link to={paths.signup} className="text-primary underline underline-offset-4">
+              メールアドレスが違う場合はこちら
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

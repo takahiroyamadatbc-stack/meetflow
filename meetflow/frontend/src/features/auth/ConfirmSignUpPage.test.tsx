@@ -141,4 +141,36 @@ describe("ConfirmSignUpPage", () => {
       ),
     );
   });
+
+  it("再送信ボタンで確認コードを再送信し、成功メッセージを表示する（Issue #105）", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.resendSignUpConfirmationCode).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof authApi.resendSignUpConfirmationCode>>,
+    );
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "確認コードを再送信する" }));
+
+    expect(authApi.resendSignUpConfirmationCode).toHaveBeenCalledWith("taro@example.com");
+    expect(await screen.findByText("確認コードを再送信しました")).toBeInTheDocument();
+  });
+
+  it("再送信に失敗した場合はエラーメッセージを表示する（Issue #105）", async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.resendSignUpConfirmationCode).mockRejectedValue(new Error("failed"));
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "確認コードを再送信する" }));
+
+    expect(await screen.findByText("確認コードの再送信に失敗しました")).toBeInTheDocument();
+  });
+
+  it("メールアドレス修正導線からサインアップ画面へ戻れる（Issue #105）", async () => {
+    renderPage();
+
+    expect(screen.getByRole("link", { name: "メールアドレスが違う場合はこちら" })).toHaveAttribute(
+      "href",
+      "/signup",
+    );
+  });
 });
