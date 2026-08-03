@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { resendSignUpConfirmationCode, signUpUser } from "@/features/auth/api";
+import { suggestEmailCorrection } from "@/features/auth/emailTypoCheck";
 import { passwordSchema } from "@/features/auth/passwordSchema";
 import { paths } from "@/routes/paths";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -38,11 +39,20 @@ type SignUpFormValues = z.infer<typeof signUpSchema>;
 export function SignUpPage() {
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
 
   const form = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
     defaultValues: { nickname: "", email: "", password: "", confirmPassword: "" },
   });
+
+  function applyEmailSuggestion() {
+    if (!emailSuggestion) {
+      return;
+    }
+    form.setValue("email", emailSuggestion, { shouldValidate: true });
+    setEmailSuggestion(null);
+  }
 
   async function onSubmit(values: SignUpFormValues) {
     setSubmitError(null);
@@ -101,8 +111,33 @@ export function SignUpPage() {
                   <FormItem>
                     <FormLabel>メールアドレス</FormLabel>
                     <FormControl>
-                      <Input type="email" autoComplete="email" {...field} />
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setEmailSuggestion(null);
+                        }}
+                        onBlur={(e) => {
+                          field.onBlur();
+                          setEmailSuggestion(suggestEmailCorrection(e.target.value));
+                        }}
+                      />
                     </FormControl>
+                    {emailSuggestion && (
+                      <p className="text-muted-foreground text-sm">
+                        もしかして{" "}
+                        <button
+                          type="button"
+                          className="text-primary underline underline-offset-4"
+                          onClick={applyEmailSuggestion}
+                        >
+                          {emailSuggestion}
+                        </button>{" "}
+                        ですか？
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
