@@ -109,4 +109,51 @@ describe("SignUpPage", () => {
 
     expect(await screen.findByText("ネットワークエラー")).toBeInTheDocument();
   });
+
+  it("メールアドレスがタイポらしい場合、入力欄からフォーカスが外れると修正候補を表示する（Issue #106）", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText("メールアドレス"), "taro@gmial.com");
+    await user.tab();
+
+    expect(
+      await screen.findByRole("button", { name: "taro@gmail.com" }),
+    ).toBeInTheDocument();
+  });
+
+  it("修正候補をクリックするとメールアドレス欄が差し替わり、候補表示が消える（Issue #106）", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText("メールアドレス"), "taro@gmial.com");
+    await user.tab();
+    await user.click(await screen.findByRole("button", { name: "taro@gmail.com" }));
+
+    expect(screen.getByLabelText("メールアドレス")).toHaveValue("taro@gmail.com");
+    expect(screen.queryByRole("button", { name: "taro@gmail.com" })).not.toBeInTheDocument();
+  });
+
+  it("再入力すると修正候補は消える（Issue #106）", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText("メールアドレス"), "taro@gmial.com");
+    await user.tab();
+    await screen.findByRole("button", { name: "taro@gmail.com" });
+
+    await user.type(screen.getByLabelText("メールアドレス"), "x");
+
+    expect(screen.queryByRole("button", { name: "taro@gmail.com" })).not.toBeInTheDocument();
+  });
+
+  it("タイポらしくないメールアドレスでは修正候補を表示しない（Issue #106）", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText("メールアドレス"), "taro@example.com");
+    await user.tab();
+
+    expect(screen.queryByText("ですか？")).not.toBeInTheDocument();
+  });
 });
