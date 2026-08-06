@@ -1,6 +1,6 @@
 # MeetFlow 手動デプロイ手順（dev環境）
 
-MVP検証のための手動デプロイ手順。CD（GitHub Actionsからの自動デプロイ）は現時点ではスコープ外で、`cdk deploy`をローカルから手動実行する運用（詳細はCLAUDE.mdの「CI/CD」節を参照）。
+MVP検証のための手動デプロイ手順。CD（GitHub Actionsからの自動デプロイ）は戦略（develop/main 2ブランチ・2環境、OIDC連携）は確定済みだが実装は未着手で、`cdk deploy`をローカルから手動実行する運用（詳細はCLAUDE.mdの「CI/CD」節を参照）。
 
 ## 前提
 

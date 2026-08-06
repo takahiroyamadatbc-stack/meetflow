@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - API設計書v1.30
 - 画面設計書v1.18
 - エラーコード一覧v1.11
-- AWSシステム構成設計書v1.3
+- AWSシステム構成設計書v1.4
 
 ## 技術スタック
 
@@ -35,8 +35,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 意味のある単位(1機能・1修正)ごとにローカルcommitする
 - commitメッセージは Conventional Commits形式(feat:, fix:, docs: 等)で書く
 - git pushは明示的に指示されるまで実行しない
-- developブランチへの直接pushはしない。作業用ブランチ(feature/xxx)を切ってそこにpushする
-- **[MVP期間中の暫定運用]** mainへの反映はPR経由が基本だが、MVP開発期間中はレビュー負荷を下げるため、featureブランチをPRを介さずローカルでmainに直接マージ・pushしてよい（指示があった場合のみ、上記のpush規約は変わらない）。プロダクトが安定しチーム開発体制になったらPRベースの運用に戻す。
+- **[CI/CDブランチ戦略]** `develop`（Dev環境に対応）→`main`（Production環境に対応）の2ブランチ構成を採る（設計書のdevelop/staging/main 3ブランチモデルは個人開発規模に合わせて2ブランチへ簡素化。詳細はAWSシステム構成設計書v1.4 §14-15参照）。Staging環境・stagingブランチは現時点では設けない。
+- **[MVP期間中の暫定運用]** `develop`への反映（feature/xxx → develop）・`main`への反映（develop → main）はいずれもPR経由が基本だが、MVP開発期間中はレビュー負荷を下げるため、PRを介さずローカルで直接マージ・pushしてよい（指示があった場合のみ、上記のpush規約は変わらない）。`develop`→`main`のマージは、実質的にProduction環境への反映を承認する操作を兼ねるため、mainへマージする前にdev環境での動作確認を済ませておくこと。プロダクトが安定しチーム開発体制になったらPRベースの運用に戻す。
 - **バグ修正・機能追加はGitHub Issueで管理する**：着手前に`gh issue create`でIssueを作成してから作業を始め、修正が完了したら`gh issue close`でそのIssueを解決済みにする。1つのユーザー報告が複数の独立した修正・追加に分かれる場合は、それぞれ別Issueにする。
 
 ## プロジェクトの状態
@@ -122,7 +122,15 @@ User → CloudFront → S3 (React SPA) / API Gateway (Cognito Authorizer) → 7 
 
 ## CI/CD
 
-GitHub → GitHub Actions → `test → build → deploy`、ブランチと環境の対応は以下の通り：`develop` → Development、`staging` → Staging、`main` → Production（mainマージ時に自動デプロイ）。
+GitHub → GitHub Actions → `test → build → deploy`、ブランチと環境の対応は以下の通り：`develop` → Development、`main` → Production（mainマージ時に自動デプロイ）。**Staging環境・stagingブランチは現時点では設けない**（本番前検証の具体的必要が生じた時点で追加検討。3ブランチモデルから2ブランチへ簡素化した経緯はAWSシステム構成設計書v1.4 §14-15参照）。
 
 - `test`（CI）：`.github/workflows/ci.yml`として実装済み（詳細は上記「プロジェクトの状態」の`.github/workflows/`項目を参照）。AWS認証情報を必要としない検証のみのワークフロー。
-- `build`/`deploy`（CD）：**計画中・未着手**。AWS側にGitHub Actions用のOIDC IAMロール、CDKブートストラップ済み環境（dev/staging/prod）が必要で、いずれも未準備。`develop`/`staging`ブランチ自体もまだ作成されていない（現状mainのみ運用）。MVP検証段階の現時点では、リポジトリルートの`DEPLOY.md`に従った手動`cdk deploy`＋手動フロントエンドアップロードのみで運用する。
+- `build`/`deploy`（CD）：**戦略は確定済み・実装は未着手**。`.github/workflows/cd.yml`（新設予定）を`push: branches: [develop]`→dev環境デプロイ、`push: branches: [main]`→prod環境デプロイの2トリガー構成にし、`deploy-backend`（`cdk deploy --all -c env=<env>`）→CfnOutput取得→`build-frontend`（`.env.<mode>`生成＋`vite build --mode <mode>`）→`deploy-frontend`（`aws s3 sync`＋CloudFront invalidation）の順にジョブを繋げる想定（`BucketDeployment`を使わない現行方針は維持）。AWS認証は`aws sso login`（対話ログイン、ローカル手動デプロイ用に引き続き残す）ではなく、GitHub ActionsのOIDCプロバイダ経由のIAMロールAssume（長期クレデンシャルをGitHub Secretsに置かない）を採用する。実装時（別タスク）にAWS/GitHub側で必要な設定：
+  1. OIDCプロバイダ登録（`token.actions.githubusercontent.com`、アカウントに1回のみ）
+  2. IAMロール`meetflow-gha-deploy-dev`（信頼ポリシーを`ref:refs/heads/develop`に限定、権限を`dev-`プレフィックスのリソースにスコープ）
+  3. IAMロール`meetflow-gha-deploy-prod`（同様に`ref:refs/heads/main`・`prod-`プレフィックス）
+  4. GitHub Repository VariablesにロールARNを登録（`AWS_DEPLOY_ROLE_ARN_DEV`/`AWS_DEPLOY_ROLE_ARN_PROD`）
+  5. （推奨・任意）`production` EnvironmentにRequired reviewersを設定し、mainへのpush＝即prodデプロイに承認ステップを挟む
+  6. `cd.yml`側で`permissions: id-token: write`＋`aws-actions/configure-aws-credentials`の`role-to-assume`設定
+
+  `develop`ブランチ自体もまだ作成されていない（現状mainのみ運用。実運用は「Git運用方針」節参照）。MVP検証段階の現時点では、リポジトリルートの`DEPLOY.md`に従った手動`cdk deploy`＋手動フロントエンドアップロードのみで運用する。

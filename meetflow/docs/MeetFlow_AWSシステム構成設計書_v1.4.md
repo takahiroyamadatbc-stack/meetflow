@@ -1,7 +1,7 @@
-# MeetFlow AWSシステム構成設計書 v1.3
+# MeetFlow AWSシステム構成設計書 v1.4
 
-> 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・DynamoDB物理設計書v1.1・Lambda設計書v1.0を踏まえて更新。v1.2→v1.3は要件定義書v1.3・Lambda設計書v1.2を踏まえて更新。
-> v1.0からの変更点は **[v1.1修正]** として明記。v1.2→v1.3は **[v1.3新規/修正]** として明記。変更点サマリは末尾参照。
+> 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・DynamoDB物理設計書v1.1・Lambda設計書v1.0を踏まえて更新。v1.2→v1.3は要件定義書v1.3・Lambda設計書v1.2を踏まえて更新。v1.3→v1.4は、実装フェーズでの実際のGit運用（`CLAUDE.md`）・個人開発規模に合わせたCI/CD戦略の確定を踏まえて更新。
+> v1.0からの変更点は **[v1.1修正]** として明記。v1.2→v1.3は **[v1.3新規/修正]** として明記。v1.3→v1.4は **[v1.4修正]** として明記。変更点サマリは末尾参照。
 
 ---
 
@@ -296,29 +296,32 @@ AWS Secrets Manager 用途：外部APIキー、DB認証情報、**Webプッシ�
 
 ---
 
-## 14. CI/CD構成 **[v1.1修正]**
+## 14. CI/CD構成 **[v1.1修正] [v1.4修正]**
 
 GitHub（ソース管理）→ GitHub Actions（自動化）
 
 **処理フロー**：`git push → test → build → deploy → S3更新 → Lambda更新`
 
-**ブランチ・環境対応** [v1.1追加]
+**ブランチ・環境対応** [v1.1追加] [v1.4修正]
 
 | ブランチ | デプロイ先環境 |
 |---|---|
 | `develop` | Development |
-| `staging` | Staging |
 | `main` | Production |
 
 > **[v1.1追加]** v1.0では処理フローのみでブランチと環境の対応関係が未定義だったため追加。`main`へのマージをProduction自動デプロイのトリガーとする最低限のルールを明記。
+>
+> **[v1.4修正]** v1.1では`develop`/`staging`/`main`の3ブランチモデルを想定していたが、個人開発規模での実装フェーズに入り、`staging`ブランチ・Staging環境は見送ることとした（`CLAUDE.md`のGit運用方針が実際にはfeatureブランチをmainへ直接マージするMVP暫定運用になっており、3ブランチ運用の維持コストが実態に見合わないと判断）。`develop`（Dev環境）→ `main`（Production環境）の2ブランチ構成とし、featureブランチはMVP期間中developへ直接マージ、develop→mainのマージがそのままProductionへの反映トリガーを兼ねる。Staging環境は、本番反映前に別環境での検証が具体的に必要になった時点（DBスキーマ変更・CloudFront設定変更等）で改めて追加を検討する。
 
 ---
 
-## 15. 開発環境 **[v1.1修正]**
+## 15. 開発環境 **[v1.1修正] [v1.4修正]**
 
-環境分離：Development → Staging → Production
+環境分離：Development → Production（2環境。Stagingは将来、本番前検証の具体的必要が生じた時点で追加検討）
 
 > **[v1.1修正]** v1.0では「AWSアカウント分離推奨」とだけ記載されていたが、個人開発＋学習目的の段階ではアカウント分離の管理コスト（IAMロール、クロスアカウントアクセス等）が重い。**MVPでは単一AWSアカウント＋リソース名プレフィックス（`dev-`, `staging-`, `prod-`）による環境分離**を採用し、運用が安定してから本格的なAWS Organizationsによるアカウント分離へ移行する方針とする。
+>
+> **[v1.4修正]** 環境分離は「Development → Staging → Production」の3段階から「Development → Production」の2段階に変更（理由は§14参照）。単一AWSアカウント＋リソース名プレフィックスという分離方式自体は変更しない。`staging-`プレフィックスの命名規則は、将来Staging環境を追加する際にそのまま使えるようCDK側の設計には残しておく。デプロイ時の認証は、GitHub Actionsからの自動デプロイ導入に合わせて`aws sso login`（対話ログイン、ローカルでの手動デプロイ用に残る）ではなく、GitHub ActionsのOIDCプロバイダ経由でIAMロールをAssumeする方式（長期クレデンシャルをGitHub Secretsに置かない）を採用する。IAMロールはDev/Production環境ごとに分離し、信頼ポリシーを対応するブランチ（`develop`/`main`）に限定する。
 
 ---
 
@@ -400,3 +403,13 @@ MeetFlowは、「小規模コミュニティで低コスト運用できる」こ
 | 3 | 11章の通知MVPにWebプッシュ通知を追加。Amazon SNS/FCMではなくVAPID鍵によるWeb Push API直接利用である旨を明記 | Push通知のMVP前倒し（配信基盤を追加しない設計判断） |
 | 4 | 13章Secrets管理にVAPID鍵ペアの保管を追加 | 上記の鍵管理方針 |
 | 5 | 16章MVP時AWSサービス一覧にSecrets Managerを追加 | 実際に利用するサービスとして表に反映（記載漏れの是正を兼ねる） |
+
+---
+
+## v1.3 → v1.4 変更点サマリ
+
+| No | 変更内容 | 理由 |
+| --- | --- | --- |
+| 1 | 14章のブランチ・環境対応表を`develop`/`staging`/`main`の3行から`develop`/`main`の2行に変更（`staging`行を削除） | 実装フェーズに入り、`CLAUDE.md`のGit運用方針が実際にはfeatureブランチをmainへ直接マージするMVP暫定運用になっていたため、v1.1で定めた3ブランチモデルとの乖離を解消。個人開発規模では3ブランチ運用の維持コスト（マージ順序管理等）が実態に見合わないと判断し、develop→dev環境・main→Production環境の2ブランチ構成に簡素化した |
+| 2 | 15章の環境分離を「Development → Staging → Production」から「Development → Production」の2環境に変更 | 同上。Staging環境の常時運用コスト（KMS/Secrets Manager等の固定費、VAPID鍵管理の二重化）が現時点の検証規模に見合わないため。単一AWSアカウント＋プレフィックス分離の方針自体は変更なし。Staging環境は本番前検証の具体的必要が生じた時点で改めて追加を検討する |
+| 3 | 15章にデプロイ認証方式（OIDC連携）の方針を追加 | GitHub Actionsからの自動デプロイ導入に向け、対話ログイン（`aws sso login`）に代わる非対話環境向けの認証方式を明記する必要があったため。長期IAMクレデンシャルをGitHub Secretsに置かないベストプラクティスとして、GitHub ActionsのOIDCプロバイダ経由でのIAMロールAssumeを採用 |
