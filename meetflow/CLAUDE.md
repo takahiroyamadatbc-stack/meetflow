@@ -134,3 +134,5 @@ GitHub → GitHub Actions → `test → build → deploy`、ブランチと環�
   6. `cd.yml`側で`permissions: id-token: write`＋`aws-actions/configure-aws-credentials`の`role-to-assume`設定
 
   `develop`ブランチ自体もまだ作成されていない（現状mainのみ運用。実運用は「Git運用方針」節参照）。MVP検証段階の現時点では、リポジトリルートの`DEPLOY.md`に従った手動`cdk deploy`＋手動フロントエンドアップロードのみで運用する。
+
+**⚠️ デプロイ作業を頼まれたら、`DEPLOY.md`を手順3で終えたと思わず必ず§4bまで実行すること。** `cdk deploy --all -c env=dev`（DEPLOY.md手順3）だけではデプロイ完了ではない。このコマンドは`CommunityLambda`の`INVITE_BASE_URL`環境変数を設定しないため、続けて手順4b（`cdk deploy dev-MeetFlowComputeStack -c env=dev -c invite_base_url=<CloudFrontDomainName>/invite`）を実行しないと、招待URL発行機能がハードコードされたプレースホルダー`https://meetflow.jp/invite`（実在しないドメイン）を返し続ける。エラーは一切出ずサイレントに壊れ、招待URLの再発行（revoke→再作成）でも直らない。過去に複数回、この手順を忘れたまま「デプロイ完了」と報告し、後からユーザーに「招待URLが無効」と指摘されている。cd.yml実装時も同様に、`deploy-backend`ジョブにこのinvite_base_url再デプロイ相当のステップを組み込むこと。

@@ -52,6 +52,8 @@ cdk deploy --all -c env=dev --profile personal
 
 `DataStack → AuthStack → ComputeStack → ApiStack`はスタック間参照（DynamoDB Table / Cognito UserPool）に基づきCDKが自動で依存順にデプロイする。`FrontendStack`（S3 + CloudFront）は他スタックへの参照を持たないため、デプロイ順に制約はない。
 
+> ⚠️ **`cdk deploy --all`だけではデプロイ完了ではない。** このコマンドは`INVITE_BASE_URL`を設定しないため、**後続の手順4bを必ず実行するまで**、招待URL発行機能はハードコードされたプレースホルダー`https://meetflow.jp/invite`（実在しないドメイン）を返し続ける。エラーは一切出ずサイレントに壊れるため気づきにくい。招待URLの再発行（revoke→再作成）では直らない。過去に複数回、この手順を忘れたまま運用され、ユーザーから「招待URLが無効」と報告があって発覚している。**`--all`デプロイの直後は、必ず手順4bまで完了させてから「デプロイ完了」と報告すること。**
+
 IAMロール変更を伴うため、途中で `Do wish to deploy these changes (y/n)?` と確認を求められる。**初回は内容を確認してから`y`とすること**（`--require-approval never`は使わない）。
 
 `FrontendStack`だけを個別にデプロイしたい場合は `cdk deploy dev-MeetFlowFrontendStack -c env=dev --profile personal` でも良い（手順7参照）。
@@ -90,7 +92,9 @@ aws cloudformation describe-stacks --stack-name dev-MeetFlowApiStack --profile p
 aws cloudformation describe-stacks --stack-name dev-MeetFlowFrontendStack --profile personal --query "Stacks[0].Outputs"
 ```
 
-## 4b. 招待URLをCloudFrontドメインに合わせて設定
+## 4b. 【必須・省略不可】招待URLをCloudFrontドメインに合わせて設定
+
+`cdk deploy --all`（手順3）を実行した直後は、まだこの手順が終わっていない。省略すると招待URL発行機能がサイレントに壊れる（エラーは出ない）ので、**フロントエンドの動作確認をする・しないに関わらず、`--all`デプロイのたびに必ず実行すること**。
 
 招待URL発行（`POST /communities/{communityId}/invite`）は、独自ドメイン未取得の間は`CommunityLambda`の`INVITE_BASE_URL`環境変数（未設定時はコード側のハードコードされたプレースホルダー`https://meetflow.jp/invite`にフォールバックする）に、手順4で控えた`CloudFrontDomainName`を設定することで動作確認できる。
 
