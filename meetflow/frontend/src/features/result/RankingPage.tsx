@@ -134,7 +134,9 @@ export function RankingPage() {
     const ascending = RANKING_ASCENDING_METRICS.has(metric);
     return [...eligible].sort((a, b) => {
       const diff = getRankingMetricValue(a, metric) - getRankingMetricValue(b, metric);
-      return ascending ? diff : -diff;
+      if (diff !== 0) return ascending ? diff : -diff;
+      // 指標の値が同値の場合、対局数が多い人を上に表示する
+      return b.totalGames - a.totalGames;
     });
   }, [ranking, metric, minGames, minGamesApplicable]);
 
