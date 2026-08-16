@@ -210,45 +210,36 @@ def list_event_sessions(user_id, event):
 
 
 def get_last_game_settings(user_id, event):
-    """コミュニティ内で呼び出しユーザー自身が直近に記録した対局の計算設定
-    （配給原点・返し点・ウマ・計算モード）を返す（新規追加）。「次回開催時は
-    デフォルトとして使いたい」という要望への対応。
+    """直近に記録された対局の計算設定（配給原点・返し点・ウマ・計算モード）を
+    返す。「次回入力時はデフォルトとして使いたい」という要望への対応。
+
+    まず同一イベント内の直前セッション（クエリパラメータ`eventId`）を優先する。
+    成績入力はコミュニティのアクティブなメンバーなら誰でもでき、対局の途中で
+    入力者が変わることも珍しくないため（Issue #109）、「呼び出しユーザー本人の
+    前回」ではなく「そのイベントで直前に誰かが入力した設定」を引き継げる方が
+    実用上望ましい。同一イベント内に前例が無い場合（イベント最初の半荘）は、
+    従来通り呼び出しユーザー自身がコミュニティ内で直近に記録したGameResultから
+    遡ってGameSessionの設定を引くフォールバックを使う。
 
     コミュニティ側エンティティに書き込む案（例えばCOMMUNITY#{id}/METADATAに
     ResultLambdaから最終設定を保存する）も検討したが、Lambda設計書v1.1 §5.3
     「案C」のドメインLambdaごとのIAM最小権限方針（各ドメインは自分の
     エンティティのPK/SKプレフィックスのみ書き込む）に反するため採用しない。
-    ここではResultLambda自身のGSI1（既存のGetItem/Query権限のみで完結）を
-    使って、呼び出しユーザー自身の直近のGameResultから遡ってGameSessionの
-    設定を引く方式にした。
+    ここではResultLambda自身が既に持つGetItem/Query権限のみで完結する方式に
+    している。
     """
     community_id = event["pathParameters"]["communityId"]
     table = get_table()
     require_membership(table, community_id, user_id)
 
-    resp = table.query(
-        IndexName="GSI1",
-        KeyConditionExpression=Key("GSI1PK").eq(f"USER#{user_id}")
-        & Key("GSI1SK").begins_with(f"COMMUNITY#{community_id}"),
-        ScanIndexForward=False,
-        Limit=25,
-    )
-    last_result = next(
-        (
-            item
-            for item in resp.get("Items", [])
-            if item["PK"].startswith("EVENT#") and "#RESULT#" in item["SK"]
-        ),
-        None,
-    )
-    if last_result is None:
-        return success_response({"found": False})
+    query_params = event.get("queryStringParameters") or {}
+    event_id_param = query_params.get("eventId")
 
-    event_id = last_result["PK"].split("#", 1)[1]
-    session_no = last_result["SK"].split("#")[1]
-    session_item = table.get_item(
-        Key={"PK": f"EVENT#{event_id}", "SK": f"SESSION#{session_no}"}
-    ).get("Item")
+    session_item = None
+    if event_id_param:
+        session_item = _latest_session_in_event(table, community_id, event_id_param)
+    if session_item is None:
+        session_item = _latest_session_for_user(table, community_id, user_id)
     if session_item is None:
         return success_response({"found": False})
 
@@ -563,6 +554,63 @@ def _completed_event_ids(table, event_ids):
         if item is not None and item.get("status") == "COMPLETED":
             completed.add(event_id)
     return completed
+
+
+def _latest_session_in_event(table, community_id, event_id):
+    """指定イベント内の直前のGameSessionアイテムを返す(無ければNone)。
+
+    イベントが指定コミュニティに属することを確認してから検索する(呼び出し
+    元はcommunityIdをパスパラメータ、eventIdをクエリパラメータで別々に
+    受け取るため、他コミュニティのイベントIDを渡された場合に設定が漏れる
+    ことを防ぐ)。
+    """
+    event_item = table.get_item(Key={"PK": f"EVENT#{event_id}", "SK": "METADATA"}).get(
+        "Item"
+    )
+    if event_item is None or event_item.get("GSI1PK") != f"COMMUNITY#{community_id}":
+        return None
+
+    resp = table.query(
+        KeyConditionExpression=Key("PK").eq(f"EVENT#{event_id}")
+        & Key("SK").begins_with("SESSION#")
+    )
+    sessions_by_no = {}
+    for item in resp.get("Items", []):
+        parts = item["SK"].split("#")
+        if len(parts) == 2:
+            sessions_by_no[int(parts[1])] = item
+    if not sessions_by_no:
+        return None
+    return sessions_by_no[max(sessions_by_no)]
+
+
+def _latest_session_for_user(table, community_id, user_id):
+    """呼び出しユーザー自身がコミュニティ内で直近に記録したGameResultから
+    遡って、そのGameSessionアイテムを返す(無ければNone)。
+    """
+    resp = table.query(
+        IndexName="GSI1",
+        KeyConditionExpression=Key("GSI1PK").eq(f"USER#{user_id}")
+        & Key("GSI1SK").begins_with(f"COMMUNITY#{community_id}"),
+        ScanIndexForward=False,
+        Limit=25,
+    )
+    last_result = next(
+        (
+            item
+            for item in resp.get("Items", [])
+            if item["PK"].startswith("EVENT#") and "#RESULT#" in item["SK"]
+        ),
+        None,
+    )
+    if last_result is None:
+        return None
+
+    event_id = last_result["PK"].split("#", 1)[1]
+    session_no = last_result["SK"].split("#")[1]
+    return table.get_item(
+        Key={"PK": f"EVENT#{event_id}", "SK": f"SESSION#{session_no}"}
+    ).get("Item")
 
 
 def _next_session_no(table, event_id):

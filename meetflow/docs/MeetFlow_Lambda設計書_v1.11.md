@@ -1,6 +1,6 @@
-# MeetFlow Lambda設計書 v1.10
+# MeetFlow Lambda設計書 v1.11
 
-> 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・DynamoDB物理設計書v1.1を踏まえて設計。v1.1→v1.2は要件定義書v1.3・機能要件書v1.3・API設計書v1.5・DynamoDB物理設計書v1.4を踏まえて更新。v1.2→v1.3は機能要件書v1.5・API設計書v1.7・DynamoDB物理設計書v1.6を踏まえて更新。v1.3→v1.4はAPI設計書v1.8（招待URL無効化・OperationLog閲覧APIの実装）を踏まえて更新。v1.7→v1.8はAPI設計書v1.19（Issue #42：登録済み対局セッションの削除API新設）を踏まえて更新。v1.8→v1.9は要件定義書v1.9・機能要件書v1.11・API設計書v1.25・DynamoDB物理設計書v1.19（Issue #40：コミュニティ内ランキング機能）を踏まえて更新。v1.9→v1.10はIssue #97（確定済み・定員未充足イベントへの追加候補通知）を踏まえて更新。
+> 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・DynamoDB物理設計書v1.1を踏まえて設計。v1.1→v1.2は要件定義書v1.3・機能要件書v1.3・API設計書v1.5・DynamoDB物理設計書v1.4を踏まえて更新。v1.2→v1.3は機能要件書v1.5・API設計書v1.7・DynamoDB物理設計書v1.6を踏まえて更新。v1.3→v1.4はAPI設計書v1.8（招待URL無効化・OperationLog閲覧APIの実装）を踏まえて更新。v1.7→v1.8はAPI設計書v1.19（Issue #42：登録済み対局セッションの削除API新設）を踏まえて更新。v1.8→v1.9は要件定義書v1.9・機能要件書v1.11・API設計書v1.25・DynamoDB物理設計書v1.19（Issue #40：コミュニティ内ランキング機能）を踏まえて更新。v1.9→v1.10はIssue #97（確定済み・定員未充足イベントへの追加候補通知）を踏まえて更新。v1.10→v1.11はIssue #109（成績入力の「前回設定」引き継ぎをユーザー単位からイベント単位に変更）を踏まえて更新。
 > **設計方針決定：ドメイン単位（7個）+ マッチング処理の分離**
 
 ---
@@ -383,7 +383,7 @@ API Gatewayのみ。
 | `PUT /events/{eventId}/sessions/{sessionNo}` | 登録済み対局セッションの編集。OWNER/ADMIN限定。参加者構成（userIdの集合）は変更不可 |
 | `DELETE /events/{eventId}/sessions/{sessionNo}` **[v1.8新規]** | Issue #42：登録済み対局セッションの削除。OWNER/ADMIN限定（PUTと同じ権限方針）。GameSession本体・全参加者分のGameResult・GameResultChipを`TransactWriteItems`でまとめて削除する |
 | `GET /events/{eventId}/sessions` | イベント内の登録済み対局セッション一覧。コミュニティメンバーであれば誰でも閲覧可能 |
-| `GET /communities/{communityId}/game-sessions/last-settings` | 呼び出しユーザー自身の直近の対局設定（配給原点・返し点・ウマ・計算モード）取得。次回入力時のデフォルト値として利用 |
+| `GET /communities/{communityId}/game-sessions/last-settings` **[v1.11修正]** | 直近の対局設定（配給原点・返し点・ウマ・計算モード）取得。次回入力時のデフォルト値として利用。クエリパラメータ`eventId`を渡すと同一イベント内で直前に(自分以外を含む)誰かが入力した設定を優先し、イベント内に前例が無ければ呼び出しユーザー本人の直近設定にフォールバックする |
 | `GET /users/{userId}/results` | F-804 成績取得。**権限チェック：閲覧者と対象ユーザーが同一コミュニティに所属している場合のみ返却**（DynamoDB物理設計書v1.1のGSI1SK設計＝`COMMUNITY#{communityId}#{playedAt}`で担保） |
 | `GET /communities/{communityId}/rankings` **[v1.9新規]** | F-805 コミュニティ内ランキング取得。閲覧権限はコミュニティメンバーであれば誰でも可（管理者限定にしない） |
 
@@ -802,3 +802,14 @@ Issue #40「コミュニティ内ランキング表示機能の追加」に対�
 | 4 | 9.1 NotificationLambdaのトリガー・9.2のハンドラーに`ConfirmedEventCandidateAvailable`受信時の管理者向け通知処理を追加（`CandidateConflictDetected`と同じ管理者限定パターン。`relatedEventId`で対象イベント詳細へ遷移） | 上記と同一の決定事項 |
 
 Issue #97「確定済みで定員に空きのあるイベントについて、別メンバーの空き予定更新で条件を満たしたら管理者に追加候補として通知する」に対応。実際の参加者追加は既存の`POST /events/{eventId}/participants`（管理者操作）を経る。システムによる自動追加は行わない（HITL厳守）。
+
+---
+
+## v1.10 → v1.11 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | 8.2 `GET /communities/{communityId}/game-sessions/last-settings`の説明を修正。新規クエリパラメータ`eventId`を渡すと同一イベント内で直前に(呼び出しユーザー以外を含む)誰かが入力した設定を優先するようにした。イベント内に前例が無い場合は従来通り呼び出しユーザー本人の直近設定にフォールバックする | Issue #109：成績入力の途中で入力者が別のメンバーに変わると、ウマ・飛び賞・返し点等の設定がユーザー単位の「前回設定」に戻ってしまい毎回再入力が必要だった問題への対応 |
+| 2 | IAM最小権限（8.4）に変更なし。同一イベント内の直前セッション検索は既存の`GetItem`/`Query`権限のみで完結する | 上記と同一の決定事項 |
+
+Issue #109「成績入力の『前回設定』引き継ぎがユーザー単位のため、別の人が入力するとウマ/飛び賞/返しが再入力になる」に対応。コミュニティ単位の恒久デフォルト設定（`ranking-settings`と同様のパターン）は別Issueで将来検討とし、今回はイベントスコープ化のみで対応した。

@@ -13,8 +13,8 @@ export const resultKeys = {
   summary: (communityId: string, userId: string) =>
     ["communities", communityId, "results", userId] as const,
   eventSessions: (eventId: string) => ["events", eventId, "sessions"] as const,
-  lastSettings: (communityId: string) =>
-    ["communities", communityId, "game-sessions", "last-settings"] as const,
+  lastSettings: (communityId: string, eventId: string) =>
+    ["communities", communityId, "game-sessions", "last-settings", eventId] as const,
   ranking: (communityId: string, gameType: GameType, period: RankingPeriodParams) =>
     ["communities", communityId, "rankings", gameType, period] as const,
 };
@@ -46,10 +46,16 @@ export function listEventSessions(eventId: string) {
     .then((data) => data.sessions);
 }
 
-/** GET /communities/{communityId}/game-sessions/last-settings */
-export function getLastGameSettings(communityId: string) {
+/**
+ * GET /communities/{communityId}/game-sessions/last-settings?eventId=...
+ *
+ * eventIdを渡すと、同一イベント内で直前に(自分以外を含む)誰かが入力した
+ * 設定を優先して返す。イベント内に前例が無ければユーザー本人の直近設定に
+ * フォールバックする(Issue #109)。
+ */
+export function getLastGameSettings(communityId: string, eventId: string) {
   return apiClient.get<LastGameSettings>(
-    `/communities/${communityId}/game-sessions/last-settings`,
+    `/communities/${communityId}/game-sessions/last-settings?eventId=${eventId}`,
   );
 }
 

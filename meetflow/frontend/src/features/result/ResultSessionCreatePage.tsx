@@ -143,9 +143,9 @@ export function ResultSessionCreatePage() {
   });
 
   const { data: lastSettings } = useQuery({
-    queryKey: resultKeys.lastSettings(event?.communityId ?? ""),
-    queryFn: () => getLastGameSettings(event!.communityId),
-    enabled: !!event?.communityId && !isEdit,
+    queryKey: resultKeys.lastSettings(event?.communityId ?? "", eventId ?? ""),
+    queryFn: () => getLastGameSettings(event!.communityId, eventId!),
+    enabled: !!event?.communityId && !!eventId && !isEdit,
   });
 
   const isLoading =

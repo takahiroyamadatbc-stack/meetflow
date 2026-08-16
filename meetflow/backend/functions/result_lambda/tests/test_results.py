@@ -644,6 +644,90 @@ def test_get_last_game_settings_not_found(table):
     assert body_of(response)["data"]["found"] is False
 
 
+def test_get_last_game_settings_prefers_same_event_over_other_user(table):
+    """Issue #109: 対局途中で入力者が変わっても、同一イベント内で直前に
+    誰かが入力した設定を優先して引き継ぐ（呼び出しユーザー本人の別イベント
+    での前回設定より優先）。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+    put_event(table, "event-1", "community-1")
+    put_event(table, "event-2", "community-1")
+
+    # user-2自身の「前回」はevent-2のMANUAL設定
+    results.create_session(
+        "user-2",
+        api_event(path_params={"eventId": "event-2"}, body=_manual_body()),
+    )
+    # event-1ではuser-1がAUTO設定で直前に入力済み
+    results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_auto_body()),
+    )
+
+    response = results.get_last_game_settings(
+        "user-2",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"eventId": "event-1"}
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["found"] is True
+    assert data["calcMode"] == "AUTO"
+    assert int(data["startingPoints"]) == 25000
+
+
+def test_get_last_game_settings_falls_back_to_user_history_when_event_has_no_sessions(
+    table,
+):
+    """イベント内に前例が無い場合（イベント最初の半荘）は、従来通り呼び出し
+    ユーザー自身の直近設定にフォールバックする。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+    put_event(table, "event-2", "community-1")
+    results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-1"}, body=_auto_body()),
+    )
+
+    response = results.get_last_game_settings(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"eventId": "event-2"}
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    data = body_of(response)["data"]
+    assert data["found"] is True
+    assert data["calcMode"] == "AUTO"
+
+
+def test_get_last_game_settings_ignores_event_id_from_other_community(table):
+    """eventIdクエリパラメータが別コミュニティのイベントを指す場合は無視し、
+    呼び出しユーザー本人の履歴にフォールバックする（コミュニティ間の設定
+    漏洩防止）。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_membership(table, "community-2", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+    put_event(table, "event-2", "community-2")
+    results.create_session(
+        "user-1",
+        api_event(path_params={"eventId": "event-2"}, body=_auto_body()),
+    )
+
+    response = results.get_last_game_settings(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"}, query={"eventId": "event-2"}
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["found"] is False
+
+
 def test_get_user_results_success(table):
     put_membership(table, "community-1", "user-1", role="OWNER")
     put_membership(table, "community-1", "user-2", role="MEMBER")
