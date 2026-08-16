@@ -19,6 +19,11 @@ from meetflow_common import (
 _RANKING_GAME_TYPES = ("MAHJONG4", "MAHJONG3")
 _RANKING_PERIOD_TYPES = ("MONTH", "QUARTER", "HALF_YEAR", "YEAR", "ALL_TIME")
 
+# ゲーム種別ごとの固定の最下位着順（四麻は4着、三麻は3着）。GameResultは
+# 各行にgameTypeを保持しているため、集計対象を実際に記録された着順の
+# 最大値（max(ranks)）で推測する必要はない（Issue #108）。
+_LAST_RANK_BY_GAME_TYPE = {"MAHJONG4": 4, "MAHJONG3": 3}
+
 
 def create_session(user_id, event):
     """F-801〜F-803 (API設計書v1.4 §10.1)。
@@ -344,7 +349,7 @@ def get_user_results(user_id, event):
     for game_type in ("MAHJONG4", "MAHJONG3"):
         gt_game_results = [r for r in game_results if r.get("gameType") == game_type]
         gt_chip_results = [c for c in chip_results if c.get("gameType") == game_type]
-        stats = _aggregate(gt_game_results)
+        stats = _aggregate(gt_game_results, game_type)
         stats["totalChips"] = sum(_as_int(c.get("chipCount", 0)) for c in gt_chip_results)
         by_game_type[game_type] = stats
 
@@ -426,7 +431,7 @@ def get_community_ranking(user_id, event):
 
     members = []
     for target_user_id, bucket in by_user.items():
-        stats = _aggregate_ranking_metrics(bucket["results"], bucket["chips"])
+        stats = _aggregate_ranking_metrics(bucket["results"], bucket["chips"], game_type)
         members.append(
             {
                 "userId": target_user_id,
@@ -504,7 +509,7 @@ def _parse_int(value):
         return None
 
 
-def _aggregate_ranking_metrics(results, chips):
+def _aggregate_ranking_metrics(results, chips, game_type):
     """コミュニティ内ランキング（F-805）向けの10指標を計算する。個人成績
     取得（`_aggregate`）とは別関数にしている -- 既存のGET /users/{id}/results
     のレスポンス形（5指標）を変えないため。
@@ -527,10 +532,8 @@ def _aggregate_ranking_metrics(results, chips):
 
     ranks = [r.get("rank", 0) for r in results]
     points = sum(r.get("rankPoints", 0) for r in results)
-    # 近似値: 「最下位」の判定は_aggregateと同じ限界を持つ（GameResultには
-    # 各セッションの実際のプレイヤー数が保存されていないため、このユーザー
-    # が実際に記録した最も悪い着順を「最下位」とみなす）。
-    worst_rank = max(ranks)
+    # 最下位はゲーム種別で固定（_aggregateと同様、Issue #108）。
+    worst_rank = _LAST_RANK_BY_GAME_TYPE[game_type]
     participated_events = {r["PK"].split("#", 1)[1] for r in results}
 
     return {
@@ -908,7 +911,7 @@ def _as_int(value):
     return int(value) if value is not None else 0
 
 
-def _aggregate(results):
+def _aggregate(results, game_type):
     total_games = len(results)
     if total_games == 0:
         return {
@@ -921,12 +924,11 @@ def _aggregate(results):
 
     ranks = [r.get("rank", 0) for r in results]
     points = sum(r.get("rankPoints", 0) for r in results)
-    # 近似値: 「最下位」は各セッションの実際のプレイヤー数（GameResultには
-    # 保存されていない）ではなく、このユーザーが実際に記録した最も悪い
-    # 着順から推測する -- コミュニティがほぼ固定のゲーム種別のみをプレイ
-    # している限りは問題ないが、例えば3人打ちと4人打ちが混在するユーザー
-    # では精度が落ちる。
-    worst_rank = max(ranks)
+    # 最下位はゲーム種別で固定（四麻=4着、三麻=3着）。このユーザーが
+    # 対象期間中に実際に記録した最も悪い着順（max(ranks)）で代用すると、
+    # 4着（ラス）を一度も引いていない期間は3着がラス扱いになってしまう
+    # ため使わない（Issue #108）。
+    worst_rank = _LAST_RANK_BY_GAME_TYPE[game_type]
 
     return {
         "totalGames": total_games,

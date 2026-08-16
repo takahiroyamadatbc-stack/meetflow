@@ -1056,8 +1056,44 @@ def test_get_community_ranking_metrics(table):
     assert stats["firstPlaceRate"] == 0.5
     assert stats["secondPlaceRate"] == 0.5
     assert stats["topTwoRate"] == 1.0
-    assert stats["nonLastRate"] == 0.5
+    # 四麻の最下位は4着固定。ここでは1着・2着のみでラス（4着）は一度も
+    # 無いため、nonLastRateは2/2で1.0になる（Issue #108）。
+    assert stats["nonLastRate"] == 1.0
     assert stats["totalPoints"] == 25
     assert stats["participatedEvents"] == 2
     assert stats["totalChips"] == 4
     assert stats["averageChips"] == 2.0
+
+
+def test_get_community_ranking_non_last_rate_fixed_by_game_type(table):
+    """Issue #108の再現ケース: 四麻で3着はあるが4着（ラス）が一度も無い
+    場合、3着がラス扱いに繰り上がってはならない（worst_rank=max(ranks)の
+    バグでは3着がラスとして扱われ、nonLastRateが不当に低くなっていた）。
+    """
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    for i, rank in enumerate([1, 2, 3, 1, 3]):
+        event_id = f"event-{i}"
+        put_event(table, event_id, "community-1", status="COMPLETED")
+        put_game_result(
+            table,
+            event_id,
+            "community-1",
+            "0001",
+            "user-1",
+            rank=rank,
+            rank_points=0,
+            played_at=f"2026-07-{i + 1:02d}T00:00:00.000Z",
+        )
+
+    response = results.get_community_ranking(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            query={"gameType": "MAHJONG4", "periodType": "ALL_TIME"},
+        ),
+    )
+
+    stats = body_of(response)["data"]["members"][0]
+    assert stats["totalGames"] == 5
+    # 4着が一度も無いので、3着を含む全5局がラス回避になる
+    assert stats["nonLastRate"] == 1.0
