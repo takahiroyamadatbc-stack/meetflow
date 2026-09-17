@@ -7,6 +7,7 @@ from meetflow_infra.meetflow_api_stack import MeetFlowApiStack
 from meetflow_infra.meetflow_auth_stack import MeetFlowAuthStack
 from meetflow_infra.meetflow_compute_stack import MeetFlowComputeStack
 from meetflow_infra.meetflow_data_stack import MeetFlowDataStack
+from meetflow_infra.meetflow_draft_stack import MeetFlowDraftStack
 from meetflow_infra.meetflow_frontend_stack import MeetFlowFrontendStack
 
 app = cdk.App()
@@ -75,6 +76,21 @@ api_stack = MeetFlowApiStack(
     feedback_lambda=compute_stack.feedback_lambda,
     env=env,
     description="MeetFlow REST API stack: API Gateway + Cognito Authorizer (API設計書v1.5)",
+)
+
+# Mリーグドラフト企画(docs/draft/DESIGN.md)。§4.11の通り専用テーブル・専用
+# Lambda・専用API Gatewayを1スタックに閉じ込めてあり、既存5スタックには
+# 手を入れていない。不要になったらこのスタックとこのブロックを消せば戻る。
+# 本体から渡しているのは、同じログインを使うためのUser Poolと、Membership
+# 確認のために*読むだけ*の本体テーブルの2つ。
+draft_stack = MeetFlowDraftStack(
+    app,
+    f"{env_name}-MeetFlowDraftStack",
+    env_name=env_name,
+    table=data_stack.table,
+    user_pool=auth_stack.user_pool,
+    env=env,
+    description="Mリーグドラフト企画スタック: DraftTable + DraftLambda + DraftApi (docs/draft/DESIGN.md §4.11)",
 )
 
 # 他スタックへの参照を持たないため、依存順という意味ではどのタイミングで

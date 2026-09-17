@@ -145,6 +145,30 @@ NOMINATING(round=r, wave=w+1) 落選者のみ再指名（確定済み選手は�
 
 どちらも同じくじ引き画面を流用する。
 
+### 4.4.1 2種類の抽選の解決順
+
+同一巡に「同一選手被り」と「女流余剰枠の超過」が同時に発生したときは、
+**①同一選手被りの抽選 → ②女流余剰枠の抽選** の順で解決する。
+
+理由は、**被り抽選に負けた人は誰も獲得していないため、余剰枠を消費すべきではない**から。
+先に余剰枠抽選をやると、どのみち被り抽選で負ける人が枠を1つ食ってしまう。
+
+```
+NOMINATING(r, w) 全員提出
+  ↓
+REVEAL(r, w)
+  ↓
+① 同一選手被りの抽選 … 選手ごとに1人を当選させる
+  ↓ 当選者が確定
+② 確定した指名のうち「女性を既に持っている人の追加女流指名」を数え、
+   余剰枠 B を超えていれば その人たち同士で抽選
+  ↓
+落選者（①で負けた人 ＋ ②で負けた人）が NOMINATING(r, w+1) へ
+```
+
+「①に勝って②で負ける」は起こりうるが、挙動としては正しい。
+その場合も落選者として次のwaveで再指名する（扱いは①の落選者と同じ）。
+
 ### 4.5 参加人数
 
 3〜10人。上限は `min(10, 女性選手数)` で自動バリデーションする。
@@ -244,9 +268,45 @@ WebSocketは使わない。**ポーリング**（TanStack Query の `refetchInte
 
 ---
 
-## 5. データモデル素案（未確定・たたき台）
+### 4.13 参加者はコミュニティメンバーから選ぶ
 
-専用テーブルなので本体のキー設計に縛られないが、単一テーブル的に持つなら：
+ドラフトは**既存のコミュニティ機能の上に乗る**。独立した招待フローは作らない。
+
+- ドラフトは `communityId` に紐づく。参加者はそのコミュニティのACTIVEメンバーから主催者が選ぶ
+- 認証・招待・表示名・ユーザー管理は**すべてMeetFlow本体の資産をそのまま流用する**
+  （`require_membership` / Cognito User Pool / 既存の招待URL）
+- ドラフトの作成は他の管理操作と揃えて **OWNER / ADMIN** のみ。作成者がそのドラフトの主催者になる
+- コミュニティ外の人を呼びたい場合は、先に既存の招待URLでコミュニティに入ってもらう
+
+インフラは §4.11 の通り `MeetFlowDraftStack` に完全分離したままでよい。
+参加者判定のために**本体テーブルへの読み取り権限だけ**をDraftLambdaに与える
+（既存5スタックのコードは変更しない）。
+
+### 4.14 抽選の検証可能性は操作ログのみ
+
+サーバーが乱数を引き、`LotteryLog` に候補者・当選者・時刻を残す。それ以上はやらない。
+
+commit-reveal（wave開始時にseedのハッシュを公開し、結果と一緒にseedを開示する）は**採用しない**。
+主催者が同席する身内の遊びであり、そもそも主催者は乱数を操作できないため、
+実装と画面の複雑さに見合わないと判断した。
+
+### 4.15 集計範囲はレギュラーシーズン終了日を設定値で持つ
+
+§1の「レギュラーシーズンの獲得ポイント合計」を守るため、
+**レギュラーシーズン終了日をドラフトの設定値として持ち、その日までの節だけを集計する。**
+
+公式サイトの日程HTMLにはレギュラー／セミファイナル／ファイナルの区別が無い（SCRAPING.md §4）。
+自動判定案（`/stats` のRegularタブとの突き合わせ）は採らず、公式発表が出た時点で主催者が日付を入れる。
+
+- 未設定のうちはシーズン全体を集計する（4月より前は差が出ないため実害が無い）
+- 入れ忘れるとセミファイナルの点が混ざるので、**4月に入ったら画面に警告を出す**こと
+- 2025-26シーズンの実績値は 2026-03-27（第150節）。2026-27は2027-03下旬の見込み
+
+## 5. データモデル（実装済み）
+
+専用テーブルなので本体のキー設計に縛られないが、本体と揃えて単一テーブル的に持つ。
+以下は実装と一致している（`backend/functions/draft_lambda/handlers/repository.py`）。
+実装時に `DraftPlayer`（作成時に固定する選手マスタのスナップショット）を追加した：
 
 ```
 Draft            PK=DRAFT#{draftId}  SK=METADATA
@@ -255,6 +315,7 @@ DraftPick        PK=DRAFT#{draftId}  SK=PICK#{round}#{wave}#{userId}
 DraftRoster      PK=DRAFT#{draftId}  SK=ROSTER#{userId}#{playerId}
 PlayerLock       PK=DRAFT#{draftId}  SK=LOCK#{playerId}        ← 一意制約用
 LotteryLog       PK=DRAFT#{draftId}  SK=LOTTERY#{round}#{wave}#{playerId}
+DraftPlayer      PK=DRAFT#{draftId}  SK=PLAYER#{playerId}   ← 作成時のスナップショット
 MLPlayer         PK=MLPLAYER#{season} SK=PLAYER#{playerId}
 MLPlayerDaily    PK=MLPLAYER#{season} SK=DAILY#{date}#{playerId}
 ```
@@ -290,11 +351,10 @@ MLPlayerDaily    PK=MLPLAYER#{season} SK=DAILY#{date}#{playerId}
 
 ### 6.2 その他
 
-- [ ] **2種類の抽選の解決順** — 同一選手被りと女流余剰枠超過が同じ巡で同時発生したときの処理順
-- [ ] **抽選の検証可能性** — 操作ログに残すだけか、commit-reveal（抽選前にseedのハッシュを公開し、
-      結果と一緒にseedを開示）までやるか
+- [x] ~~**2種類の抽選の解決順**~~ → §4.4.1 で確定（①同一選手被り → ②女流余剰枠）
+- [x] ~~**抽選の検証可能性**~~ → §4.14 で確定（操作ログのみ。commit-revealは不採用）
 - [x] ~~**対局日カレンダーの持ち方** — 「対局がない日」の判定方法~~ → `/games` の日程リストで確定（SCRAPING.md §2.1）
-- [ ] **レギュラーシーズンとポストシーズンの切り分け** — §1は「レギュラーシーズンの合計」で競うと定めているが、日程HTMLにシリーズの区別が無い。`/stats` のRegularタブとの突き合わせで自動判定する案が有力（SCRAPING.md §4）。**要ユーザー判断**
+- [x] ~~**レギュラーシーズンとポストシーズンの切り分け**~~ → §4.15 で確定（終了日を設定値で持つ）
 - [ ] **`players_2026-27.json` の `teamId` が公式slugと3件ずれている** （`beastx`/`beast`、`mfc`/`fightclub`、`sakuranights`/`sakura**k**nights`）。公式に合わせるか `officialSlug` を別に持つか
 - [ ] **`organization`（所属団体）はどこにも無い** — 手入力するか項目ごと落とすか
 - [ ] **画面設計** — 主催者画面 / 参加者画面 / 成績画面
@@ -357,15 +417,61 @@ MLPlayerDaily    PK=MLPLAYER#{season} SK=DAILY#{date}#{playerId}
 ### 作業順
 
 1. ~~§6.1 の公式サイト構造調査~~ → **完了。`SCRAPING.md` 参照**
-2. **§6.2 の残論点を潰す**（← いまここ）。特に以下はユーザー判断が要る：
-   - レギュラー／ポストシーズンの切り分け方（SCRAPING.md §4）
-   - 2種類の抽選の解決順
-   - 抽選の検証可能性（操作ログのみ か commit-reveal まで やるか）
-   - 画面設計（主催者／参加者／成績）
-3. 実装用ブランチ `feature/mleague-draft` を切る
-   （`claude/mleague-draft-brainstorm-oekkxm` はブレスト用、
-   `claude/tender-sagan-pmrp9z` は本調査用）
-4. `MeetFlowDraftStack` の実装に着手
+2. ~~§6.2 の残論点のうち、仕様に関わるものを潰す~~ → **完了（§4.4.1 / §4.13 / §4.14 / §4.15）**
+3. **ドラフト会議のバックエンド実装** → **完了（下記）**
+4. ドラフト会議のフロントエンド実装（主催者画面 / 参加者画面）← いまここ
+5. 成績追跡（§4.8〜§4.10）の実装。`SCRAPING.md` の通り `/games` を1回取るだけで済む
+6. dev環境へのデプロイと選手マスタのシード
+
+### 実装済み（バックエンド）
+
+```
+infra/meetflow_infra/meetflow_draft_stack.py   MeetFlowDraftStack（§4.11の完全分離）
+infra/app.py                                    スタックの配線（既存5スタックは未変更）
+backend/functions/draft_lambda/
+  handler.py                                    ルーター
+  draft_table.py                                DraftTableアクセサ
+  errors.py                                     ドラフト固有のエラーコード表
+  handlers/rules.py                             §4.3 女性枠ルール / §4.4.1 抽選の解決順
+  handlers/repository.py                        §5 のキー設計
+  handlers/drafts.py                            作成・一覧・状態取得・開始
+  handlers/picks.py                             指名・代理指名
+  handlers/progress.py                          開示・抽選・進行
+  tests/                                        38件（pytest + moto）
+backend/scripts/seed_ml_players.py              選手マスタのシード（§7）
+```
+
+エンドポイント（すべて専用のDraftApi配下。Authorizerは本体と同じUser Pool）：
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| POST | `/communities/{communityId}/drafts` | ドラフト作成（OWNER/ADMIN） |
+| GET | `/communities/{communityId}/drafts` | 一覧 |
+| GET | `/drafts/{draftId}` | 状態取得（ポーリング先。`version`付き） |
+| GET | `/drafts/{draftId}/rosters` | 確定チーム |
+| GET | `/drafts/{draftId}/lotteries` | 抽選の記録 |
+| POST | `/drafts/{draftId}/start` | 開始（主催者） |
+| POST | `/drafts/{draftId}/picks` | 指名 |
+| POST | `/drafts/{draftId}/picks/proxy` | 代理指名（主催者・§4.7） |
+| POST | `/drafts/{draftId}/reveal` | 開示（主催者） |
+| POST | `/drafts/{draftId}/lottery` | 抽選実行（主催者） |
+| POST | `/drafts/{draftId}/advance` | 次のwave / 次の巡 / 完了へ |
+
+実装上の決定で、設計メモに書いていなかったもの：
+
+- **主催者のボタンは「開示」「抽選」「次へ」の3つ**。§4.2の状態遷移図をそのまま
+  エンドポイントに落とした。重複が無ければ開示の時点で確定するので、抽選ボタンは出ない
+- **「その巡で指名が必要な人」は状態として持たず、`playerCount < round` で導出する**。
+  落選者フラグのような二重管理を避けるため
+- **エラーコード表は共通レイヤーではなく `draft_lambda/errors.py` に持つ**。
+  共通レイヤーを触ると全ドメインLambdaが乗るスタックを変更することになり、§4.11に反するため
+- **共通Layerはcomputeスタックのものを参照せず、同じソースから自前でもう1つ作る**。
+  参照するとcomputeスタックへの依存が生まれ、撤退時に効いてくる
+- **`AWS::ApiGateway::Account` は作らない**（`cloud_watch_role=False`）。
+  アカウント×リージョンに1つのシングルトンで、本体のMeetFlowApiStackが既に作っている
+- **OperationLogは使わず、抽選の記録はDraftTableの`LotteryLog`に書く**。
+  共通の`write_operation_log`は本体テーブルに書くため、DraftLambdaの本体テーブル
+  read-onlyを崩してしまう
 
 ### このリポジトリの `docs/draft/` の中身
 
@@ -375,6 +481,8 @@ MLPlayerDaily    PK=MLPLAYER#{season} SK=DAILY#{date}#{playerId}
 | `SCRAPING.md` | 公式サイトのデータ取得仕様（§6.1の調査結果） |
 | `players_2026-27.json` | 選手マスタ。公式 `/stats` のロースターと**10チーム40名全員一致を検証済み**（2026-09-18） |
 | `scrape_prototype.py` | パース規則の検証スクリプト。本番実装ではない。`python3 scrape_prototype.py` で公式サイトに対して検算が走る |
+
+実装コードの置き場所は上の「実装済み（バックエンド）」を参照。
 
 ## 9. 参考リンク
 
