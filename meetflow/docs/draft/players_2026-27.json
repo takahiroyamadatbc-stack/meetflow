@@ -1,0 +1,114 @@
+{
+  "season": "2026-27",
+  "generatedAt": "2026-09-17",
+  "teamCount": 10,
+  "playerCount": 40,
+  "femaleCount": 13,
+  "notes": {
+    "verified": "teamId / teamName / name / isFemale は、各チーム公式発表または報道で裏取り済み",
+    "unverified": "kana は未検証（表示・ソート用のため影響は軽微）",
+    "pending": "organization / stats.* はスクレイパー実装時に取得する。現時点では null"
+  },
+  "teams": [
+    {
+      "teamId": "drivens",
+      "teamName": "赤坂ドリブンズ",
+      "players": [
+        { "playerId": "sonoda-ken",        "name": "園田賢",     "kana": "そのだけん",       "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "suzuki-taro",       "name": "鈴木たろう", "kana": "すずきたろう",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "asami-maki",        "name": "浅見真紀",   "kana": "あさみまき",       "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "watanabe-futoshi",  "name": "渡辺太",     "kana": "わたなべふとし",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "abemas",
+      "teamName": "渋谷ABEMAS",
+      "players": [
+        { "playerId": "oi-takaharu",        "name": "多井隆晴",   "kana": "おおいたかはる",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "shiratori-sho",      "name": "白鳥翔",     "kana": "しらとりしょう",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "matsumoto-yoshihiro","name": "松本吉弘",   "kana": "まつもとよしひろ", "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "hyuga-aiko",         "name": "日向藍子",   "kana": "ひゅうがあいこ",   "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "sakuranights",
+      "teamName": "KADOKAWAサクラナイツ",
+      "players": [
+        { "playerId": "okada-sayaka",        "name": "岡田紗佳",   "kana": "おかださやか",     "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "hori-shingo",         "name": "堀慎吾",     "kana": "ほりしんご",       "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "akutsu-shota",        "name": "阿久津翔太", "kana": "あくつしょうた",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "shirinashihama-ko",   "name": "尻無濱航",   "kana": "しりなしはまこう", "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "phoenix",
+      "teamName": "セガサミーフェニックス",
+      "players": [
+        { "playerId": "kayamori-sayaka",  "name": "茅森早香",   "kana": "かやもりさやか",   "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "daigo-masaru",     "name": "醍醐大",     "kana": "だいごまさる",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "takeuchi-genta",   "name": "竹内元太",   "kana": "たけうちげんた",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "sano-hinako",      "name": "佐野ひなこ", "kana": "さのひなこ",       "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "raiden",
+      "teamName": "TEAM RAIDEN/雷電",
+      "players": [
+        { "playerId": "hagiwara-masato",  "name": "萩原聖人",   "kana": "はぎわらまさと",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "setokuma-naoki",   "name": "瀬戸熊直樹", "kana": "せとくまなおき",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "kurosawa-saki",    "name": "黒沢咲",     "kana": "くろさわさき",     "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "honda-tomohiro",   "name": "本田朋広",   "kana": "ほんだともひろ",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "pirates",
+      "teamName": "U-NEXT Pirates",
+      "players": [
+        { "playerId": "mizuhara-akina",   "name": "瑞原明奈",   "kana": "みずはらあきな",   "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "suzuki-yu",        "name": "鈴木優",     "kana": "すずきゆう",       "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "nakabayashi-kei",  "name": "仲林圭",     "kana": "なかばやしけい",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "asakura-koshin",   "name": "朝倉康心",   "kana": "あさくらこうしん", "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "furinkazan",
+      "teamName": "EX風林火山",
+      "players": [
+        { "playerId": "nikaido-aki",      "name": "二階堂亜樹",   "kana": "にかいどうあき",     "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "katsumata-kenji",  "name": "勝又健志",     "kana": "かつまたけんじ",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "nagai-takanori",   "name": "永井孝典",     "kana": "ながいたかのり",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "uchikawa-kotaro",  "name": "内川幸太郎",   "kana": "うちかわこうたろう", "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "mfc",
+      "teamName": "KONAMI麻雀格闘倶楽部",
+      "players": [
+        { "playerId": "sasaki-hisato",    "name": "佐々木寿人", "kana": "ささきひさと",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "takamiya-mari",    "name": "高宮まり",   "kana": "たかみやまり",     "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "date-jurisa",      "name": "伊達朱里紗", "kana": "だてじゅりさ",     "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "takizawa-kazunori","name": "滝沢和典",   "kana": "たきざわかずのり", "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "beastx",
+      "teamName": "BEAST X",
+      "players": [
+        { "playerId": "suzuki-daisuke",   "name": "鈴木大介",   "kana": "すずきだいすけ",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "nakada-kana",      "name": "中田花奈",   "kana": "なかだかな",       "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "shitaishi-geki",   "name": "下石戟",     "kana": "したいしげき",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "tojo-rio",         "name": "東城りお",   "kana": "とうじょうりお",   "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    },
+    {
+      "teamId": "jets",
+      "teamName": "EARTH JETS",
+      "players": [
+        { "playerId": "ishii-kazuma",     "name": "石井一馬",   "kana": "いしいかずま",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "miura-tomohiro",   "name": "三浦智博",   "kana": "みうらともひろ",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "aikawa-megumu",    "name": "逢川恵夢",   "kana": "あいかわめぐむ",   "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
+        { "playerId": "hiro-shibata",     "name": "HIRO柴田",   "kana": "ひろしばた",       "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } }
+      ]
+    }
+  ]
+}
