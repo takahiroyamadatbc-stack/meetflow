@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -18,17 +19,43 @@ from _factories import (
 )
 
 
-def _create_confirmed_event(table, community_id="community-1", member_ids=None):
+def _future_times(days: int = 30) -> tuple[str, str]:
+    """現在時刻から見て確実に未来の開始・終了時刻（Issue #111）。
+
+    参加者の削除（`_check_removable_status`）は「CONFIRMEDかつ開始前」を
+    要求するため、fixtureの日付を固定値にしているとその日を過ぎた瞬間に
+    落ちるようになる。実際に2026-08-05固定で腐った。
+    """
+    start = datetime.now(timezone.utc) + timedelta(days=days)
+    end = start + timedelta(hours=4)
+    fmt = lambda dt: dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+    return fmt(start), fmt(end)
+
+
+def _create_confirmed_event(
+    table, community_id="community-1", member_ids=None, *, start_time=None, end_time=None
+):
     """全員が自動承認ONの状態でconfirm_eventを呼び、AWAITING_MEMBER_APPROVAL
     を経由せず直接CONFIRMEDなイベントを作る（cancel-request系の既存テストが
     前提とする「即CONFIRMED」を維持するためのヘルパー。承認フロー自体の
     テストはtest_participants.pyの各approve/reject系テストを参照）。
+
+    `start_time`/`end_time` を省略した場合は`put_candidate`の既定値
+    （固定日）をそのまま使う。開始前であることが要る削除系のテストだけが
+    `_future_times()` を渡す（Issue #111）。既定値ごと未来に変えないのは、
+    test_events.py等が "AVAIL#2026-08-05T18:00:00.000Z" のようにリテラルで
+    突き合わせており波及が大きいため。
     """
     member_ids = member_ids or ["user-1", "user-2", "user-3", "user-4"]
     put_membership(table, community_id, "user-1", role="OWNER")
     for uid in member_ids:
         put_profile(table, uid, auto_approve=True)
-    put_candidate(table, community_id, "candidate-1", member_ids)
+    extra = {}
+    if start_time is not None:
+        extra["start_time"] = start_time
+    if end_time is not None:
+        extra["end_time"] = end_time
+    put_candidate(table, community_id, "candidate-1", member_ids, **extra)
     create_response = events.create_event(
         "user-1", api_event(body={"candidateId": "candidate-1"})
     )
@@ -558,7 +585,13 @@ def test_add_participant_schedule_conflict(table):
 
 
 def test_remove_participant_success(table):
-    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2", "user-3"])
+    start_time, end_time = _future_times()
+    event_id = _create_confirmed_event(
+        table,
+        member_ids=["user-1", "user-2", "user-3"],
+        start_time=start_time,
+        end_time=end_time,
+    )
 
     response = participants.remove_participant(
         "user-1",
@@ -578,8 +611,12 @@ def test_remove_participant_success(table):
 
 def test_remove_participant_below_min_players_flags_response(table):
     put_event_template(table, "community-1", "template-1", min_players=3, max_players=4)
+    start_time, end_time = _future_times()
     event_id = _create_confirmed_event(
-        table, member_ids=["user-1", "user-2", "user-3", "user-4"]
+        table,
+        member_ids=["user-1", "user-2", "user-3", "user-4"],
+        start_time=start_time,
+        end_time=end_time,
     )
 
     response = participants.remove_participant(
@@ -648,7 +685,10 @@ def test_remove_participant_requires_admin(table):
 
 
 def test_remove_participant_not_found(table):
-    event_id = _create_confirmed_event(table, member_ids=["user-1", "user-2"])
+    start_time, end_time = _future_times()
+    event_id = _create_confirmed_event(
+        table, member_ids=["user-1", "user-2"], start_time=start_time, end_time=end_time
+    )
 
     response = participants.remove_participant(
         "user-1",
