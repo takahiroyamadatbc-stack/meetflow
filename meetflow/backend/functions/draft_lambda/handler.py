@@ -9,6 +9,7 @@ _ROUTES = {
     ("POST", "/communities/{communityId}/drafts"): drafts.create_draft,
     ("GET", "/communities/{communityId}/drafts"): drafts.list_drafts,
     ("GET", "/drafts/{draftId}"): drafts.get_draft,
+    ("DELETE", "/drafts/{draftId}"): drafts.delete_draft,
     ("GET", "/drafts/{draftId}/rosters"): drafts.get_rosters,
     ("GET", "/drafts/{draftId}/players"): drafts.get_players,
     ("GET", "/drafts/{draftId}/lotteries"): drafts.get_lotteries,

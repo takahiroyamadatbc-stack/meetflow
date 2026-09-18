@@ -35,6 +35,12 @@ def _create(user_id=HOST, *, community_id="c1", participants=None, name="Mリー
     )["data"]
 
 
+def _delete(draft_id, user_id=HOST):
+    return json.loads(
+        drafts.delete_draft(user_id, api_event(path_params={"draftId": draft_id}))["body"]
+    )["data"]
+
+
 def _get(draft_id, user_id=HOST):
     return json.loads(
         drafts.get_draft(user_id, api_event(path_params={"draftId": draft_id}))["body"]
@@ -136,6 +142,85 @@ def test_女性選手数が参加人数の上限を抑える(main_table, draft_t
     with pytest.raises(DraftError) as exc:
         _create()
     assert exc.value.code == "DRAFT_VALIDATION_ERROR"
+
+
+# --- 削除 -------------------------------------------------------------------
+
+
+def test_管理者はドラフトを削除でき配下のアイテムが残らない(ready):
+    _, draft_table = ready
+    draft_id = _create()["draftId"]
+    _start(draft_id)
+    _pick(draft_id, HOST, "p01")
+
+    result = _delete(draft_id)
+
+    assert result["draftId"] == draft_id
+    # METADATA・参加者3・選手40・指名1・ロック1 が最低でも含まれる
+    assert result["deletedItemCount"] >= 45
+    assert repo.get_draft(draft_id) is None
+    assert repo.list_draft_item_keys(draft_id) == []
+    assert repo.list_participants(draft_id) == []
+    assert repo.list_players(draft_id) == []
+    assert repo.list_rosters(draft_id) == []
+    assert repo.list_locks(draft_id) == []
+
+
+def test_削除してもシーズン共有の選手マスタは残る(ready):
+    # 選手マスタはMLPLAYER#{season}側にあり、同じシーズンの他のドラフトが
+    # 使い続ける。ドラフト配下のスナップショットだけを消す。
+    draft_id = _create()["draftId"]
+    _delete(draft_id)
+
+    assert len(repo.list_master_players("2026-27")) == 40
+    # 消した後でも同じシーズンでまた作れる
+    assert _create()["status"] == repo.STATUS_SETUP
+
+
+def test_削除したドラフトは一覧にも詳細にも出てこない(ready):
+    keep_id = _create(name="残す方")["draftId"]
+    drop_id = _create(name="消す方")["draftId"]
+
+    _delete(drop_id)
+
+    remaining = json.loads(
+        drafts.list_drafts(HOST, api_event(path_params={"communityId": "c1"}))["body"]
+    )["data"]["drafts"]
+    assert [d["draftId"] for d in remaining] == [keep_id]
+    with pytest.raises(DraftError) as exc:
+        _get(drop_id)
+    assert exc.value.code == "DRAFT_NOT_FOUND"
+
+
+def test_一般メンバーはドラフトを削除できない(ready):
+    # 作成（§4.13）と揃えてOWNER/ADMINのみ。参加者であっても消せない。
+    from meetflow_common import AuthError
+
+    draft_id = _create()["draftId"]
+    with pytest.raises(AuthError):
+        _delete(draft_id, "u1")
+    assert repo.get_draft(draft_id) is not None
+
+
+def test_存在しないドラフトの削除は404(ready):
+    with pytest.raises(DraftError) as exc:
+        _delete("missing")
+    assert exc.value.code == "DRAFT_NOT_FOUND"
+
+
+def test_完了済みのドラフトも削除できる(ready):
+    # 「作り直したい」「テストで作った分を片付けたい」が用途なので、
+    # 状態では縛らない。
+    draft_id = _create()["draftId"]
+    draft_table = repo.get_draft_table()
+    draft_table.update_item(
+        Key={"PK": repo.draft_pk(draft_id), "SK": "METADATA"},
+        UpdateExpression="SET #s = :s",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":s": repo.STATUS_COMPLETED},
+    )
+    _delete(draft_id)
+    assert repo.get_draft(draft_id) is None
 
 
 def test_選手一覧は確保済みの選手に指名者を付けて返す(ready):

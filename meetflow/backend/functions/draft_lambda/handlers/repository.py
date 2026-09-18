@@ -70,6 +70,40 @@ def _query_prefix(draft_id: str, prefix: str):
         kwargs["ExclusiveStartKey"] = last
 
 
+def list_draft_item_keys(draft_id: str) -> list:
+    """DRAFT#{draftId}配下の全アイテムのキー（METADATAを含む）。削除用。
+
+    シーズンで共有しているもの（選手マスタ・取得済みのMリーグ成績）は
+    MLPLAYER#{season}側にあるため、ここには入らない。つまりドラフトを
+    消しても他のドラフトには影響しない。
+    """
+    keys = []
+    kwargs = {
+        "KeyConditionExpression": Key("PK").eq(draft_pk(draft_id)),
+        "ProjectionExpression": "PK, SK",
+    }
+    while True:
+        resp = get_draft_table().query(**kwargs)
+        keys.extend({"PK": i["PK"], "SK": i["SK"]} for i in resp.get("Items", []))
+        last = resp.get("LastEvaluatedKey")
+        if not last:
+            return keys
+        kwargs["ExclusiveStartKey"] = last
+
+
+def delete_items(keys: list) -> None:
+    """キーの一覧をまとめて削除する。
+
+    TransactWriteItemsは1回100アイテムまでで、参加人数が多いドラフトでは
+    選手40人＋指名・ロスター・ロックで超えうる。まとめて消すだけで
+    アトミック性は要らないので、25件ずつに割ってくれるbatch_writerを使う。
+    """
+    table = get_draft_table()
+    with table.batch_writer() as batch:
+        for key in keys:
+            batch.delete_item(Key=key)
+
+
 def list_participants(draft_id: str):
     return _query_prefix(draft_id, "PARTICIPANT#")
 

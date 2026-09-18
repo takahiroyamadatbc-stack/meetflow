@@ -127,6 +127,41 @@ def list_drafts(user_id: str, event: dict) -> dict:
     return success_response({"drafts": [_draft_summary(d) for d in drafts]})
 
 
+def delete_draft(user_id: str, event: dict) -> dict:
+    """DELETE /drafts/{draftId} — 管理者がドラフトを丸ごと消す。
+
+    中止（statusの変更）ではなく物理削除で、参加者・選手スナップショット・
+    指名・抽選・ロスターまでDRAFT#{draftId}パーティションごと消える。
+    やり直しは効かないので、確認は画面側のダイアログで取る。
+
+    シーズンで共有している選手マスタと取得済みのMリーグ成績は別パーティション
+    （MLPLAYER#{season}）にあるため残る。同じシーズンの他のドラフトが
+    そのまま使い続けられる。
+
+    進行中でも消せる。「作り直したい」「テストで作った分を片付けたい」が
+    実際の用途で、状態で縛ると目的を果たせないため。
+    """
+    draft_id = event["pathParameters"]["draftId"]
+    draft = repo.get_draft(draft_id)
+    if draft is None:
+        raise DraftError("DRAFT_NOT_FOUND", "ドラフトが見つかりません")
+    # 作成（§4.13）と揃えてOWNER/ADMINのみ。主催者本人に限定しないのは、
+    # 主催者がコミュニティを抜けた後も管理者が片付けられるようにするため。
+    require_membership(
+        get_table(), draft["communityId"], user_id, roles=("OWNER", "ADMIN")
+    )
+
+    keys = repo.list_draft_item_keys(draft_id)
+    # METADATAは最後に消す。先に消すと、途中で失敗したときに残りのアイテムを
+    # 辿る手段が無くなり（一覧にも詳細にも出てこない）、やり直しもできない。
+    repo.delete_items([k for k in keys if k["SK"] != "METADATA"])
+    repo.delete_items([{"PK": repo.draft_pk(draft_id), "SK": "METADATA"}])
+
+    # 本体テーブルは読み取り専用（DESIGN.md §4.13）なので、他ドメインのような
+    # OperationLogは残せない。監査はCloudWatch Logsのアクセスログに委ねる。
+    return success_response({"draftId": draft_id, "deletedItemCount": len(keys)})
+
+
 def get_draft(user_id: str, event: dict) -> dict:
     """GET /drafts/{draftId}
 

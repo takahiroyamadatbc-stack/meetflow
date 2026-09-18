@@ -237,6 +237,7 @@ class MeetFlowDraftStack(Stack):
             ("POST", "/communities/{communityId}/drafts"),
             ("GET", "/communities/{communityId}/drafts"),
             ("GET", "/drafts/{draftId}"),
+            ("DELETE", "/drafts/{draftId}"),
             ("GET", "/drafts/{draftId}/rosters"),
             ("GET", "/drafts/{draftId}/players"),
             ("GET", "/drafts/{draftId}/lotteries"),

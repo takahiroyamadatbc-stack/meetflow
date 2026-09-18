@@ -37,6 +37,13 @@ export function getDraft(draftId: string) {
   return draftApiClient.get<DraftDetail>(`/drafts/${draftId}`);
 }
 
+/** DELETE /drafts/{draftId} — 管理者がドラフトを丸ごと消す */
+export function deleteDraft(draftId: string) {
+  return draftApiClient.delete<{ draftId: string; deletedItemCount: number }>(
+    `/drafts/${draftId}`,
+  );
+}
+
 /** GET /drafts/{draftId}/players — 指名対象の選手一覧（確保済みフラグ付き） */
 export function listDraftPlayers(draftId: string) {
   return draftApiClient
