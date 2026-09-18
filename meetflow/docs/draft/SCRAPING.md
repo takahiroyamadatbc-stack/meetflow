@@ -179,17 +179,11 @@
 **所属団体（`organization`）は公式サイトに無い。** mj-news.net にも団体表記は無く、監督・企業名のみ。
 別途手入力するか、項目自体を落とすか要判断。
 
-### ⚠️ teamId と公式slugの不一致
+### teamId と公式slug（解消済み）
 
-`players_2026-27.json` の `teamId` は公式の `/teams/{slug}` と3つずれている：
-
-| JSON `teamId` | 公式slug |
-|---|---|
-| `beastx` | `beast` |
-| `mfc` | `fightclub` |
-| `sakuranights` | `sakuraknights`（**綴りミス**：kが抜けている） |
-
-スクレイパーを書くときに詰まるので、`officialSlug` を別フィールドで持つか `teamId` を公式に合わせること。
+`players_2026-27.json` の `teamId` は当初 公式の `/teams/{slug}` と3つずれていた
+（`beastx`/`beast`、`mfc`/`fightclub`、`sakuranights`/`sakuraknights`）。
+**公式の綴りに揃えたので、`teamId` をそのままURLに使える。**
 
 ---
 

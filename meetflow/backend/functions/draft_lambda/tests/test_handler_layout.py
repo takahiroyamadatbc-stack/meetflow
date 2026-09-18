@@ -16,18 +16,20 @@ from pathlib import Path
 _DRAFT_LAMBDA_DIR = Path(__file__).resolve().parent.parent
 _COMMON_LAYER_DIR = _DRAFT_LAMBDA_DIR.parent.parent / "layers" / "common" / "python"
 
-# site-packages（boto3等）はLambdaランタイムが提供するので残し、
-# リポジトリ由来のパスだけを関数ルートと共有Layerの2つに置き換える。
+# site-packages（boto3等）はLambdaランタイムが提供するので残す。
+# 落とすのは「handlers配下をトップレベル名として見せうるパス」だけ、つまり
+# functions/ と layers/ の下にあるエントリ。リポジトリ配下を丸ごと落とすと、
+# backend/.venv のsite-packagesまで消えてboto3が見つからなくなる。
 _SCRIPT = """
 import json, os, sys
-_repo = %r
-sys.path = [%r, %r] + [p for p in sys.path if _repo not in p]
+_exposes_handlers = lambda p: "/functions/" in p or "/layers/" in p
+sys.path = [%r, %r] + [p for p in sys.path if p and not _exposes_handlers(p)]
 os.environ["TABLE_NAME"] = "dummy"
 os.environ["DRAFT_TABLE_NAME"] = "dummy"
 os.environ["AWS_DEFAULT_REGION"] = "ap-northeast-1"
 import handler
 print(json.dumps(sorted("%%s %%s" %% route for route in handler._ROUTES)))
-""" % (str(_DRAFT_LAMBDA_DIR.parent.parent), str(_DRAFT_LAMBDA_DIR), str(_COMMON_LAYER_DIR))
+""" % (str(_DRAFT_LAMBDA_DIR), str(_COMMON_LAYER_DIR))
 
 
 def test_関数ルートとLayerだけでhandlerをimportできる():

@@ -7,7 +7,9 @@
   "notes": {
     "verified": "teamId / teamName / name / isFemale は、各チーム公式発表または報道で裏取り済み",
     "unverified": "kana は未検証（表示・ソート用のため影響は軽微）",
-    "pending": "organization / stats.* はスクレイパー実装時に取得する。現時点では null"
+    "teamId": "公式サイトの /teams/{slug} と同じ綴りに揃えてある（SCRAPING.md §5）",
+    "pending": "stats.* はスクレイパー実装時に取得する。現時点では null",
+    "organization": "所属団体は公式・mj-newsのどちらにも無い。手入力する場合の置き場所として項目だけ残している"
   },
   "teams": [
     {
@@ -31,7 +33,7 @@
       ]
     },
     {
-      "teamId": "sakuranights",
+      "teamId": "sakuraknights",
       "teamName": "KADOKAWAサクラナイツ",
       "players": [
         { "playerId": "okada-sayaka",        "name": "岡田紗佳",   "kana": "おかださやか",     "isFemale": true,  "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
@@ -81,7 +83,7 @@
       ]
     },
     {
-      "teamId": "mfc",
+      "teamId": "fightclub",
       "teamName": "KONAMI麻雀格闘倶楽部",
       "players": [
         { "playerId": "sasaki-hisato",    "name": "佐々木寿人", "kana": "ささきひさと",     "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },
@@ -91,7 +93,7 @@
       ]
     },
     {
-      "teamId": "beastx",
+      "teamId": "beast",
       "teamName": "BEAST X",
       "players": [
         { "playerId": "suzuki-daisuke",   "name": "鈴木大介",   "kana": "すずきだいすけ",   "isFemale": false, "organization": null, "stats": { "lastSeasonPoints": null, "lastSeasonRank": null, "careerPoints": null } },

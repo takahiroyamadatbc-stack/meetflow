@@ -44,13 +44,15 @@ cdk bootstrap aws://569239323423/ap-northeast-1 --profile personal
 
 CDKデプロイに必要なS3バケット・IAMロール等（`CDKToolkit`スタック）が作成される。アカウント/リージョンごとに一度だけでよい。
 
-## 3. バックエンド4スタック＋FrontendStackのデプロイ
+## 3. バックエンド5スタック＋FrontendStackのデプロイ
 
 ```bash
 cdk deploy --all -c env=dev --profile personal
 ```
 
-`DataStack → AuthStack → ComputeStack → ApiStack`はスタック間参照（DynamoDB Table / Cognito UserPool）に基づきCDKが自動で依存順にデプロイする。`FrontendStack`（S3 + CloudFront）は他スタックへの参照を持たないため、デプロイ順に制約はない。
+`DataStack → AuthStack → ComputeStack → ApiStack`はスタック間参照（DynamoDB Table / Cognito UserPool）に基づきCDKが自動で依存順にデプロイする。`DraftStack`（Mリーグドラフト企画、docs/draft/DESIGN.md §4.11）もDataStack/AuthStackを参照するため同様に自動で後になる。`FrontendStack`（S3 + CloudFront）は他スタックへの参照を持たないため、デプロイ順に制約はない。
+
+> ドラフト企画が不要になったら `cdk destroy dev-MeetFlowDraftStack -c env=dev --profile personal` でテーブルごと消える（既存5スタックには影響しない）。
 
 > ⚠️ **`cdk deploy --all`だけではデプロイ完了ではない。** このコマンドは`INVITE_BASE_URL`を設定しないため、**後続の手順4bを必ず実行するまで**、招待URL発行機能はハードコードされたプレースホルダー`https://meetflow.jp/invite`（実在しないドメイン）を返し続ける。エラーは一切出ずサイレントに壊れるため気づきにくい。招待URLの再発行（revoke→再作成）では直らない。過去に複数回、この手順を忘れたまま運用され、ユーザーから「招待URLが無効」と報告があって発覚している。**`--all`デプロイの直後は、必ず手順4bまで完了させてから「デプロイ完了」と報告すること。**
 
