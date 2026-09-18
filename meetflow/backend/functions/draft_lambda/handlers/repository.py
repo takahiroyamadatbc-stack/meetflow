@@ -194,3 +194,57 @@ def draft_state_update(
 def update_draft_state(**kwargs) -> None:
     """`draft_state_update`を単体で実行する（他の書き込みと束ねない場合）。"""
     transact_write([draft_state_update(**kwargs)])
+
+
+# --- 成績追跡（DESIGN.md §4.8〜§4.10） ---------------------------------------
+
+# 対局日の状態（DESIGN.md §4.10の3状態）。
+#   PLAYED    … 結果を取得済み
+#   SCHEDULED … 日程には載っているがまだ消化していない
+#   （「対局なし」はアイテムが存在しないことで表す）
+GAMEDAY_PLAYED = "PLAYED"
+GAMEDAY_SCHEDULED = "SCHEDULED"
+
+SOURCE_OFFICIAL = "OFFICIAL"
+SOURCE_MANUAL = "MANUAL"
+
+
+def season_pk(season: str) -> str:
+    return f"MLPLAYER#{season}"
+
+
+def gameday_sk(date: str, no) -> str:
+    """節のSK。
+
+    **同じ日付に2節入る日がある**（SCRAPING.md §2.2）ため、日付だけでは
+    一意にならない。節番号まで含める。未消化日は節番号を持たないので、
+    その場合は日付＋連番の代わりに "000" を置く（消化されれば上書きされる）。
+    """
+    return f"GAMEDAY#{date}#{int(no or 0):03d}"
+
+
+def list_gamedays(season: str) -> list:
+    items = []
+    kwargs = {
+        "KeyConditionExpression": Key("PK").eq(season_pk(season))
+        & Key("SK").begins_with("GAMEDAY#")
+    }
+    while True:
+        resp = get_draft_table().query(**kwargs)
+        items.extend(resp.get("Items", []))
+        last = resp.get("LastEvaluatedKey")
+        if not last:
+            return items
+        kwargs["ExclusiveStartKey"] = last
+
+
+def get_fetch_state(season: str):
+    return get_draft_table().get_item(
+        Key={"PK": season_pk(season), "SK": "FETCH_STATE"}
+    ).get("Item")
+
+
+def put_fetch_state(season: str, state: dict) -> None:
+    get_draft_table().put_item(
+        Item={"PK": season_pk(season), "SK": "FETCH_STATE", "season": season, **state}
+    )

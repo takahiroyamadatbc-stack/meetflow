@@ -5,7 +5,10 @@ import type {
   DraftPlayer,
   DraftSummary,
   LotteryRecord,
+  ManualResultInput,
+  RefreshResult,
   RosterMap,
+  Standings,
 } from "@/features/draft/types";
 
 export const draftKeys = {
@@ -14,6 +17,7 @@ export const draftKeys = {
   players: (draftId: string) => ["drafts", draftId, "players"] as const,
   rosters: (draftId: string) => ["drafts", draftId, "rosters"] as const,
   lotteries: (draftId: string) => ["drafts", draftId, "lotteries"] as const,
+  standings: (draftId: string) => ["drafts", draftId, "standings"] as const,
 };
 
 /** POST /communities/{communityId}/drafts */
@@ -92,4 +96,34 @@ export function runLottery(draftId: string) {
 /** POST /drafts/{draftId}/advance — 主催者 */
 export function advanceDraft(draftId: string) {
   return draftApiClient.post<DraftSummary>(`/drafts/${draftId}/advance`);
+}
+
+// --- 成績追跡（docs/draft/DESIGN.md §4.8〜§4.10） ---
+
+/** GET /drafts/{draftId}/standings */
+export function getStandings(draftId: string) {
+  return draftApiClient.get<Standings>(`/drafts/${draftId}/standings`);
+}
+
+/**
+ * POST /drafts/{draftId}/standings/refresh
+ *
+ * DESIGN.md §4.8: 完全オンデマンド。誰かが押したときだけ公式サイトを取りに行く。
+ * 1日1回までで、上限に達している場合は `refreshed: false` が返る（エラーではない）。
+ */
+export function refreshStandings(draftId: string) {
+  return draftApiClient.post<RefreshResult>(`/drafts/${draftId}/standings/refresh`);
+}
+
+/**
+ * POST /drafts/{draftId}/standings/manual
+ *
+ * DESIGN.md §7の手動入力フォールバック。公式サイトのHTMLが変わって
+ * パースが直らない間も、主催者が打ち込めば集計を続けられる。
+ */
+export function submitManualResult(draftId: string, input: ManualResultInput) {
+  return draftApiClient.post<{ date: string; no: number; gameCount: number }>(
+    `/drafts/${draftId}/standings/manual`,
+    input,
+  );
 }

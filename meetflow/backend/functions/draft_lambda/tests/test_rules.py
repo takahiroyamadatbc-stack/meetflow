@@ -5,7 +5,7 @@ DBもHTTPも介さない純粋関数なので、ここで境界条件を潰し�
 
 import pytest
 
-import rules
+from handlers import rules
 
 
 def test_初期余剰枠は女性選手数から参加者数を引いた値():

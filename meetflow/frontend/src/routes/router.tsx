@@ -45,6 +45,7 @@ import { DraftListPage } from "@/features/draft/DraftListPage";
 import { DraftCreatePage } from "@/features/draft/DraftCreatePage";
 import { DraftRoomPage } from "@/features/draft/DraftRoomPage";
 import { DraftBoardPage } from "@/features/draft/DraftBoardPage";
+import { DraftStandingsPage } from "@/features/draft/DraftStandingsPage";
 import { NotificationListPage } from "@/features/notification/NotificationListPage";
 import { FeedbackFormPage } from "@/features/feedback/FeedbackFormPage";
 import { FeedbackAdminPage } from "@/features/feedback/FeedbackAdminPage";
@@ -157,6 +158,11 @@ export const router = createBrowserRouter([
         path: "/drafts/:draftId/board",
         element: <DraftBoardPage />,
         handle: { title: "ドラフト進行" },
+      },
+      {
+        path: "/drafts/:draftId/standings",
+        element: <DraftStandingsPage />,
+        handle: { title: "成績" },
       },
       {
         path: "/communities/:communityId/display-name",

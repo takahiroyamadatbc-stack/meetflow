@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-import repository as repo
+from handlers import repository as repo
 from _factories import api_event, make_players, put_membership, put_profile, seed_players, setup_community
 from errors import DraftError
 from handlers import drafts, picks, progress

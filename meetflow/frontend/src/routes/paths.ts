@@ -57,6 +57,7 @@ export const paths = {
   draftNew: (communityId: string) => `/communities/${communityId}/drafts/new`,
   draftRoom: (draftId: string) => `/drafts/${draftId}`,
   draftBoard: (draftId: string) => `/drafts/${draftId}/board`,
+  draftStandings: (draftId: string) => `/drafts/${draftId}/standings`,
 
   notifications: "/notifications",
 

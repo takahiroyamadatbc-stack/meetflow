@@ -1,7 +1,7 @@
 from meetflow_common import dispatch
 
 from errors import DraftError, draft_error
-from handlers import drafts, picks, progress
+from handlers import drafts, picks, progress, standings
 
 # DraftLambda（DESIGN.md §4.11: 8つ目のドメインLambda。既存5スタックとは
 # 別の MeetFlowDraftStack に属し、専用テーブル・専用API Gatewayを持つ）。
@@ -18,6 +18,10 @@ _ROUTES = {
     ("POST", "/drafts/{draftId}/reveal"): progress.reveal,
     ("POST", "/drafts/{draftId}/lottery"): progress.run_lottery,
     ("POST", "/drafts/{draftId}/advance"): progress.advance,
+    # 成績追跡（DESIGN.md §4.8〜§4.10）
+    ("GET", "/drafts/{draftId}/standings"): standings.get_standings,
+    ("POST", "/drafts/{draftId}/standings/refresh"): standings.refresh_standings,
+    ("POST", "/drafts/{draftId}/standings/manual"): standings.submit_manual_result,
 }
 
 

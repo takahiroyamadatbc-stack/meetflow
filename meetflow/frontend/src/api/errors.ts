@@ -62,6 +62,8 @@ const TOAST_CODES = new Set([
   "FEMALE_REQUIRED",
   "FEMALE_SURPLUS_EXHAUSTED",
   "ML_PLAYERS_NOT_SEEDED",
+  "MLEAGUE_FETCH_FAILED",
+  "REFRESH_IN_PROGRESS",
 ]);
 
 /** 空状態画面で表示するエラーコード（`*_NOT_FOUND`系は接尾辞で判定） */

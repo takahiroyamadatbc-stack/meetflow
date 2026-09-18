@@ -153,8 +153,12 @@ class MeetFlowDraftStack(Stack):
             handler="handler.handler",
             code=lambda_.Code.from_asset(str(_BACKEND_DIR / "functions" / "draft_lambda")),
             layers=[common_layer],
-            timeout=Duration.seconds(10),
-            memory_size=512,
+            # 成績取得（DESIGN.md §4.8）はMリーグ公式の `/games` を1枚まるごと
+            # 取ってパースする。シーズン終盤で1.6MB程度になる（SCRAPING.md §1）
+            # ため、他ドメインLambdaの既定（10秒・512MB）では足りない。
+            # メモリを上げているのはパース速度のため（LambdaはCPUがメモリに比例する）。
+            timeout=Duration.seconds(30),
+            memory_size=1024,
             environment={
                 # 本体テーブル。meetflow_common.get_table()が読む。
                 "TABLE_NAME": main_table.table_name,
@@ -242,6 +246,9 @@ class MeetFlowDraftStack(Stack):
             ("POST", "/drafts/{draftId}/reveal"),
             ("POST", "/drafts/{draftId}/lottery"),
             ("POST", "/drafts/{draftId}/advance"),
+            ("GET", "/drafts/{draftId}/standings"),
+            ("POST", "/drafts/{draftId}/standings/refresh"),
+            ("POST", "/drafts/{draftId}/standings/manual"),
         ]
         # allow_test_invoke=False: 本体APIスタックと同じ理由。メソッドごとに
         # Lambda::Permissionが倍増してリソースポリシーの上限に近づくのを避ける。

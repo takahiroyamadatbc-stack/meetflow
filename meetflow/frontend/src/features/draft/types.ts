@@ -129,3 +129,61 @@ export type DraftCreateInput = {
 export function isDraftActive(status: DraftStatus): boolean {
   return status !== "SETUP" && status !== "COMPLETED";
 }
+
+// --- 成績追跡（docs/draft/DESIGN.md §4.8〜§4.10、§4.15） ---
+
+export type StandingPlayer = {
+  playerId: string;
+  playerName: string;
+  teamName: string;
+  isFemale: boolean;
+  /** レギュラーシーズン終了日までの獲得ポイント合計 */
+  points: number;
+  /** 出場半荘数 */
+  games: number;
+};
+
+export type StandingRow = {
+  userId: string;
+  displayName: string;
+  totalPoints: number;
+  rank: number;
+  players: StandingPlayer[];
+};
+
+export type Standings = {
+  season: string;
+  /** §4.15。未設定ならシーズン全体を集計している */
+  regularSeasonEndDate: string | null;
+  standings: StandingRow[];
+  /** 最後に取得に成功した時刻。§7の「最終更新を必ず出す」 */
+  lastUpdatedAt: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  /** 日別積算と公式の累計が食い違った選手（SCRAPING.md §3の検算） */
+  mismatchedPlayers: string[];
+  /** 結果側にいて誰のチームにも紐づかなかった名前（表記ゆれの検知用） */
+  unmatchedPlayerNames: string[];
+  playedGamedayCount: number;
+  scheduledGamedayCount: number;
+  latestPlayedDate: string | null;
+  /** 19:00〜翌2:00か。「対局中」バッジの表示判定にだけ使う（§4.9） */
+  inGameWindow: boolean;
+  latestConfirmedDate: string | null;
+  /** 今日まだ取得していないか（§4.8「取得は1日1回まで」） */
+  canRefresh: boolean;
+};
+
+export type RefreshResult = {
+  refreshed: boolean;
+  reason?: string;
+  gamedayCount?: number;
+  latestPlayedDate?: string | null;
+  mismatchedPlayers?: string[];
+};
+
+export type ManualResultInput = {
+  date: string;
+  no: number;
+  games: { label: string; rows: { rank: number; name: string; point: number }[] }[];
+};

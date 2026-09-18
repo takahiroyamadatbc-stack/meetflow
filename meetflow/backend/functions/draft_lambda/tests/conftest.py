@@ -9,11 +9,14 @@ from moto import mock_aws
 # 実際のLambdaランタイムのレイアウトを再現している: 関数コード
 # （draft_lambda/）と共有Layer（layers/common/python）は両方とも
 # sys.pathにマウントされる（それぞれ/var/taskと/opt/python）。
-# handlers配下も`import repository`のようにトップレベル参照するため
-# （他ドメインの`from handlers import xxx`と同じ形）、ここに追加する。
+#
+# **handlers/ 自体はsys.pathに入れない。** 入れるとhandlers配下のモジュールが
+# トップレベル名としても見えてしまい、Lambdaでは解決できない相互import
+# （`import repository`のような形）がテストでだけ通ってしまう。
+# handlers内の相互参照は他ドメインと同じく相対import（`from . import ...`）にする。
 _DRAFT_LAMBDA_DIR = Path(__file__).resolve().parent.parent
 _COMMON_LAYER_DIR = _DRAFT_LAMBDA_DIR.parent.parent / "layers" / "common" / "python"
-for _path in (_DRAFT_LAMBDA_DIR, _DRAFT_LAMBDA_DIR / "handlers", _COMMON_LAYER_DIR):
+for _path in (_DRAFT_LAMBDA_DIR, _COMMON_LAYER_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
@@ -25,11 +28,8 @@ for _name in list(sys.modules):
         "handler",
         "handlers",
         "_factories",
-        "repository",
-        "rules",
-        "drafts",
-        "picks",
-        "progress",
+        # draft_lambdaのルート直下にある固有モジュール。他ドメインには
+        # 同名が無いが、退避しておかないとテスト間で古いものが残る。
         "errors",
         "draft_table",
     ) or _name.startswith("handlers."):

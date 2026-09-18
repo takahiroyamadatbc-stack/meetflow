@@ -10,8 +10,8 @@ from meetflow_common import (
     success_response,
 )
 
-import repository as repo
-import rules
+from . import repository as repo
+from . import rules
 from errors import DraftError
 
 # DESIGN.md §2: 2026-27シーズンが対象。将来シーズンは選手マスタを差し替える。

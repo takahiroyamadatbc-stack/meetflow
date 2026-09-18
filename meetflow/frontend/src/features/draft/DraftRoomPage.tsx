@@ -89,13 +89,20 @@ export function DraftRoomPage() {
           <p className="text-muted-foreground text-xs">
             {draft.season}シーズン ／ 女流枠の残り {draft.femaleSurplusRemaining}
           </p>
-          {isHost && (
-            <Link to={paths.draftBoard(draft.draftId)}>
-              <Button variant="outline" size="sm" className="mt-1">
-                進行画面を開く
+          <div className="mt-1 flex gap-2">
+            <Link to={paths.draftStandings(draft.draftId)}>
+              <Button variant="outline" size="sm">
+                成績を見る
               </Button>
             </Link>
-          )}
+            {isHost && (
+              <Link to={paths.draftBoard(draft.draftId)}>
+                <Button variant="outline" size="sm">
+                  進行画面を開く
+                </Button>
+              </Link>
+            )}
+          </div>
         </CardContent>
       </Card>
 
