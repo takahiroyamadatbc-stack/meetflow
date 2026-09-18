@@ -13,6 +13,11 @@ HOST = "host"
 MEMBERS = ("u1", "u2")
 
 
+def _submit_all(draft_id, assignments):
+    for user_id, player_id in assignments.items():
+        _pick(draft_id, user_id, player_id)
+
+
 def _create(user_id=HOST, *, community_id="c1", participants=None, name="Mリーグドラフト2026-27"):
     return json.loads(
         drafts.create_draft(
@@ -133,6 +138,21 @@ def test_女性選手数が参加人数の上限を抑える(main_table, draft_t
     assert exc.value.code == "DRAFT_VALIDATION_ERROR"
 
 
+def test_選手一覧は確保済みの選手に指名者を付けて返す(ready):
+    draft_id = _create()["draftId"]
+    _start(draft_id)
+    _submit_all(draft_id, {HOST: "p20", "u1": "p21", "u2": "p22"})
+    _reveal(draft_id)
+
+    players = json.loads(
+        drafts.get_players(HOST, api_event(path_params={"draftId": draft_id}))["body"]
+    )["data"]["players"]
+    assert len(players) == 40
+    taken = {p["playerId"]: p["takenByUserId"] for p in players if p["takenByUserId"]}
+    assert taken == {"p20": HOST, "p21": "u1", "p22": "u2"}
+    assert sum(1 for p in players if p["isFemale"]) == 13
+
+
 # --- 指名 -------------------------------------------------------------------
 
 
@@ -216,11 +236,6 @@ def test_主催者以外は代理指名できない(ready):
 
 
 # --- 開示・抽選・進行 -------------------------------------------------------
-
-
-def _submit_all(draft_id, assignments):
-    for user_id, player_id in assignments.items():
-        _pick(draft_id, user_id, player_id)
 
 
 def test_全員提出前は開示できない(ready):

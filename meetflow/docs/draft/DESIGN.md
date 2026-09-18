@@ -419,9 +419,9 @@ MLPlayerDaily    PK=MLPLAYER#{season} SK=DAILY#{date}#{playerId}
 1. ~~§6.1 の公式サイト構造調査~~ → **完了。`SCRAPING.md` 参照**
 2. ~~§6.2 の残論点のうち、仕様に関わるものを潰す~~ → **完了（§4.4.1 / §4.13 / §4.14 / §4.15）**
 3. **ドラフト会議のバックエンド実装** → **完了（下記）**
-4. ドラフト会議のフロントエンド実装（主催者画面 / 参加者画面）← いまここ
-5. 成績追跡（§4.8〜§4.10）の実装。`SCRAPING.md` の通り `/games` を1回取るだけで済む
-6. dev環境へのデプロイと選手マスタのシード
+4. ~~ドラフト会議のフロントエンド実装（主催者画面 / 参加者画面）~~ → **完了（下記）**
+5. 成績追跡（§4.8〜§4.10）の実装 ← いまここ。`SCRAPING.md` の通り `/games` を1回取るだけで済む
+6. dev環境へのデプロイと選手マスタのシード（`DEPLOY.md` §5b）
 
 ### 実装済み（バックエンド）
 
@@ -449,6 +449,7 @@ backend/scripts/seed_ml_players.py              選手マスタのシード（§
 | GET | `/communities/{communityId}/drafts` | 一覧 |
 | GET | `/drafts/{draftId}` | 状態取得（ポーリング先。`version`付き） |
 | GET | `/drafts/{draftId}/rosters` | 確定チーム |
+| GET | `/drafts/{draftId}/players` | 指名対象の選手一覧（確保済みフラグ付き） |
 | GET | `/drafts/{draftId}/lotteries` | 抽選の記録 |
 | POST | `/drafts/{draftId}/start` | 開始（主催者） |
 | POST | `/drafts/{draftId}/picks` | 指名 |
@@ -473,6 +474,46 @@ backend/scripts/seed_ml_players.py              選手マスタのシード（§
   共通の`write_operation_log`は本体テーブルに書くため、DraftLambdaの本体テーブル
   read-onlyを崩してしまう
 
+### 実装済み（フロントエンド）
+
+```
+frontend/src/features/draft/
+  types.ts                    APIレスポンスの型
+  api.ts                      DraftApiの呼び出し
+  rules.ts                    §4.3の表示側判定（サーバーと同じ境界）
+  useDraft.ts                 §4.12のポーリング（2.5秒間隔）
+  DraftListPage.tsx           S-32 一覧
+  DraftCreatePage.tsx         S-33 作成（参加者はコミュニティメンバーから選ぶ）
+  DraftRoomPage.tsx           S-34 参加者画面（スマホ・指名操作）
+  DraftBoardPage.tsx          S-35 主催者画面（プロジェクター・進行操作）
+  components/PlayerPicker.tsx     チーム別の選手選択
+  components/RosterBoard.tsx      参加者ごとの確定チーム
+  components/WaveProgress.tsx     提出状況 / 開示後の指名一覧
+  components/LotteryLog.tsx       抽選の記録（§4.14）
+  rules.test.ts / DraftRoomPage.test.tsx / DraftBoardPage.test.tsx   24件
+```
+
+画面は既存SPAの一部として `/communities/{id}/drafts` と `/drafts/{draftId}` に置き、
+コミュニティ詳細（S-05）から「Mリーグドラフト」カードで入る。
+ランキングと同じく**麻雀コミュニティにだけ**導線を出す。
+
+実装上の決定：
+
+- **APIクライアントはベースURLを引数に取る形にリファクタし、`draftApiClient` を足した**。
+  ドラフトは別のAPI Gatewayに立つが、トークン注入・エンベロープ判定・`ApiError`への変換は
+  同じなので、`request` を共有してベースURLだけ差し替える。環境変数は
+  `VITE_DRAFT_API_BASE_URL` の1本だけ追加（§4.11の「URLは環境変数を1本足すだけ」の通り）
+- **参加者画面と主催者画面を別ルートに分けた**（§4.6）。主催者は参加者を兼任できるので、
+  プロジェクターに進行画面、手元のスマホに参加者画面を開く想定。参加者画面から
+  進行画面へのリンクは主催者にだけ出す
+- **指名ルールの判定をフロントにも置いた**（`rules.ts`）。最終的な可否はサーバーが決めるが、
+  同じ境界で判定していないと「押せるのにエラーになる」がズレるため、
+  バックエンドの `rules.py` と同じケースをテストで固定している
+- **選手一覧に `GET /drafts/{draftId}/players` を追加した**。指名画面が「いま選べる選手」を
+  出すには、スナップショットに加えて誰が確保済みかが要る。設計メモのエンドポイント一覧には
+  無かったが、フロントを書く段で必要になった
+- **ロゴ・選手写真は使わない**（§7）。文字とチーム名、女流バッジだけで構成している
+
 ### このリポジトリの `docs/draft/` の中身
 
 | ファイル | 内容 |
@@ -482,7 +523,7 @@ backend/scripts/seed_ml_players.py              選手マスタのシード（§
 | `players_2026-27.json` | 選手マスタ。公式 `/stats` のロースターと**10チーム40名全員一致を検証済み**（2026-09-18） |
 | `scrape_prototype.py` | パース規則の検証スクリプト。本番実装ではない。`python3 scrape_prototype.py` で公式サイトに対して検算が走る |
 
-実装コードの置き場所は上の「実装済み（バックエンド）」を参照。
+実装コードの置き場所は上の「実装済み（バックエンド）」「実装済み（フロントエンド）」を参照。
 
 ## 9. 参考リンク
 

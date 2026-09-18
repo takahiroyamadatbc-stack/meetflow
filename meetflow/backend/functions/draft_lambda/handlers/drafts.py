@@ -183,6 +183,34 @@ def get_lotteries(user_id: str, event: dict) -> dict:
     )
 
 
+def get_players(user_id: str, event: dict) -> dict:
+    """GET /drafts/{draftId}/players — 指名対象の選手一覧。
+
+    ドラフト作成時に固定したスナップショット（DESIGN.md §6.2）に、
+    誰が確保済みかを載せて返す。指名画面が「選べる選手」を出すために使う。
+    """
+    draft, _ = _load_draft_for_member(user_id, event)
+    draft_id = draft["draftId"]
+    taken = {
+        lock["SK"].removeprefix("LOCK#"): lock["userId"] for lock in repo.list_locks(draft_id)
+    }
+    players = [
+        {
+            "playerId": player["playerId"],
+            "name": player["name"],
+            "kana": player.get("kana"),
+            "teamId": player["teamId"],
+            "teamName": player["teamName"],
+            "isFemale": bool(player["isFemale"]),
+            "takenByUserId": taken.get(player["playerId"]),
+        }
+        for player in repo.list_players(draft_id)
+    ]
+    # チームごとにまとめて表示するため、チーム→名前の順に並べて返す。
+    players.sort(key=lambda p: (p["teamName"], p["playerId"]))
+    return success_response({"players": players})
+
+
 def start_draft(user_id: str, event: dict) -> dict:
     """POST /drafts/{draftId}/start — SETUP → NOMINATING(1, 1)。主催者のみ。"""
     draft, _ = _load_draft_for_member(user_id, event)

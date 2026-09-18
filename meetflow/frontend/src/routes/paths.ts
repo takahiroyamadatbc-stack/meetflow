@@ -51,6 +51,13 @@ export const paths = {
   communityRankingSettingsEdit: (communityId: string) =>
     `/communities/${communityId}/ranking-settings`,
 
+  // Mリーグドラフト企画（docs/draft/DESIGN.md）。本体とは別のAPIを叩くが、
+  // 画面は既存SPAの一部として /communities/... 配下に置く。
+  draftList: (communityId: string) => `/communities/${communityId}/drafts`,
+  draftNew: (communityId: string) => `/communities/${communityId}/drafts/new`,
+  draftRoom: (draftId: string) => `/drafts/${draftId}`,
+  draftBoard: (draftId: string) => `/drafts/${draftId}/board`,
+
   notifications: "/notifications",
 
   myPage: "/mypage",

@@ -41,6 +41,10 @@ import { CancelRequestListPage } from "@/features/event/CancelRequestListPage";
 import { ResultSessionCreatePage } from "@/features/result/ResultSessionCreatePage";
 import { ResultSummaryPage } from "@/features/result/ResultSummaryPage";
 import { RankingPage } from "@/features/result/RankingPage";
+import { DraftListPage } from "@/features/draft/DraftListPage";
+import { DraftCreatePage } from "@/features/draft/DraftCreatePage";
+import { DraftRoomPage } from "@/features/draft/DraftRoomPage";
+import { DraftBoardPage } from "@/features/draft/DraftBoardPage";
 import { NotificationListPage } from "@/features/notification/NotificationListPage";
 import { FeedbackFormPage } from "@/features/feedback/FeedbackFormPage";
 import { FeedbackAdminPage } from "@/features/feedback/FeedbackAdminPage";
@@ -133,6 +137,26 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/members",
         element: <MemberListPage />,
         handle: { title: "メンバー一覧" },
+      },
+      {
+        path: "/communities/:communityId/drafts",
+        element: <DraftListPage />,
+        handle: { title: "Mリーグドラフト" },
+      },
+      {
+        path: "/communities/:communityId/drafts/new",
+        element: <DraftCreatePage />,
+        handle: { title: "ドラフトを作成" },
+      },
+      {
+        path: "/drafts/:draftId",
+        element: <DraftRoomPage />,
+        handle: { title: "ドラフト会議" },
+      },
+      {
+        path: "/drafts/:draftId/board",
+        element: <DraftBoardPage />,
+        handle: { title: "ドラフト進行" },
       },
       {
         path: "/communities/:communityId/display-name",

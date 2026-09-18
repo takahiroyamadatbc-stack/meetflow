@@ -83,6 +83,8 @@ cd backend
 | フロントエンドS3バケット名 | `dev-MeetFlowFrontendStack` / `FrontendBucketName` |
 | CloudFront Distribution ID | `dev-MeetFlowFrontendStack` / `CloudFrontDistributionId` |
 | フロントエンドURL | `dev-MeetFlowFrontendStack` / `CloudFrontDomainName` |
+| ドラフトAPI URL | `dev-MeetFlowDraftStack` / `DraftApiUrl` |
+| ドラフトテーブル名 | `dev-MeetFlowDraftStack` / `DraftTableName` |
 
 `cdk deploy`実行時のターミナル出力にも表示されるが、後から確認する場合：
 
@@ -133,6 +135,27 @@ aws secretsmanager put-secret-value --secret-id dev-meetflow-vapid-keys --profil
 
 投入後、`private_key.pem`・`public_key.pem`はローカルに残さず削除すること（秘密鍵はSecrets Managerにのみ保管する）。
 
+## 5b. 【Mリーグドラフト企画を使う場合は必須】選手マスタの投入
+
+`docs/draft/DESIGN.md` §7 の通り、Mリーグの選手マスタはランタイムでスクレイピングせず、
+リポジトリにコミットしたJSONを人手でDraftTableへ投入する。
+
+**これを忘れるとドラフト作成が `ML_PLAYERS_NOT_SEEDED` で必ず失敗する。**
+逆に言えばエラーで即座に分かるので、招待URL（手順4b）のようにサイレントに壊れることはない。
+
+```bash
+cd backend
+python scripts/seed_ml_players.py --table dev-MeetFlowDraftTable --profile personal --dry-run
+
+# 40人・女性13人の内訳を確認したら --dry-run を外して再実行
+python scripts/seed_ml_players.py --table dev-MeetFlowDraftTable --profile personal
+```
+
+冪等なので、シーズン中の選手入れ替えがあった場合も
+`docs/draft/players_2026-27.json` を編集して流し直せばよい。
+性別フラグ（`isFemale`）はどのサイトにも構造化データとして存在せず手動メンテナンスなので、
+選手を差し替えたときは必ず併せて見直すこと（DESIGN.md §3）。
+
 ## 6. フロントエンドの環境変数設定・ビルド
 
 [frontend/.env.example](frontend/.env.example)をコピーして`frontend/.env.development`を作成し、手順4で得た値を転記する：
@@ -143,6 +166,7 @@ VITE_COGNITO_USER_POOL_ID=<手順4のUserPoolId>
 VITE_COGNITO_USER_POOL_CLIENT_ID=<手順4のUserPoolClientId>
 VITE_COGNITO_REGION=ap-northeast-1
 VITE_VAPID_PUBLIC_KEY=<手順5のApplication Server Keyの値>
+VITE_DRAFT_API_BASE_URL=<手順4のDraftApiUrl>
 ```
 
 ```bash

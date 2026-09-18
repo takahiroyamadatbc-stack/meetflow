@@ -107,6 +107,11 @@ export function CommunityDetailPage() {
       {isMahjongCommunity && (
         <NavCard to={paths.communityRanking(community.communityId)} label="ランキングを見る" />
       )}
+      {/* Mリーグドラフト企画（docs/draft/DESIGN.md）。Mリーグの選手を指名する
+          遊びなので、ランキングと同じく麻雀コミュニティにだけ導線を出す。 */}
+      {isMahjongCommunity && (
+        <NavCard to={paths.draftList(community.communityId)} label="Mリーグドラフト" />
+      )}
 
       <Accordion className="flex flex-col gap-2">
         {isAdmin && (
