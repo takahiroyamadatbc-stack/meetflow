@@ -86,14 +86,14 @@ def _draft_with_rosters(*, regular_season_end_date=None):
     return draft_id
 
 
-def _fake_fetch(stats_totals=None):
+def _fake_fetch(stats_totals=None, *, played_0927=False):
     """`mleague.fetch` を差し替える。
 
     文字列ターゲットのpatchはドメイン間のsys.modules衝突で壊れるため
     （CLAUDE.md参照）、importしたモジュールオブジェクトにpatch.objectする。
     """
     pages = {
-        mleague.GAMES_PATH: games_page(),
+        mleague.GAMES_PATH: games_page(played_0927=played_0927),
         mleague.STATS_PATH: stats_page(stats_totals or {}),
     }
     return patch.object(mleague, "fetch", side_effect=lambda path: pages[path])
@@ -125,8 +125,8 @@ def test_取得すると節が保存され参加者の合計が出る(ready):
     with _fake_fetch():
         result = _refresh(draft_id)
     assert result["refreshed"] is True
-    # 日程4件（消化3・未消化1）がすべて保存される
-    assert result["gamedayCount"] == 4
+    # 日程6件（消化3・未消化3）がすべて保存される
+    assert result["gamedayCount"] == 6
 
     standing = _standings(draft_id)
     # HOST は 本田朋広(56.7 + 10 + ▲1) と 渡辺太(▲55.8 + ▲10 + 2)
@@ -155,7 +155,8 @@ def test_対局なしと未消化を区別して保存する(ready):
 
     standing = _standings(draft_id)
     assert standing["playedGamedayCount"] == 3
-    assert standing["scheduledGamedayCount"] == 1
+    # 未消化は9/26の1節と9/27の2節。
+    assert standing["scheduledGamedayCount"] == 3
     assert standing["latestPlayedDate"] == "2026-09-25"
 
 
@@ -166,6 +167,67 @@ def test_同じ日に2節あっても上書きされない(ready):
         _refresh(draft_id)
     same_day = [g for g in repo.list_gamedays(SEASON) if g["date"] == "20260925"]
     assert len(same_day) == 2
+
+
+def test_未消化で同じ日に2節あっても両方保存される(ready):
+    # 未消化日は節番号を持たないため、節番号だけでSKを作ると同じ日の2節が
+    # 完全に同一キーになる。BatchWriteItemはバッチ内のキー重複を拒否する
+    # ので、1件も書けずに丸ごと落ちていた。
+    draft_id = _draft_with_rosters()
+    with _fake_fetch():
+        _refresh(draft_id)
+
+    same_day = [g for g in repo.list_gamedays(SEASON) if g["date"] == "20260927"]
+    assert len(same_day) == 2
+    assert len({g["SK"] for g in same_day}) == 2
+    assert all(g["state"] == repo.GAMEDAY_SCHEDULED for g in same_day)
+    # 対戦カードが別物のまま残っている（片方で上書きされていない）。
+    assert same_day[0]["teams"] != same_day[1]["teams"]
+
+
+def test_未消化だった日が消化されたら未消化の行は残らない(ready):
+    # 未消化のうちは節番号が無いのでSKが変わる。古い行を消さないと
+    # SCHEDULEDのまま残り、scheduledGamedayCountが減らなくなる。
+    draft_id = _draft_with_rosters()
+    with _fake_fetch():
+        _refresh(draft_id)
+    assert len([g for g in repo.list_gamedays(SEASON) if g["date"] == "20260927"]) == 2
+
+    state = dict(repo.get_fetch_state(SEASON))
+    state["lastFetchDate"] = "20000101"
+    repo.put_fetch_state(SEASON, state)
+    with _fake_fetch(played_0927=True):
+        _refresh(draft_id)
+
+    after = [g for g in repo.list_gamedays(SEASON) if g["date"] == "20260927"]
+    assert len(after) == 2
+    assert all(g["state"] == repo.GAMEDAY_PLAYED for g in after)
+    assert sorted(int(g["no"]) for g in after) == [5, 6]
+
+    standing = _standings(draft_id)
+    assert standing["playedGamedayCount"] == 5
+    assert standing["scheduledGamedayCount"] == 1
+
+
+def test_書き込みに失敗してもロックは解放され失敗として記録される(ready):
+    # 取り込み（書き込み）側の失敗をtryの外に置いていたため、ロックを
+    # 握ったまま抜けて2分間REFRESH_IN_PROGRESSになり、しかも失敗した事実が
+    # どこにも残らなかった。
+    draft_id = _draft_with_rosters()
+    with _fake_fetch():
+        with patch.object(standings, "_store_results", side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError):
+                _refresh(draft_id)
+
+    state = dict(repo.get_fetch_state(SEASON))
+    assert "lockedAt" not in state
+    after = _standings(draft_id)
+    # 内部エラーの文面はそのまま出さない（詳細はCloudWatch）。
+    assert after["lastError"] == "成績の取り込みに失敗しました"
+    # カウントは消費しないので、直ればその日のうちに取り直せる。
+    assert after["canRefresh"] is True
+    with _fake_fetch():
+        assert _refresh(draft_id)["refreshed"] is True
 
 
 def test_取得は1日1回まで(ready):

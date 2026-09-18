@@ -213,14 +213,24 @@ def season_pk(season: str) -> str:
     return f"MLPLAYER#{season}"
 
 
-def gameday_sk(date: str, no) -> str:
+def gameday_sk(date: str, no, seq: int = 0) -> str:
     """節のSK。
 
     **同じ日付に2節入る日がある**（SCRAPING.md §2.2）ため、日付だけでは
-    一意にならない。節番号まで含める。未消化日は節番号を持たないので、
-    その場合は日付＋連番の代わりに "000" を置く（消化されれば上書きされる）。
+    一意にならない。節番号まで含める。
+
+    未消化日は公式サイトが節番号を載せていない（`data-target`属性ごと無い）
+    ため、節番号の代わりに**その日の中での出現順`seq`**を使い、消化済みの
+    節番号と混ざらないよう`S`を前置する。ここを未消化なら一律"000"にして
+    いたせいで、同じ日に2節ある未消化日でPK/SKが完全に重複し、
+    BatchWriteItemがValidationExceptionで全件巻き戻していた。
+
+    未消化のうちに書いた`S`付きのSKは、その日が消化されると節番号側のSKに
+    移る。残された`S`付きの行は`_store_results`が消す。
     """
-    return f"GAMEDAY#{date}#{int(no or 0):03d}"
+    if no:
+        return f"GAMEDAY#{date}#{int(no):03d}"
+    return f"GAMEDAY#{date}#S{seq:03d}"
 
 
 def list_gamedays(season: str) -> list:

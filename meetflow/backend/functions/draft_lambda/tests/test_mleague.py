@@ -14,7 +14,7 @@ from _mleague_fixture import games_page, stats_page
 
 def test_消化済みと未消化の両方が日程として取れる():
     schedule, _ = mleague.parse_games(games_page(), 2026)
-    assert len(schedule) == 4
+    assert len(schedule) == 6
     assert [(day["date"], day["finished"]) for day in schedule] == [
         ("20260914", True),
         ("20260925", True),
@@ -22,8 +22,21 @@ def test_消化済みと未消化の両方が日程として取れる():
         # 未消化のliは<a>でラップされ節番号を持たないが、日程としては拾う。
         # 年はシーズン（9〜12月＝開幕年）から補う。
         ("20260926", False),
+        # 未消化でも同じ日に2節入る。どちらも節番号を持たない。
+        ("20260927", False),
+        ("20260927", False),
     ]
     assert all(len(day["teams"]) == 4 for day in schedule)
+
+
+def test_未消化で同じ日に2節あっても2件として取れる():
+    # 節番号が無いので、日付だけで潰すと片方が消える。
+    schedule, _ = mleague.parse_games(games_page(), 2026)
+    same_day = [day for day in schedule if day["date"] == "20260927"]
+    assert len(same_day) == 2
+    assert [day["no"] for day in same_day] == [None, None]
+    # 対戦カードは別物なので、潰れていないことはチームで見分けられる。
+    assert same_day[0]["teams"] != same_day[1]["teams"]
 
 
 def test_同じ日付に2節ある日を取り違えない():
@@ -45,8 +58,9 @@ def test_文書内で最後のモーダルも取りこぼさない():
 def test_未消化日は結果を持たない():
     schedule, results = mleague.parse_games(games_page(), 2026)
     unfinished = [day for day in schedule if not day["finished"]]
-    assert len(unfinished) == 1
-    assert f'{unfinished[0]["date"]}-{unfinished[0]["no"]}' not in results
+    assert len(unfinished) == 3
+    for day in unfinished:
+        assert f'{day["date"]}-{day["no"]}' not in results
 
 
 def test_日程が1件も取れなければ失敗として扱う():

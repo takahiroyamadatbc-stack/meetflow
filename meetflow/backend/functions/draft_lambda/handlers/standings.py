@@ -119,22 +119,38 @@ def refresh_standings(user_id: str, event: dict) -> dict:
     _acquire_lock(season, state)
     try:
         data = mleague.fetch_season_results(season)
-    except mleague.ScrapeError as exc:
-        # §7: パース失敗は前提として設計する。古いデータはそのまま残し、
-        # 失敗した事実だけ記録して画面に出す。1日1回のカウントは消費しない。
-        state.update({"lastError": str(exc), "lastErrorAt": now_iso_ms()})
+        # 取り込み（書き込み）もこのtryの中に入れる。ここを外に出していた
+        # ため、書き込み側が落ちるとロックを握ったまま抜けてしまい、
+        # 失敗の記録も残らなかった。
+        written = _store_results(season, data)
+        accumulated = mleague.accumulate(data["results"])
+        mismatched = mleague.verify(accumulated, data["officialTotals"])
+        latest_played = max(
+            (day["date"] for day in data["schedule"] if day["finished"]), default=None
+        )
+    except Exception as exc:
+        # §7: 失敗は前提として設計する。古いデータはそのまま残し、失敗した
+        # 事実だけ記録して画面に出す。1日1回のカウントは消費しないので、
+        # こけた日でも直ればその日のうちに取り直せる。
+        is_scrape_error = isinstance(exc, mleague.ScrapeError)
+        state.update(
+            {
+                # 画面に出す文言。取得側の失敗は理由が具体的で有用だが、
+                # 書き込み側の内部エラーをそのまま出しても読み手が困るだけ
+                # なので伏せる（詳細はCloudWatchのスタックトレースを見る）。
+                "lastError": str(exc) if is_scrape_error else "成績の取り込みに失敗しました",
+                "lastErrorAt": now_iso_ms(),
+            }
+        )
         # ロックは属性ごと消す。Noneのまま残すと、次にacquireしたときに
         # attribute_not_existsも大小比較も成立せず、永久にロックされてしまう。
         state.pop("lockedAt", None)
         repo.put_fetch_state(season, state)
-        raise DraftError("MLEAGUE_FETCH_FAILED", "Mリーグ公式サイトから成績を取得できませんでした")
-
-    written = _store_results(season, data)
-    accumulated = mleague.accumulate(data["results"])
-    mismatched = mleague.verify(accumulated, data["officialTotals"])
-    latest_played = max(
-        (day["date"] for day in data["schedule"] if day["finished"]), default=None
-    )
+        if is_scrape_error:
+            raise DraftError(
+                "MLEAGUE_FETCH_FAILED", "Mリーグ公式サイトから成績を取得できませんでした"
+            ) from exc
+        raise
 
     state.update(
         {
@@ -237,14 +253,31 @@ def _store_results(season: str, data: dict) -> int:
     壊れたときの履歴保全（§4.10）。
     """
     table = repo.get_draft_table()
+    stored = repo.list_gamedays(season)
     written = 0
+    # 未消化日は節番号を持たないので、その日の中での出現順でSKを分ける
+    # （repository.gameday_sk参照）。ここを分けないと、同じ日に2節ある
+    # 未消化日でPK/SKが重複し、BatchWriteItemが全件失敗する。
+    seq_by_date: dict[str, int] = {}
+    seen = set()
     with table.batch_writer() as batch:
         for day in data["schedule"]:
             key = f'{day["date"]}-{day["no"]}'
             games = data["results"].get(key)
+            if day["no"]:
+                sk = repo.gameday_sk(day["date"], day["no"])
+            else:
+                seq = seq_by_date.get(day["date"], 0)
+                seq_by_date[day["date"]] = seq + 1
+                sk = repo.gameday_sk(day["date"], None, seq)
+            if sk in seen:
+                # 公式が同じ節を二重に載せた場合の保険。重複したまま
+                # batch_writerに渡すとバッチ全体が落ちる。
+                continue
+            seen.add(sk)
             item = {
                 "PK": repo.season_pk(season),
-                "SK": repo.gameday_sk(day["date"], day["no"]),
+                "SK": sk,
                 "season": season,
                 "date": day["date"],
                 "no": day["no"] or 0,
@@ -273,6 +306,18 @@ def _store_results(season: str, data: dict) -> int:
                 item["state"] = repo.GAMEDAY_SCHEDULED
             batch.put_item(Item=item)
             written += 1
+
+        # 未消化のうちに書いた行は、その日が消化されると節番号側のSKに移る。
+        # 移った後の古い行を消さないと、SCHEDULEDのまま永遠に残って
+        # scheduledGamedayCountが減らなくなる。
+        # 消すのはSCHEDULEDだけ。PLAYED（手入力を含む）は公式が落ちたときの
+        # 履歴として残す（DESIGN.md §4.10）。
+        for old in stored:
+            if old["SK"] in seen:
+                continue
+            if old.get("state") != repo.GAMEDAY_SCHEDULED:
+                continue
+            batch.delete_item(Key={"PK": old["PK"], "SK": old["SK"]})
     return written
 
 
