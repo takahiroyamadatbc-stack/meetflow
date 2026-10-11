@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 機能要件書v1.11
 - DynamoDB物理設計書v1.20（特に単一テーブル設計のPK/SK/GSI1/GSI2）
 - Lambda設計書v1.11（8ドメイン構成、IAM権限は「案C」を採用）
-- API設計書v1.30
+- API設計書v1.31
 - 画面設計書v1.18
 - エラーコード一覧v1.11
 - AWSシステム構成設計書v1.4

@@ -11,7 +11,11 @@ export type LiveResultRow = {
 
 /** 自動計算の箱下精算・飛び賞設定（Issue #66/#67）。省略時は従来通りの挙動になる。 */
 export type SettlementOptions = {
-  /** false（箱下精算なし）の場合、基礎点の計算にはマイナスの持ち点を0点に切り捨てて使う。省略時true。 */
+  /**
+   * false（箱下精算なし）の場合、基礎点の計算にはマイナスの持ち点を0点に切り捨てて使い、
+   * 切り捨てたマイナス分の合計は1位の持ち点から差し引く（Issue #114）。
+   * 着順・ウマは差し引く前の生の点数で決める。省略時true。
+   */
   boxUnderSettlement?: boolean;
   /** 飛び賞1件あたりのポイント数。省略時0（実質無効）。 */
   tobiPoints?: number;
@@ -49,12 +53,20 @@ export function computeLiveResults(
   const boxUnderSettlement = settlement?.boxUnderSettlement ?? true;
   const tobiPoints = settlement?.tobiPoints ?? 0;
   const tobiAssignments = settlement?.tobiAssignments ?? [];
+  // 箱下精算なしで1位が負担するマイナス分の合計（着順は上でscoreから確定済み）
+  const boxUnderTotal = boxUnderSettlement
+    ? 0
+    : rows.reduce((sum, r) => sum + Math.min(r.score, 0), 0);
 
   return ordered.map((row, index) => {
     const rank = index + 1;
     let rankPoints = 0;
     if (calcMode === "AUTO") {
-      const settledScore = boxUnderSettlement ? row.score : Math.max(row.score, 0);
+      const settledScore = boxUnderSettlement
+        ? row.score
+        : rank === 1
+          ? row.score + boxUnderTotal
+          : Math.max(row.score, 0);
       const base = (settledScore - returnPoints) / 1000;
       const oka = rank === 1 ? ((returnPoints - startingPoints) * playerCount) / 1000 : 0;
       const uma = umaByRank[rank - 1] ?? 0;
