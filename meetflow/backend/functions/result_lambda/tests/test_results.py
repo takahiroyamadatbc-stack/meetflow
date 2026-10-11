@@ -149,6 +149,77 @@ def test_create_session_box_under_settlement_false_clamps_negative_score_to_zero
     assert data["boxUnderSettlement"] is False
     points_by_user = {r["userId"]: float(r["rankPoints"]) for r in data["results"]}
     assert points_by_user["user-4"] == -50.0  # (0-30000)/1000 - 20
+    # Issue #114: 切り捨てたマイナス分(5000点)は1位が負担する
+    assert points_by_user["user-1"] == 65.0  # (60000-5000-30000)/1000 + 20 + 20
+    assert sum(points_by_user.values()) == 0
+
+
+def test_create_session_box_under_settlement_false_top_bears_all_negatives_keeping_rank(
+    table,
+):
+    """Issue #114: 箱下が複数人いても、マイナス分の合計はすべて1位が負担する。
+    負担後に1位の持ち点が2位を下回っても、着順・ウマは生の点数のまま変えない。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(
+                boxUnderSettlement=False,
+                results=[
+                    {"userId": "user-1", "score": 58000},
+                    {"userId": "user-2", "score": 52000},
+                    {"userId": "user-3", "score": -4000},
+                    {"userId": "user-4", "score": -6000},
+                ],
+            ),
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    by_user = {r["userId"]: r for r in body_of(response)["data"]["results"]}
+    assert by_user["user-1"]["rank"] == 1
+    assert by_user["user-2"]["rank"] == 2
+    points_by_user = {u: float(r["rankPoints"]) for u, r in by_user.items()}
+    # 1位: 58000-10000=48000点で2位(52000点)を下回るが、1位のウマ・オカはそのまま
+    assert points_by_user["user-1"] == 58.0  # (48000-30000)/1000 + 20 + 20
+    assert points_by_user["user-2"] == 32.0  # (52000-30000)/1000 + 10
+    assert points_by_user["user-3"] == -40.0  # (0-30000)/1000 - 10
+    assert points_by_user["user-4"] == -50.0  # (0-30000)/1000 - 20
+    assert sum(points_by_user.values()) == 0
+
+
+def test_create_session_box_under_settlement_false_tied_top_burden_follows_tiebreak(
+    table,
+):
+    """Issue #114: 1位が同点の場合は、タイブレーク（送信順）で1位になった
+    参加者がマイナス分を負担する。"""
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    put_event(table, "event-1", "community-1")
+
+    response = results.create_session(
+        "user-1",
+        api_event(
+            path_params={"eventId": "event-1"},
+            body=_busted_auto_body(
+                boxUnderSettlement=False,
+                results=[
+                    {"userId": "user-2", "score": 40000},
+                    {"userId": "user-1", "score": 40000},
+                    {"userId": "user-3", "score": 25000},
+                    {"userId": "user-4", "score": -5000},
+                ],
+            ),
+        ),
+    )
+
+    assert response["statusCode"] == 201
+    by_user = {r["userId"]: r for r in body_of(response)["data"]["results"]}
+    assert by_user["user-2"]["rank"] == 1
+    assert float(by_user["user-2"]["rankPoints"]) == 45.0  # (35000-30000)/1000 + 40
+    assert float(by_user["user-1"]["rankPoints"]) == 20.0  # (40000-30000)/1000 + 10
 
 
 def test_create_session_tobi_assignment_applies_bonus_and_penalty(table):

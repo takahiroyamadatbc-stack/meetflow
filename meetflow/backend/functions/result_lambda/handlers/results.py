@@ -747,11 +747,18 @@ def _compute_results(
     利用し、入力順でタイブレークする）。AUTO時のみ配給原点・返し点・ウマを
     使った一般的な麻雀のウマオカ計算式で最終ポイントを算出する：
 
-        settledScore = score（箱下精算あり）/ max(score, 0)（箱下精算なし）
+        settledScore = score（箱下精算あり）
+                     / max(score, 0)（箱下精算なし、2位以下）
+                     / score - 全員のマイナス分の合計（箱下精算なし、1位）
         base   = (settledScore - returnPoints) / 1000
         oka    = (returnPoints - startingPoints) * 人数 / 1000  # 1位のみ加算
         tobi   = 飛び賞の受取人は+tobiPoints、トビになった本人は-tobiPoints
         final  = base + umaByRank[着順-1] + oka + tobi
+
+    箱下精算なしの場合、箱下の人が払えないマイナス分（複数人いればその合計）は
+    1位がすべて負担する（Issue #114）。これにより全員のポイント合計は0のまま
+    保たれる。1位の負担で2位より持ち点が少なくなっても、着順・ウマは負担前の
+    生の点数で決めた順位のまま変えない（順位決定→箱下精算の順で評価する）。
 
     箱下精算なしの0点切り捨ては基礎点(base)の項にのみ適用し、トビ判定
     （tobiAssignments）自体は常に生の点数（マイナスのまま）で行われた前提の
@@ -763,11 +770,20 @@ def _compute_results(
     tobi_assignments = tobi_assignments or []
     ordered = sorted(results, key=lambda r: -r["score"])
     player_count = len(results)
+    # 箱下精算なしで1位が負担するマイナス分の合計（着順は上でscoreから確定済み）
+    box_under_total = (
+        0 if box_under_settlement else sum(min(r["score"], 0) for r in results)
+    )
     computed = []
     for index, r in enumerate(ordered):
         rank = index + 1
         if calc_mode == "AUTO":
-            settled_score = r["score"] if box_under_settlement else max(r["score"], 0)
+            if box_under_settlement:
+                settled_score = r["score"]
+            elif rank == 1:
+                settled_score = r["score"] + box_under_total
+            else:
+                settled_score = max(r["score"], 0)
             base = (settled_score - return_points) / 1000
             oka = (
                 (return_points - starting_points) * player_count / 1000
