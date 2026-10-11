@@ -65,7 +65,20 @@ export type CommunityDetail = CommunityMutationResult & {
   rankingDefaultPeriodType: RankingPeriodType;
   rankingDefaultMetric: RankingMetric;
   rankingDefaultMinGames: number;
+  /** 成績入力（自動計算）のデフォルト設定（Issue #115）。未設定の場合はnull */
+  gameDefaults: GameDefaults | null;
 };
+
+/** 成績入力（自動計算）の種目ごとのデフォルト値（Issue #115） */
+export type GameDefaultsEntry = {
+  startingPoints: number;
+  returnPoints: number;
+  /** 着順ごとのウマ（四麻は4要素、三麻は3要素） */
+  umaByRank: number[];
+};
+
+/** 種目ごとのデフォルト値。未設定の種目はキー自体が無い */
+export type GameDefaults = Partial<Record<GameType, GameDefaultsEntry>>;
 
 /** F-805/F-806（Issue #40）: コミュニティ内ランキングの集計期間プリセット */
 export type RankingPeriodType = "MONTH" | "QUARTER" | "HALF_YEAR" | "YEAR" | "ALL_TIME";

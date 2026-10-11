@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.23
+# MeetFlow DynamoDB 物理テーブル設計書 v1.24
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.22→v1.23の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -78,6 +78,7 @@ SK:   METADATA
 | **rankingDefaultPeriodType** | **S** | **（任意）ランキングのデフォルト集計期間プリセット。`MONTH` / `QUARTER` / `HALF_YEAR` / `YEAR` / `ALL_TIME`。未設定時はシステムデフォルト（`MONTH`）にフォールバック [v1.19新規]** |
 | **rankingDefaultMetric** | **S** | **（任意）ランキングのデフォルト表示指標。`AVERAGE_RANK` / `TOTAL_POINTS` / `FIRST_PLACE_RATE` / `SECOND_PLACE_RATE` / `TOP_TWO_RATE` / `NON_LAST_RATE` / `TOTAL_GAMES` / `PARTICIPATED_EVENTS` / `TOTAL_CHIPS` / `AVERAGE_CHIPS`の10種類のいずれか。未設定時はシステムデフォルト（`AVERAGE_RANK`）にフォールバック [v1.19新規]** |
 | **rankingDefaultMinGames** | **N** | **（任意）ランキングのデフォルト足切り閾値（最低対局数）。率・平均系指標にのみ適用。未設定時はシステムデフォルト（0＝足切りなし）にフォールバック [v1.19新規]** |
+| **gameDefaults** | **M** | **（任意）成績入力（自動計算）のデフォルト値。種目（`MAHJONG4`/`MAHJONG3`）をキーに`{startingPoints: N, returnPoints: N, umaByRank: L<N>}`を持つ。未設定の種目はキー自体を持たず、両方未設定なら属性ごと削除する** **[v1.24追加]** |
 | createdAt | S | ISO8601 |
 
 > F-101 に対応。
@@ -1000,3 +1001,11 @@ Issue #40「コミュニティ内ランキング表示機能の追加」のデ�
 | No | 変更内容 | 理由 |
 |---|---|---|
 | 1 | 3.2 Communityの`genre`を自由入力から固定選択肢6種（麻雀/ポーカー/ボードゲーム/TRPG/スポーツ/その他）へ変更し、必須項目化 | Issue #92：コミュニティのジャンルを固定選択制にし、麻雀以外は成績・ランキング機能を非表示にする。Phase2として温存していた「麻雀以外の種目対応」の前倒し |
+
+---
+
+## 32. v1.23 → v1.24 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.2 Communityに`gameDefaults`（Map、任意属性）を追加 | Issue #115：成績入力のデフォルトの配給原点・返し点・ウマをコミュニティ単位で設定できるようにするため。新規のPK/SK/GSIは不要（Community.METADATAへの属性追加のみ）。既存レコードには属性が無いため未設定として扱う（マイグレーション不要） |

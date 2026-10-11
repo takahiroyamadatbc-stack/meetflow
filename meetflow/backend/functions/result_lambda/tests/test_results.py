@@ -747,6 +747,7 @@ def test_get_last_game_settings_prefers_same_event_over_other_user(table):
     assert data["found"] is True
     assert data["calcMode"] == "AUTO"
     assert int(data["startingPoints"]) == 25000
+    assert data["source"] == "EVENT"
 
 
 def test_get_last_game_settings_falls_back_to_user_history_when_event_has_no_sessions(
@@ -773,6 +774,7 @@ def test_get_last_game_settings_falls_back_to_user_history_when_event_has_no_ses
     data = body_of(response)["data"]
     assert data["found"] is True
     assert data["calcMode"] == "AUTO"
+    assert data["source"] == "USER"
 
 
 def test_get_last_game_settings_ignores_event_id_from_other_community(table):

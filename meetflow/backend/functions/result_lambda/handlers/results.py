@@ -219,7 +219,8 @@ def get_last_game_settings(user_id, event):
     前回」ではなく「そのイベントで直前に誰かが入力した設定」を引き継げる方が
     実用上望ましい。同一イベント内に前例が無い場合（イベント最初の半荘）は、
     従来通り呼び出しユーザー自身がコミュニティ内で直近に記録したGameResultから
-    遡ってGameSessionの設定を引くフォールバックを使う。
+    遡ってGameSessionの設定を引くフォールバックを使う。どちらから引いたかは
+    レスポンスの`source`（`EVENT`/`USER`）で返す（Issue #115）。
 
     コミュニティ側エンティティに書き込む案（例えばCOMMUNITY#{id}/METADATAに
     ResultLambdaから最終設定を保存する）も検討したが、Lambda設計書v1.1 §5.3
@@ -236,15 +237,21 @@ def get_last_game_settings(user_id, event):
     event_id_param = query_params.get("eventId")
 
     session_item = None
+    source = "EVENT"
     if event_id_param:
         session_item = _latest_session_in_event(table, community_id, event_id_param)
     if session_item is None:
         session_item = _latest_session_for_user(table, community_id, user_id)
+        source = "USER"
     if session_item is None:
         return success_response({"found": False})
 
     response = {
         "found": True,
+        # Issue #115: どちらから引き継いだ設定か。フロントは同一イベント内の
+        # 前回設定（EVENT）をコミュニティのデフォルト設定より優先し、本人の
+        # 過去設定（USER）はコミュニティのデフォルトが未設定の場合にのみ使う。
+        "source": source,
         "gameType": session_item.get("gameType"),
         "calcMode": session_item.get("calcMode", "MANUAL"),
     }

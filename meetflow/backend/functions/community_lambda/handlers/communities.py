@@ -42,6 +42,10 @@ _RANKING_METRICS = (
     "TOTAL_CHIPS",
     "AVERAGE_CHIPS",
 )
+# Issue #115: 成績入力（自動計算）のデフォルト設定。種目ごとの人数で
+# ウマの要素数を検証する。
+_GAME_DEFAULTS_PLAYER_COUNTS = {"MAHJONG4": 4, "MAHJONG3": 3}
+
 _RANKING_SETTINGS_DEFAULTS = {
     "gameType": "MAHJONG4",
     "periodType": "MONTH",
@@ -207,6 +211,8 @@ def get_community(user_id, event):
             "rankingDefaultMinGames": community.get(
                 "rankingDefaultMinGames", _RANKING_SETTINGS_DEFAULTS["minGames"]
             ),
+            # Issue #115: 未設定の場合はnull（フロントのハードコード既定値を使う）
+            "gameDefaults": community.get("gameDefaults"),
         }
     )
 
@@ -546,6 +552,53 @@ def update_ranking_settings(user_id, event):
     )
 
 
+def update_game_defaults(user_id, event):
+    """PUT /communities/{communityId}/game-defaults（API設計書v1.32 §4.2f、Issue #115）。
+
+    成績入力（自動計算）で使う配給原点・返し点（オカの元になる値）・ウマの
+    コミュニティ単位のデフォルト値を、種目（四麻/三麻）ごとにOWNER/ADMINが
+    設定する。update_ranking_settingsと同じく常に全体を1回で置き換える
+    （部分更新は設けない）。種目のキーを省略またはnullにすると、その種目は
+    未設定（フロントのハードコード既定値を使う）に戻る。両方とも未設定なら
+    属性自体を削除する。
+    """
+    community_id = event["pathParameters"]["communityId"]
+    table = get_table()
+    require_membership(table, community_id, user_id, roles=("OWNER", "ADMIN"))
+
+    body = parse_body(event)
+    game_defaults, validation_error = _parse_game_defaults(body)
+    if validation_error:
+        return validation_error
+
+    key = {"PK": f"COMMUNITY#{community_id}", "SK": "METADATA"}
+    if game_defaults:
+        table.update_item(
+            Key=key,
+            UpdateExpression="SET gameDefaults = :gd",
+            ConditionExpression="attribute_exists(PK)",
+            ExpressionAttributeValues={":gd": game_defaults},
+        )
+    else:
+        table.update_item(
+            Key=key,
+            UpdateExpression="REMOVE gameDefaults",
+            ConditionExpression="attribute_exists(PK)",
+        )
+
+    write_operation_log(
+        action="UPDATE_GAME_DEFAULTS",
+        user_id=user_id,
+        community_id=community_id,
+        target_type="Community",
+        target_id=community_id,
+        after={"gameDefaults": game_defaults or None},
+    )
+    return success_response(
+        {"communityId": community_id, "gameDefaults": game_defaults or None}
+    )
+
+
 def create_icon_upload_url(user_id, event):
     """POST /communities/{communityId}/icon/upload-url（Issue #52）。
 
@@ -674,6 +727,55 @@ def _validate_ranking_settings(body):
         return error_response("INVALID_PARAMETER", "minGamesが不正です")
 
     return None
+
+
+def _parse_game_defaults(body):
+    """update_game_defaultsのリクエストを検証し、保存用のdictを返す。
+    戻り値は(game_defaults, error_response)のタプル。"""
+    invalid = (None, error_response("INVALID_PARAMETER", "成績入力のデフォルト設定が不正です"))
+    if not isinstance(body, dict):
+        return invalid
+    if any(k not in _GAME_DEFAULTS_PLAYER_COUNTS for k in body):
+        return None, error_response("INVALID_PARAMETER", "gameTypeが不正です")
+
+    game_defaults = {}
+    for game_type, player_count in _GAME_DEFAULTS_PLAYER_COUNTS.items():
+        entry = body.get(game_type)
+        if entry is None:
+            continue
+        if not isinstance(entry, dict):
+            return invalid
+        starting_points = entry.get("startingPoints")
+        return_points = entry.get("returnPoints")
+        uma_by_rank = entry.get("umaByRank")
+        if not _is_non_negative_int(starting_points) or not _is_non_negative_int(
+            return_points
+        ):
+            return None, error_response(
+                "INVALID_PARAMETER", "配給原点・返し点は0以上の整数で指定してください"
+            )
+        if (
+            not isinstance(uma_by_rank, list)
+            or len(uma_by_rank) != player_count
+            or not all(_is_int(v) for v in uma_by_rank)
+        ):
+            return None, error_response(
+                "INVALID_PARAMETER", "ウマは着順の数だけ整数で指定してください"
+            )
+        game_defaults[game_type] = {
+            "startingPoints": starting_points,
+            "returnPoints": return_points,
+            "umaByRank": uma_by_rank,
+        }
+    return game_defaults, None
+
+
+def _is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_non_negative_int(value):
+    return _is_int(value) and value >= 0
 
 
 def _no_fields_to_update():

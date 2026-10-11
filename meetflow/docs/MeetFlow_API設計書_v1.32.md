@@ -1,4 +1,4 @@
-# MeetFlow API設計書 v1.31
+# MeetFlow API設計書 v1.32
 
 > v1.0→v1.1は **[v1.1修正]**、v1.1→v1.2は **[v1.2新規/修正]**、v1.2→v1.3は **[v1.2修正]** として明記（表記ゆれのため今回分も[v1.2]タグのまま記載）。v1.3→v1.4は **[v1.4新規/修正]**、v1.4→v1.5は **[v1.5新規]**、v1.5→v1.6は **[v1.6新規]**、v1.6→v1.7は **[v1.7新規/修正]**、v1.8→v1.9は **[v1.9新規]**、v1.9→v1.10は **[v1.10新規/修正]**、v1.11→v1.12は **[v1.12新規/修正]**、v1.12→v1.13は **[v1.13新規/修正]**、v1.13→v1.14は **[v1.14新規]**、v1.14→v1.15は **[v1.15新規]**、v1.15→v1.16は **[v1.16新規]**、v1.16→v1.17は **[v1.17新規]**、v1.17→v1.18は **[v1.18新規/修正]**、v1.18→v1.19は **[v1.19新規/修正]**、v1.19→v1.20は **[v1.20修正]**、v1.20→v1.21は **[v1.21新規/修正]**、v1.21→v1.22は **[v1.22修正]**、v1.22→v1.23は **[v1.23修正]**、v1.23→v1.24は **[v1.24修正]**、v1.24→v1.25は **[v1.25新規]**、v1.25→v1.26は **[v1.26新規]**、v1.26→v1.27は **[v1.27新規]**、v1.27→v1.28は **[v1.28新規]**、v1.28→v1.29は **[v1.29修正]**、v1.29→v1.30は **[v1.30新規]** として明記。
 
@@ -164,7 +164,14 @@ Response
   "rankingDefaultGameType": "MAHJONG4",
   "rankingDefaultPeriodType": "MONTH",
   "rankingDefaultMetric": "AVERAGE_RANK",
-  "rankingDefaultMinGames": 0
+  "rankingDefaultMinGames": 0,
+  "gameDefaults": {
+    "MAHJONG4": {
+      "startingPoints": 25000,
+      "returnPoints": 30000,
+      "umaByRank": [20, 10, -10, -20]
+    }
+  }
 }
 ```
 
@@ -177,6 +184,8 @@ Response
 > **[v1.15追加]** `pendingRequestCount`：コミュニティの未処理（PENDING）JoinRequest件数（Issue #29）。ロールを問わず返却するが、UI上は管理者向けバッジ表示にのみ使う。
 >
 > **[v1.25追加]** `rankingDefaultGameType`/`rankingDefaultPeriodType`/`rankingDefaultMetric`/`rankingDefaultMinGames`（4.2eで設定するランキングのデフォルト表示条件）を追加。未設定のコミュニティはシステムデフォルト値（`MAHJONG4`/`MONTH`/`AVERAGE_RANK`/`0`）を返す。
+>
+> **[v1.32追加]** `gameDefaults`（4.2fで設定する成績入力のデフォルト値）を追加。未設定のコミュニティは`null`を返す。未設定の種目はキー自体を含めない。
 
 ### 4.2c コミュニティテーマカラー設定 **[v1.9新規]**
 
@@ -269,6 +278,46 @@ Response
 - OperationLog登録（`UPDATE_RANKING_SETTINGS`）
 
 > **[v1.25新規]** Issue #40：コミュニティ内ランキング機能（F-806、機能要件書v1.11）に対応。4.2cコミュニティテーマカラー設定と同一の「単機能PUTエンドポイント、OWNER/ADMIN限定」パターンを踏襲する。設定値は4.2bコミュニティ詳細取得のレスポンスにも含める。
+
+### 4.2f 成績入力のデフォルト設定 **[v1.32新規]**
+
+`PUT /communities/{communityId}/game-defaults`
+
+Request
+
+```json
+{
+  "MAHJONG4": {
+    "startingPoints": 25000,
+    "returnPoints": 30000,
+    "umaByRank": [20, 10, -10, -20]
+  },
+  "MAHJONG3": null
+}
+```
+
+Response
+
+```json
+{
+  "communityId": "COMMUNITY001",
+  "gameDefaults": {
+    "MAHJONG4": {
+      "startingPoints": 25000,
+      "returnPoints": 30000,
+      "umaByRank": [20, 10, -10, -20]
+    }
+  }
+}
+```
+
+処理：
+- OWNER/ADMINが、成績入力（10.1、`calcMode=AUTO`）の配給原点・返し点（オカの元になる値）・ウマのデフォルト値を、種目（`MAHJONG4`/`MAHJONG3`）ごとに設定する
+- 常に全体を1リクエストで置き換える（部分更新は設けない）。種目のキーを省略または`null`にすると、その種目は未設定に戻る。両方とも未設定の場合、レスポンスの`gameDefaults`は`null`
+- `startingPoints`/`returnPoints`は0以上の整数、`umaByRank`は種目の人数（四麻4・三麻3）と同じ要素数の整数配列。いずれかが不正、または`MAHJONG4`/`MAHJONG3`以外のキーがある場合は`400 INVALID_PARAMETER`。ウマの合計が0であることは検証しない（フロントで注意表示のみ）
+- OperationLog登録（`UPDATE_GAME_DEFAULTS`）
+
+> **[v1.32新規]** Issue #115：成績入力の初期値をコミュニティ単位で設定できるようにした。4.2eと同じ「単機能PUTエンドポイント、OWNER/ADMIN限定」パターンを踏襲し、設定値は4.2bコミュニティ詳細取得のレスポンスにも含める。成績入力画面の初期値は「同一イベント内の前回設定 → コミュニティのデフォルト設定 → 入力者本人の前回設定 → システム既定値」の順で決める。この判定のため、前回設定取得（`GET /communities/{communityId}/game-sessions/last-settings`）のレスポンスに、どちらから引き継いだ設定かを示す`source`（`EVENT`/`USER`）を追加した。箱下精算あり/なし・飛び賞は対象外（前回設定があればそちらを引き継ぐ）。
 
 ### 4.3 招待URL発行
 
@@ -1761,3 +1810,13 @@ Issue #40「コミュニティ内ランキング表示機能の追加」に対�
 | No | 変更内容 | 対応する決定事項 |
 |---|---|---|
 | 1 | 10.1結果登録の`boxUnderSettlement=false`（箱下精算なし）時の計算式を修正。0点に切り捨てたマイナス分の合計を1位の持ち点から差し引き、ポイント合計が0になるようにした。着順・ウマ・オカは差し引く前の生の点数で決める。1位が同点の場合はタイブレークで1位になった参加者が負担する | Issue #114：箱下精算なしの場合にマイナス分がトップから引かれず、ポイント合計が箱下分だけプラスになっていた。登録済みセッションの再計算は行わない |
+
+---
+
+## v1.31 → v1.32 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | 4.2f 成績入力のデフォルト設定（`PUT /communities/{communityId}/game-defaults`）を新規追加。種目ごとに配給原点・返し点・ウマを設定する | Issue #115：成績入力のデフォルトのウマ・オカをコミュニティの設定画面で変更できるようにしたい |
+| 2 | 4.2b コミュニティ詳細取得のレスポンスに`gameDefaults`を追加 | 上記と同一の決定事項 |
+| 3 | 前回設定取得（`GET /communities/{communityId}/game-sessions/last-settings`）のレスポンスに`source`（`EVENT`=同一イベント内の直前の半荘／`USER`=入力者本人の直近の設定）を追加 | 上記と同一の決定事項。成績入力画面の初期値は、同一イベント内の前回設定をコミュニティのデフォルト設定より優先し、入力者本人の前回設定はコミュニティのデフォルト設定が無い種目にのみ使う |

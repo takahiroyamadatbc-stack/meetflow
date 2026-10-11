@@ -42,6 +42,7 @@ function baseCommunity(genre: CommunityDetail["genre"] = "麻雀"): CommunityDet
     rankingDefaultPeriodType: "ALL_TIME",
     rankingDefaultMetric: "AVERAGE_RANK",
     rankingDefaultMinGames: 0,
+    gameDefaults: null,
   };
 }
 

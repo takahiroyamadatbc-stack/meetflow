@@ -61,6 +61,7 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("DELETE", "/communities/{communityId}", "community"),
     ("PUT", "/communities/{communityId}/theme-color", "community"),
     ("PUT", "/communities/{communityId}/ranking-settings", "community"),
+    ("PUT", "/communities/{communityId}/game-defaults", "community"),  # Issue #115
     ("POST", "/communities/{communityId}/icon/upload-url", "community"),
     ("POST", "/communities/{communityId}/owner-transfer", "community"),
     ("POST", "/communities/{communityId}/invite", "community"),

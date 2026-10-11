@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { communityKeys, getCommunity } from "@/features/community/api";
+import type { GameDefaults } from "@/features/community/types";
 import { eventKeys, getEvent, listParticipants } from "@/features/event/api";
 import {
   createSession,
@@ -58,7 +59,9 @@ import {
   computeLiveResults,
   expectedPlayerCount,
   formatScoreMismatch,
+  resolveGameDefaults,
   scoreMismatchDiff,
+  shouldUseLastSettings,
   sortByTieOrder,
 } from "@/features/result/calc";
 import type {
@@ -205,6 +208,7 @@ export function ResultSessionCreatePage() {
       sessions={sessions}
       nicknameByUserId={nicknameByUserId}
       lastSettings={lastSettings}
+      gameDefaults={community?.gameDefaults}
     />
   );
 }
@@ -217,6 +221,7 @@ function EventResultsPage({
   sessions,
   nicknameByUserId,
   lastSettings,
+  gameDefaults,
 }: {
   eventId: string;
   rows: { userId: string; nickname: string }[];
@@ -224,6 +229,7 @@ function EventResultsPage({
   sessions: GameSessionDetail[];
   nicknameByUserId: Map<string, string>;
   lastSettings?: LastGameSettings;
+  gameDefaults?: GameDefaults | null;
 }) {
   const orderedSessions = [...sessions].sort(
     (a, b) => Number(a.sessionNo) - Number(b.sessionNo),
@@ -297,7 +303,12 @@ function EventResultsPage({
 
       <div>
         <h2 className="mb-2 text-base font-semibold">半荘を追加</h2>
-        <HanchanEntryForm eventId={eventId} rows={rows} lastSettings={lastSettings} />
+        <HanchanEntryForm
+          eventId={eventId}
+          rows={rows}
+          lastSettings={lastSettings}
+          gameDefaults={gameDefaults}
+        />
       </div>
     </div>
   );
@@ -420,41 +431,35 @@ const hanchanSchema = z.object({
 type HanchanFormInput = z.input<typeof hanchanSchema>;
 type HanchanFormValues = z.output<typeof hanchanSchema>;
 
-/** ゲーム種別ごとのデフォルト配給原点/返し点（Issue #64：三麻は四麻と異なる）。 */
-const DEFAULT_POINTS_BY_GAME_TYPE: Record<
-  GameType,
-  { startingPoints: number; returnPoints: number }
-> = {
-  MAHJONG4: { startingPoints: 25000, returnPoints: 30000 },
-  MAHJONG3: { startingPoints: 35000, returnPoints: 40000 },
-};
-
+/**
+ * 半荘入力フォームの初期値。配給原点・返し点・ウマは「同一イベント内の前回設定 →
+ * コミュニティのデフォルト設定 → 入力者本人の前回設定 → システム既定値」の順で
+ * 決める（Issue #109/#115、`shouldUseLastSettings`参照）。計算方法・箱下精算・
+ * 飛び賞はコミュニティのデフォルト設定に含まれないため、前回設定があればそれを使う。
+ */
 function buildHanchanDefaults(
   rows: { userId: string; nickname: string }[],
   lastSettings: LastGameSettings | undefined,
+  gameDefaults: GameDefaults | null | undefined,
 ): HanchanFormInput {
-  const base = lastSettings?.found
-    ? {
-        gameType: lastSettings.gameType,
-        calcMode: lastSettings.calcMode,
-        startingPoints:
-          lastSettings.startingPoints ??
-          DEFAULT_POINTS_BY_GAME_TYPE[lastSettings.gameType].startingPoints,
-        returnPoints:
-          lastSettings.returnPoints ??
-          DEFAULT_POINTS_BY_GAME_TYPE[lastSettings.gameType].returnPoints,
-        umaByRank: lastSettings.umaByRank ?? [0, 0, 0, 0],
-        boxUnderSettlement: lastSettings.boxUnderSettlement ?? true,
-        tobiPoints: lastSettings.tobiPoints ?? 0,
-      }
-    : {
-        gameType: "MAHJONG4" as GameType,
-        calcMode: "AUTO" as CalcMode,
-        ...DEFAULT_POINTS_BY_GAME_TYPE.MAHJONG4,
-        umaByRank: [0, 0, 0, 0],
-        boxUnderSettlement: true,
-        tobiPoints: 0,
-      };
+  const last = lastSettings?.found ? lastSettings : undefined;
+  const gameType: GameType = last?.gameType ?? "MAHJONG4";
+  const fallback = resolveGameDefaults(gameType, gameDefaults);
+  const points =
+    last && shouldUseLastSettings(last, gameDefaults)
+      ? {
+          startingPoints: last.startingPoints ?? fallback.startingPoints,
+          returnPoints: last.returnPoints ?? fallback.returnPoints,
+          umaByRank: last.umaByRank ?? fallback.umaByRank,
+        }
+      : fallback;
+  const base = {
+    gameType,
+    calcMode: last?.calcMode ?? ("AUTO" as CalcMode),
+    ...points,
+    boxUnderSettlement: last?.boxUnderSettlement ?? true,
+    tobiPoints: last?.tobiPoints ?? 0,
+  };
   // 参加者選択チェックボックスの初期値（左詰めで対象人数分）と揃える。
   const defaultParticipantIds = new Set(
     rows.slice(0, expectedPlayerCount(base.gameType)).map((r) => r.userId),
@@ -488,15 +493,17 @@ function HanchanEntryForm({
   eventId,
   rows,
   lastSettings,
+  gameDefaults,
 }: {
   eventId: string;
   rows: { userId: string; nickname: string }[];
   lastSettings?: LastGameSettings;
+  gameDefaults?: GameDefaults | null;
 }) {
   const queryClient = useQueryClient();
   const handleApiError = useApiErrorToast();
 
-  const defaultValues = buildHanchanDefaults(rows, lastSettings);
+  const defaultValues = buildHanchanDefaults(rows, lastSettings, gameDefaults);
   const form = useForm<HanchanFormInput, unknown, HanchanFormValues>({
     resolver: zodResolver(hanchanSchema),
     defaultValues,
@@ -561,17 +568,27 @@ function HanchanEntryForm({
 
   /**
    * ゲーム種別が変わったら対象人数も変わるため、選択を左詰めの初期状態に戻す。
-   * 配給原点・返し点も、保存済み設定（lastSettings）が無い場合に限り、
-   * 切り替え先のゲーム種別のデフォルト値に更新する（Issue #64）。保存済み
-   * 設定がある場合はそちらを優先し、値を上書きしない。
+   * 配給原点・返し点も、前回設定（lastSettings）を優先しない場合に限り、
+   * 切り替え先のゲーム種別のデフォルト値に更新する（Issue #64）。コミュニティの
+   * デフォルト設定（Issue #115）がある種目ならウマも合わせて更新する。前回設定を
+   * 優先する場合（`shouldUseLastSettings`）は値を上書きしない。
    */
   const handleGameTypeChange = (nextGameType: GameType) => {
     form.setValue("gameType", nextGameType);
     setSelectedUserIds(rows.slice(0, expectedPlayerCount(nextGameType)).map((r) => r.userId));
-    if (!lastSettings?.found) {
-      const defaults = DEFAULT_POINTS_BY_GAME_TYPE[nextGameType];
+    const keepCurrent =
+      lastSettings?.found &&
+      shouldUseLastSettings({ ...lastSettings, gameType: nextGameType }, gameDefaults);
+    if (!keepCurrent) {
+      const defaults = resolveGameDefaults(nextGameType, gameDefaults);
       form.setValue("startingPoints", defaults.startingPoints);
       form.setValue("returnPoints", defaults.returnPoints);
+      if (gameDefaults?.[nextGameType]) {
+        form.setValue(
+          "umaByRank",
+          [0, 1, 2, 3].map((i) => defaults.umaByRank[i] ?? 0),
+        );
+      }
     }
   };
 

@@ -50,6 +50,8 @@ export const paths = {
   communityRanking: (communityId: string) => `/communities/${communityId}/ranking`,
   communityRankingSettingsEdit: (communityId: string) =>
     `/communities/${communityId}/ranking-settings`,
+  communityGameDefaultsEdit: (communityId: string) =>
+    `/communities/${communityId}/game-defaults`,
 
   notifications: "/notifications",
 

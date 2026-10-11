@@ -88,6 +88,7 @@ function baseCommunity(role: CommunityDetail["role"]): CommunityDetail {
     rankingDefaultPeriodType: "ALL_TIME",
     rankingDefaultMetric: "AVERAGE_RANK",
     rankingDefaultMinGames: 0,
+    gameDefaults: null,
   };
 }
 

@@ -1,4 +1,10 @@
-import type { CalcMode, GameSessionDetail, TobiAssignment } from "@/features/result/types";
+import type { GameDefaults, GameDefaultsEntry } from "@/features/community/types";
+import type {
+  CalcMode,
+  GameSessionDetail,
+  LastGameSettings,
+  TobiAssignment,
+} from "@/features/result/types";
 import type { GameType } from "@/features/user/types";
 
 export type LiveResultRow = {
@@ -115,6 +121,46 @@ export function formatScoreMismatch(diff: number): string {
 /** ゲーム種別ごとの本来の対局人数（四麻=4人・三麻=3人）。 */
 export function expectedPlayerCount(gameType: GameType): number {
   return gameType === "MAHJONG3" ? 3 : 4;
+}
+
+/** ゲーム種別ごとのシステム既定の配給原点/返し点（Issue #64：三麻は四麻と異なる）。 */
+export const DEFAULT_POINTS_BY_GAME_TYPE: Record<
+  GameType,
+  { startingPoints: number; returnPoints: number }
+> = {
+  MAHJONG4: { startingPoints: 25000, returnPoints: 30000 },
+  MAHJONG3: { startingPoints: 35000, returnPoints: 40000 },
+};
+
+/**
+ * 成績入力（自動計算）の配給原点・返し点・ウマの初期値。コミュニティの
+ * デフォルト設定（Issue #115）があればそれを、無ければシステム既定値
+ * （ウマはすべて0）を返す。
+ */
+export function resolveGameDefaults(
+  gameType: GameType,
+  gameDefaults: GameDefaults | null | undefined,
+): GameDefaultsEntry {
+  const configured = gameDefaults?.[gameType];
+  if (configured) return configured;
+  return {
+    ...DEFAULT_POINTS_BY_GAME_TYPE[gameType],
+    umaByRank: Array.from({ length: expectedPlayerCount(gameType) }, () => 0),
+  };
+}
+
+/**
+ * 前回設定（Issue #109）の配給原点・返し点・ウマを初期値に使うかどうか（Issue #115）。
+ * 同一イベント内の直前の半荘の設定は常に優先する。入力者本人の過去の設定は、
+ * その種目のコミュニティのデフォルト設定が無い場合にのみ使う。
+ */
+export function shouldUseLastSettings(
+  lastSettings: Extract<LastGameSettings, { found: true }>,
+  gameDefaults: GameDefaults | null | undefined,
+): boolean {
+  // sourceを返さない旧バックエンドでは、従来通り前回設定を優先する
+  if (lastSettings.source !== "USER") return true;
+  return !gameDefaults?.[lastSettings.gameType];
 }
 
 export type SessionTotalRow = {

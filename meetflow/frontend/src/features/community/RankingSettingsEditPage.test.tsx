@@ -34,6 +34,7 @@ function baseCommunity(overrides: Partial<CommunityDetail> = {}): CommunityDetai
     rankingDefaultPeriodType: "MONTH",
     rankingDefaultMetric: "AVERAGE_RANK",
     rankingDefaultMinGames: 5,
+    gameDefaults: null,
     ...overrides,
   };
 }

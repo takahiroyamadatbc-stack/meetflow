@@ -16,6 +16,10 @@ _ROUTES = {
         "/communities/{communityId}/ranking-settings",
     ): communities.update_ranking_settings,
     (
+        "PUT",
+        "/communities/{communityId}/game-defaults",
+    ): communities.update_game_defaults,
+    (
         "POST",
         "/communities/{communityId}/icon/upload-url",
     ): communities.create_icon_upload_url,

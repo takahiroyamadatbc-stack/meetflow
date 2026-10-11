@@ -4,7 +4,9 @@ import {
   computeLiveResults,
   expectedPlayerCount,
   formatScoreMismatch,
+  resolveGameDefaults,
   scoreMismatchDiff,
+  shouldUseLastSettings,
   sortByTieOrder,
 } from "@/features/result/calc";
 import type { GameSessionDetail } from "@/features/result/types";
@@ -313,5 +315,44 @@ describe("aggregateSessionTotals", () => {
     expect(result[0].games).toBe(0);
     expect(result[0].totalChips).toBe(3);
     expect(result[0].averageRank).toBe(0);
+  });
+});
+
+describe("resolveGameDefaults（Issue #115）", () => {
+  it("コミュニティのデフォルトがある種目はその値を返す", () => {
+    const entry = { startingPoints: 30000, returnPoints: 30000, umaByRank: [30, 10, -10, -30] };
+    expect(resolveGameDefaults("MAHJONG4", { MAHJONG4: entry })).toEqual(entry);
+  });
+
+  it("未設定の種目はシステム既定値（ウマは人数分の0）を返す", () => {
+    expect(resolveGameDefaults("MAHJONG3", { MAHJONG4: undefined })).toEqual({
+      startingPoints: 35000,
+      returnPoints: 40000,
+      umaByRank: [0, 0, 0],
+    });
+    expect(resolveGameDefaults("MAHJONG4", null).umaByRank).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe("shouldUseLastSettings（Issue #115）", () => {
+  const gameDefaults = {
+    MAHJONG4: { startingPoints: 30000, returnPoints: 30000, umaByRank: [30, 10, -10, -30] },
+  };
+  const last = { found: true as const, gameType: "MAHJONG4" as const, calcMode: "AUTO" as const };
+
+  it("同一イベント内の前回設定は常に優先する", () => {
+    expect(shouldUseLastSettings({ ...last, source: "EVENT" }, gameDefaults)).toBe(true);
+  });
+
+  it("sourceが無い（旧バックエンド）場合は前回設定を優先する", () => {
+    expect(shouldUseLastSettings(last, gameDefaults)).toBe(true);
+  });
+
+  it("本人の過去の設定は、その種目のコミュニティのデフォルトがある場合は使わない", () => {
+    expect(shouldUseLastSettings({ ...last, source: "USER" }, gameDefaults)).toBe(false);
+    expect(
+      shouldUseLastSettings({ ...last, gameType: "MAHJONG3", source: "USER" }, gameDefaults),
+    ).toBe(true);
+    expect(shouldUseLastSettings({ ...last, source: "USER" }, null)).toBe(true);
   });
 });

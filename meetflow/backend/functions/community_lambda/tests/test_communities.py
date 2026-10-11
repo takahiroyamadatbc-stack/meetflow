@@ -96,6 +96,7 @@ def test_get_community_success(table):
         "rankingDefaultPeriodType": "MONTH",
         "rankingDefaultMetric": "AVERAGE_RANK",
         "rankingDefaultMinGames": 0,
+        "gameDefaults": None,
     }
 
 
@@ -653,5 +654,118 @@ def test_update_ranking_settings_forbidden_for_plain_member(table):
                     "minGames": 0,
                 },
             ),
+        )
+    assert exc_info.value.code == "FORBIDDEN"
+
+
+# --- 成績入力のデフォルト設定 (Issue #115) ----------------------------------
+
+
+def test_update_game_defaults_success_and_returned_by_get_community(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_game_defaults(
+        "user-1",
+        api_event(
+            path_params={"communityId": "community-1"},
+            body={
+                "MAHJONG4": {
+                    "startingPoints": 25000,
+                    "returnPoints": 30000,
+                    "umaByRank": [20, 10, -10, -20],
+                },
+                "MAHJONG3": None,
+            },
+        ),
+    )
+
+    assert response["statusCode"] == 200
+    expected = {
+        "MAHJONG4": {
+            "startingPoints": 25000,
+            "returnPoints": 30000,
+            "umaByRank": [20, 10, -10, -20],
+        }
+    }
+    assert body_of(response)["data"] == {
+        "communityId": "community-1",
+        "gameDefaults": expected,
+    }
+
+    detail = communities.get_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+    assert body_of(detail)["data"]["gameDefaults"] == expected
+
+
+def test_get_community_game_defaults_null_when_unset(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    detail = communities.get_community(
+        "user-1", api_event(path_params={"communityId": "community-1"})
+    )
+
+    assert body_of(detail)["data"]["gameDefaults"] is None
+
+
+def test_update_game_defaults_empty_body_clears_settings(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+    body = {
+        "MAHJONG3": {
+            "startingPoints": 35000,
+            "returnPoints": 40000,
+            "umaByRank": [15, 0, -15],
+        }
+    }
+    communities.update_game_defaults(
+        "user-1", api_event(path_params={"communityId": "community-1"}, body=body)
+    )
+
+    response = communities.update_game_defaults(
+        "user-1", api_event(path_params={"communityId": "community-1"}, body={})
+    )
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["data"]["gameDefaults"] is None
+    community = table.get_item(
+        Key={"PK": "COMMUNITY#community-1", "SK": "METADATA"}
+    )["Item"]
+    assert "gameDefaults" not in community
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"MAHJONG4": {"startingPoints": 25000, "returnPoints": 30000, "umaByRank": [20, -20]}},
+        {"MAHJONG3": {"startingPoints": 35000, "returnPoints": 40000, "umaByRank": [15, 0, 1.5]}},
+        {"MAHJONG4": {"startingPoints": -1, "returnPoints": 30000, "umaByRank": [0, 0, 0, 0]}},
+        {"MAHJONG4": {"startingPoints": 25000, "returnPoints": True, "umaByRank": [0, 0, 0, 0]}},
+        {"POKER": {"startingPoints": 25000, "returnPoints": 30000, "umaByRank": [0, 0]}},
+        {"MAHJONG4": "25000"},
+    ],
+)
+def test_update_game_defaults_rejects_invalid_body(table, body):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-1", role="OWNER")
+
+    response = communities.update_game_defaults(
+        "user-1", api_event(path_params={"communityId": "community-1"}, body=body)
+    )
+
+    assert response["statusCode"] == 400
+    assert body_of(response)["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_update_game_defaults_forbidden_for_plain_member(table):
+    put_community(table, "community-1", owner_id="user-1")
+    put_membership(table, "community-1", "user-2", role="MEMBER")
+
+    with pytest.raises(AuthError) as exc_info:
+        communities.update_game_defaults(
+            "user-2",
+            api_event(path_params={"communityId": "community-1"}, body={}),
         )
     assert exc_info.value.code == "FORBIDDEN"

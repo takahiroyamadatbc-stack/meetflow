@@ -18,6 +18,7 @@ import { CommunityDetailPage } from "@/features/community/CommunityDetailPage";
 import { DisplayNameEditPage } from "@/features/community/DisplayNameEditPage";
 import { AutoApproveEditPage } from "@/features/community/AutoApproveEditPage";
 import { RankingSettingsEditPage } from "@/features/community/RankingSettingsEditPage";
+import { GameDefaultsEditPage } from "@/features/community/GameDefaultsEditPage";
 import { FrequencyLimitEditPage } from "@/features/community/FrequencyLimitEditPage";
 import { CommunityProfileEditPage } from "@/features/community/CommunityProfileEditPage";
 import { InvitePage } from "@/features/community/InvitePage";
@@ -158,6 +159,11 @@ export const router = createBrowserRouter([
         path: "/communities/:communityId/ranking-settings",
         element: <RankingSettingsEditPage />,
         handle: { title: "ランキング設定を変更" },
+      },
+      {
+        path: "/communities/:communityId/game-defaults",
+        element: <GameDefaultsEditPage />,
+        handle: { title: "成績入力のデフォルト設定" },
       },
       {
         path: "/communities/:communityId/availability/new",

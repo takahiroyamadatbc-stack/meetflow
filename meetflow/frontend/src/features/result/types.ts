@@ -75,6 +75,11 @@ export type LastGameSettings =
   | { found: false }
   | {
       found: true;
+      /**
+       * どちらから引き継いだ設定か（Issue #115）。EVENT=同一イベント内の直前の半荘、
+       * USER=入力者本人のコミュニティ内での直近の設定。旧バックエンドでは省略される。
+       */
+      source?: "EVENT" | "USER";
       gameType: GameType;
       calcMode: CalcMode;
       startingPoints?: number;

@@ -133,6 +133,12 @@ export function CommunityDetailPage() {
                     label="ランキング設定を変更"
                   />
                 )}
+                {isMahjongCommunity && (
+                  <NavCard
+                    to={paths.communityGameDefaultsEdit(community.communityId)}
+                    label="成績入力のデフォルト設定を変更"
+                  />
+                )}
               </div>
             </AccordionContent>
           </AccordionItem>

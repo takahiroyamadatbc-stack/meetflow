@@ -6,6 +6,7 @@ import type {
   CommunitySummary,
   CreateCommunityInput,
   CreatePlaceInput,
+  GameDefaults,
   InvitePreview,
   JoinRequest,
   Place,
@@ -85,6 +86,18 @@ export function updateRankingSettings(
     metric: RankingMetric;
     minGames: number;
   }>(`/communities/${communityId}/ranking-settings`, input);
+}
+
+/**
+ * PUT /communities/{communityId}/game-defaults（Issue #115）。
+ * 成績入力（自動計算）の配給原点・返し点・ウマのデフォルト値を、種目ごとにまとめて置き換える。
+ * 種目のキーを省略すると、その種目は未設定に戻る。
+ */
+export function updateGameDefaults(communityId: string, gameDefaults: GameDefaults) {
+  return apiClient.put<{ communityId: string; gameDefaults: GameDefaults | null }>(
+    `/communities/${communityId}/game-defaults`,
+    gameDefaults,
+  );
 }
 
 /** POST /communities/{communityId}/icon/upload-url（Issue #52） */

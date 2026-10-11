@@ -66,6 +66,7 @@ function baseCommunity(role: CommunityDetail["role"] = "OWNER"): CommunityDetail
     rankingDefaultPeriodType: "ALL_TIME",
     rankingDefaultMetric: "AVERAGE_RANK",
     rankingDefaultMinGames: 0,
+    gameDefaults: null,
   };
 }
 
@@ -232,6 +233,99 @@ describe("HanchanEntryForm（新規半荘登録）", () => {
 
     expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(27000);
     expect(container.querySelector('input[name="returnPoints"]')).toHaveValue(32000);
+  });
+
+  describe("コミュニティのデフォルト設定（Issue #115）", () => {
+    const GAME_DEFAULTS = {
+      MAHJONG4: { startingPoints: 30000, returnPoints: 30000, umaByRank: [30, 10, -10, -30] },
+      MAHJONG3: { startingPoints: 40000, returnPoints: 45000, umaByRank: [20, 0, -20] },
+    };
+    const LAST_SETTINGS_BASE = {
+      found: true as const,
+      gameType: "MAHJONG4" as const,
+      calcMode: "AUTO" as const,
+      startingPoints: 27000,
+      returnPoints: 32000,
+      umaByRank: [5, 1, -1, -5],
+      boxUnderSettlement: true,
+      tobiPoints: 0,
+    };
+
+    function umaInput(container: HTMLElement, index: number): HTMLInputElement {
+      return container.querySelector(`input[name="umaByRank.${index}"]`) as HTMLInputElement;
+    }
+
+    it("前回設定が無い場合はコミュニティのデフォルトで初期化する", async () => {
+      setupDefaultMocks();
+      vi.mocked(communityApi.getCommunity).mockResolvedValue({
+        ...baseCommunity(),
+        gameDefaults: GAME_DEFAULTS,
+      });
+
+      const { container } = renderNewSessionPage();
+      await screen.findByRole("button", { name: "この半荘を登録する" });
+
+      expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(30000);
+      expect(container.querySelector('input[name="returnPoints"]')).toHaveValue(30000);
+      expect(umaInput(container, 0)).toHaveValue(30);
+      expect(umaInput(container, 3)).toHaveValue(-30);
+      expect(scoreInput(container, 0)).toHaveValue(30000);
+    });
+
+    it("同じイベント内の前回設定（source=EVENT）はコミュニティのデフォルトより優先する", async () => {
+      setupDefaultMocks();
+      vi.mocked(communityApi.getCommunity).mockResolvedValue({
+        ...baseCommunity(),
+        gameDefaults: GAME_DEFAULTS,
+      });
+      vi.mocked(resultApi.getLastGameSettings).mockResolvedValue({
+        ...LAST_SETTINGS_BASE,
+        source: "EVENT",
+      });
+
+      const { container } = renderNewSessionPage();
+      await screen.findByRole("button", { name: "この半荘を登録する" });
+
+      expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(27000);
+      expect(umaInput(container, 0)).toHaveValue(5);
+    });
+
+    it("入力者本人の過去の設定（source=USER）よりコミュニティのデフォルトを優先する", async () => {
+      setupDefaultMocks();
+      vi.mocked(communityApi.getCommunity).mockResolvedValue({
+        ...baseCommunity(),
+        gameDefaults: GAME_DEFAULTS,
+      });
+      vi.mocked(resultApi.getLastGameSettings).mockResolvedValue({
+        ...LAST_SETTINGS_BASE,
+        source: "USER",
+      });
+
+      const { container } = renderNewSessionPage();
+      await screen.findByRole("button", { name: "この半荘を登録する" });
+
+      expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(30000);
+      expect(umaInput(container, 0)).toHaveValue(30);
+    });
+
+    it("ゲーム種別を変更すると、切り替え先の種目のコミュニティのデフォルトに更新する", async () => {
+      const user = userEvent.setup();
+      setupDefaultMocks();
+      vi.mocked(communityApi.getCommunity).mockResolvedValue({
+        ...baseCommunity(),
+        gameDefaults: GAME_DEFAULTS,
+      });
+
+      const { container } = renderNewSessionPage();
+      await screen.findByRole("button", { name: "この半荘を登録する" });
+
+      await user.click(screen.getByRole("button", { name: "三人麻雀" }));
+
+      expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(40000);
+      expect(container.querySelector('input[name="returnPoints"]')).toHaveValue(45000);
+      expect(umaInput(container, 0)).toHaveValue(20);
+      expect(umaInput(container, 2)).toHaveValue(-20);
+    });
   });
 
   it("手動計算から自動計算に切り替えると、参加中の点数欄に配給原点が入る", async () => {

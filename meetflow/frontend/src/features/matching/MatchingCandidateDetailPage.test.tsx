@@ -69,6 +69,7 @@ function baseCommunity(role: CommunityDetail["role"] = "OWNER"): CommunityDetail
     rankingDefaultPeriodType: "ALL_TIME",
     rankingDefaultMetric: "AVERAGE_RANK",
     rankingDefaultMinGames: 0,
+    gameDefaults: null,
   };
 }
 
