@@ -1,6 +1,7 @@
 import type { GameDefaults, GameDefaultsEntry } from "@/features/community/types";
 import type {
   CalcMode,
+  ChipRecord,
   GameSessionDetail,
   LastGameSettings,
   TobiAssignment,
@@ -118,6 +119,11 @@ export function formatScoreMismatch(diff: number): string {
   return diff > 0 ? `${diff}点多い` : `${Math.abs(diff)}点足りない`;
 }
 
+/** チップ合計の±0からのずれを人が読める文言にする（例：「+3枚」「-2枚」、Issue #116）。 */
+export function formatChipMismatch(total: number): string {
+  return total > 0 ? `+${total}枚` : `${total}枚`;
+}
+
 /** ゲーム種別ごとの本来の対局人数（四麻=4人・三麻=3人）。 */
 export function expectedPlayerCount(gameType: GameType): number {
   return gameType === "MAHJONG3" ? 3 : 4;
@@ -175,11 +181,13 @@ export type SessionTotalRow = {
 /**
  * 1イベント内の複数半荘（GameSessionDetail[]）をユーザー単位で合算する。
  * イベント詳細画面での「当日の累計成績」表示用（サーバー側の集計APIではなく
- * 既に取得済みのセッション一覧からフロントで都度計算する）。
+ * 既に取得済みのセッション一覧からフロントで都度計算する）。チップは、
+ * 半荘ごとのチップ（Issue #116より前の記録）とチップ記録（`chipRecords`）を合算する。
  */
 export function aggregateSessionTotals(
   sessions: GameSessionDetail[],
   nicknameByUserId: Map<string, string>,
+  chipRecords: ChipRecord[] = [],
 ): SessionTotalRow[] {
   const byUser = new Map<
     string,
@@ -209,6 +217,16 @@ export function aggregateSessionTotals(
       entry.totalChips += c.chipCount;
       byUser.set(c.userId, entry);
     }
+  }
+  for (const c of chipRecords.flatMap((r) => r.chips)) {
+    const entry = byUser.get(c.userId) ?? {
+      games: 0,
+      totalRankPoints: 0,
+      totalChips: 0,
+      rankSum: 0,
+    };
+    entry.totalChips += c.chipCount;
+    byUser.set(c.userId, entry);
   }
 
   return Array.from(byUser.entries())

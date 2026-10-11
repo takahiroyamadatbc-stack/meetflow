@@ -70,6 +70,26 @@ export type GameSessionDetail = {
   chips: ChipResultRow[];
 };
 
+/**
+ * チップ記録（Issue #116）。チップは半荘に紐付けず、イベント内で好きなタイミングで
+ * 何回でも記録できる。chip_records.py _build_response() のレスポンス実体。
+ */
+export type ChipRecord = {
+  eventId: string;
+  recordNo: string;
+  gameType: GameType;
+  recordedAt: string;
+  chips: ChipResultRow[];
+  /** チップの合計（通常は0。0でなくても登録できる） */
+  chipTotal: number;
+};
+
+/** chip_records.py create_chip_record()/update_chip_record() へのリクエストボディ実体 */
+export type ChipRecordInput = {
+  gameType: GameType;
+  chips: ChipInput[];
+};
+
 /** results.py get_last_game_settings() のレスポンス実体 */
 export type LastGameSettings =
   | { found: false }

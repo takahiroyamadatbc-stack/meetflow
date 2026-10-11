@@ -1,4 +1,4 @@
-# MeetFlow API設計書 v1.32
+# MeetFlow API設計書 v1.33
 
 > v1.0→v1.1は **[v1.1修正]**、v1.1→v1.2は **[v1.2新規/修正]**、v1.2→v1.3は **[v1.2修正]** として明記（表記ゆれのため今回分も[v1.2]タグのまま記載）。v1.3→v1.4は **[v1.4新規/修正]**、v1.4→v1.5は **[v1.5新規]**、v1.5→v1.6は **[v1.6新規]**、v1.6→v1.7は **[v1.7新規/修正]**、v1.8→v1.9は **[v1.9新規]**、v1.9→v1.10は **[v1.10新規/修正]**、v1.11→v1.12は **[v1.12新規/修正]**、v1.12→v1.13は **[v1.13新規/修正]**、v1.13→v1.14は **[v1.14新規]**、v1.14→v1.15は **[v1.15新規]**、v1.15→v1.16は **[v1.16新規]**、v1.16→v1.17は **[v1.17新規]**、v1.17→v1.18は **[v1.18新規/修正]**、v1.18→v1.19は **[v1.19新規/修正]**、v1.19→v1.20は **[v1.20修正]**、v1.20→v1.21は **[v1.21新規/修正]**、v1.21→v1.22は **[v1.22修正]**、v1.22→v1.23は **[v1.23修正]**、v1.23→v1.24は **[v1.24修正]**、v1.24→v1.25は **[v1.25新規]**、v1.25→v1.26は **[v1.26新規]**、v1.26→v1.27は **[v1.27新規]**、v1.27→v1.28は **[v1.28新規]**、v1.28→v1.29は **[v1.29修正]**、v1.29→v1.30は **[v1.30新規]** として明記。
 
@@ -1129,6 +1129,56 @@ Response
 
 > **[v1.19新規]** Issue #42：誤登録した半荘を削除する手段が無かったため新設。実行権限はOWNER/ADMIN限定（10.1のPUTと同じ方針）。GameSession本体・全参加者分のGameResult・GameResultChipをまとめて削除する。対象が存在しない場合は`404 GAME_SESSION_NOT_FOUND`。
 
+### 10.1c チップ記録 **[v1.33新規]**
+
+チップを半荘（10.1）に紐付けず、イベント単位で好きなタイミングで何回でも記録する（Issue #116）。
+
+`POST /events/{eventId}/chip-records`（登録。コミュニティのアクティブなメンバーなら誰でも）
+
+Request
+
+```json
+{
+  "gameType": "MAHJONG4",
+  "chips": [
+    { "userId": "USER001", "chipCount": 5 },
+    { "userId": "USER002", "chipCount": -5 }
+  ]
+}
+```
+
+Response（201）
+
+```json
+{
+  "eventId": "EVENT001",
+  "recordNo": "0001",
+  "gameType": "MAHJONG4",
+  "recordedAt": "2026-10-11T12:00:00.000Z",
+  "chips": [
+    { "userId": "USER001", "chipCount": 5 },
+    { "userId": "USER002", "chipCount": -5 }
+  ],
+  "chipTotal": 0
+}
+```
+
+`GET /events/{eventId}/chip-records`（一覧。コミュニティメンバーなら誰でも）：`{"records": [...]}`（各要素は上記Responseと同じ形、`recordNo`昇順）
+
+`PUT /events/{eventId}/chip-records/{recordNo}`（編集。OWNER/ADMIN限定）：Requestは登録と同じ。記録の内容（種目・参加者ごとの枚数）をまとめて置き換え、外された参加者の行は削除する。`recordedAt`は登録時のまま変えない
+
+`DELETE /events/{eventId}/chip-records/{recordNo}`（削除。OWNER/ADMIN限定）：`{"eventId": "EVENT001", "recordNo": "0001"}`
+
+処理：
+- `gameType`は`MAHJONG4`/`MAHJONG3`。チップは個人成績（10.2）・ランキング（10.3）で種目ごとに集計するため、記録ごとに種目を持つ
+- `chips`は1件以上。`chipCount`は整数、`userId`の重複は不可。不正な場合は`400 RESULT_VALIDATION_ERROR`
+- チップの合計（`chipTotal`）が0でなくても登録できる（フロントで警告・確認ダイアログを表示する。10.1の点数合計の不一致と同じ扱い）
+- 対象の記録が存在しない場合（PUT/DELETE）は`404 CHIP_RECORD_NOT_FOUND`
+- 記録したチップは、10.1の`chips`（半荘ごとのチップ）と同じく個人成績・ランキングの`totalChips`に集計する。`averageChips`は従来通り「チップの合計÷対局数」
+- OperationLog登録（`CREATE_CHIP_RECORD`/`UPDATE_CHIP_RECORD`/`DELETE_CHIP_RECORD`）
+
+> **[v1.33新規]** Issue #116。これに伴い、成績登録画面（S-21）の半荘入力フォームからチップ欄を外した（10.1の`chips`は後方互換のため引き続き受け付ける。Issue #116より前に半荘ごとに登録されたチップはそのまま集計に含まれ、半荘の編集時も変更せず送り返す）。
+
 ### 10.2 成績取得 **[v1.18修正]**
 
 `GET /users/{userId}/results`
@@ -1820,3 +1870,12 @@ Issue #40「コミュニティ内ランキング表示機能の追加」に対�
 | 1 | 4.2f 成績入力のデフォルト設定（`PUT /communities/{communityId}/game-defaults`）を新規追加。種目ごとに配給原点・返し点・ウマを設定する | Issue #115：成績入力のデフォルトのウマ・オカをコミュニティの設定画面で変更できるようにしたい |
 | 2 | 4.2b コミュニティ詳細取得のレスポンスに`gameDefaults`を追加 | 上記と同一の決定事項 |
 | 3 | 前回設定取得（`GET /communities/{communityId}/game-sessions/last-settings`）のレスポンスに`source`（`EVENT`=同一イベント内の直前の半荘／`USER`=入力者本人の直近の設定）を追加 | 上記と同一の決定事項。成績入力画面の初期値は、同一イベント内の前回設定をコミュニティのデフォルト設定より優先し、入力者本人の前回設定はコミュニティのデフォルト設定が無い種目にのみ使う |
+
+---
+
+## v1.32 → v1.33 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | 10.1c チップ記録（`POST`/`GET /events/{eventId}/chip-records`、`PUT`/`DELETE /events/{eventId}/chip-records/{recordNo}`）を新規追加 | Issue #116：チップを半荘に紐付けず、好きなタイミングで何回でも入力できるようにしたい。合計が±0でない場合は警告のみで登録は可能 |
+| 2 | 10.1の`chips`は後方互換のため残すが、フロントからは送らなくなった | 上記と同一の決定事項 |

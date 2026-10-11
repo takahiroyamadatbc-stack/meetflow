@@ -63,6 +63,7 @@ _STATUS_BY_CODE = {
     "RESULT_VALIDATION_ERROR": 400,
     "RESULT_ACCESS_DENIED": 403,
     "GAME_SESSION_NOT_FOUND": 404,
+    "CHIP_RECORD_NOT_FOUND": 404,
     # §8 Notification
     "NOTIFICATION_NOT_FOUND": 404,
     # §9b Feedback / Announcement

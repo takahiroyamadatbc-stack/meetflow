@@ -25,6 +25,8 @@ vi.mock("@/features/result/api", async (importOriginal) => {
     deleteSession: vi.fn(),
     listEventSessions: vi.fn(),
     getLastGameSettings: vi.fn(),
+    listChipRecords: vi.fn(),
+    createChipRecord: vi.fn(),
   };
 });
 
@@ -85,6 +87,7 @@ function setupDefaultMocks() {
   vi.mocked(eventApi.listParticipants).mockResolvedValue(FOUR_PARTICIPANTS);
   vi.mocked(resultApi.listEventSessions).mockResolvedValue([]);
   vi.mocked(resultApi.getLastGameSettings).mockResolvedValue(NOT_FOUND_SETTINGS);
+  vi.mocked(resultApi.listChipRecords).mockResolvedValue([]);
 }
 
 function renderNewSessionPage() {
@@ -206,7 +209,7 @@ describe("HanchanEntryForm（新規半荘登録）", () => {
     const { container } = renderNewSessionPage();
     await screen.findByRole("button", { name: "この半荘を登録する" });
 
-    await user.click(screen.getByRole("button", { name: "三人麻雀" }));
+    await user.click(screen.getAllByRole("button", { name: "三人麻雀" })[0]);
 
     expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(35000);
     expect(container.querySelector('input[name="returnPoints"]')).toHaveValue(40000);
@@ -229,7 +232,7 @@ describe("HanchanEntryForm（新規半荘登録）", () => {
     const { container } = renderNewSessionPage();
     await screen.findByRole("button", { name: "この半荘を登録する" });
 
-    await user.click(screen.getByRole("button", { name: "三人麻雀" }));
+    await user.click(screen.getAllByRole("button", { name: "三人麻雀" })[0]);
 
     expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(27000);
     expect(container.querySelector('input[name="returnPoints"]')).toHaveValue(32000);
@@ -319,7 +322,7 @@ describe("HanchanEntryForm（新規半荘登録）", () => {
       const { container } = renderNewSessionPage();
       await screen.findByRole("button", { name: "この半荘を登録する" });
 
-      await user.click(screen.getByRole("button", { name: "三人麻雀" }));
+      await user.click(screen.getAllByRole("button", { name: "三人麻雀" })[0]);
 
       expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(40000);
       expect(container.querySelector('input[name="returnPoints"]')).toHaveValue(45000);
@@ -486,7 +489,8 @@ describe("SessionEditForm（登録済み半荘の編集）", () => {
     await screen.findByRole("button", { name: "更新する" });
     expect(container.querySelector('input[name="startingPoints"]')).toHaveValue(25000);
     expect(container.querySelector('input[name="rows.0.score"]')).toHaveValue(40000);
-    expect(container.querySelector('input[name="rows.0.chipCount"]')).toHaveValue(2);
+    // Issue #116: チップ欄は表示しない（既存の半荘ごとのチップは更新時にそのまま送り返す）
+    expect(container.querySelector('input[name="rows.0.chipCount"]')).toBeNull();
   });
 
   it("管理者でない場合は更新ボタンを表示せず、案内文を表示する", async () => {
@@ -537,5 +541,8 @@ describe("SessionEditForm（登録済み半荘の編集）", () => {
     await user.click(within(dialog).getByRole("button", { name: "更新する" }));
 
     await waitFor(() => expect(resultApi.updateSession).toHaveBeenCalled());
+    expect(vi.mocked(resultApi.updateSession).mock.calls[0][2].chips).toEqual([
+      { userId: "u1", chipCount: 2 },
+    ]);
   });
 });

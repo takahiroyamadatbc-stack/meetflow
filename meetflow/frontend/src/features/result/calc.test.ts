@@ -3,6 +3,7 @@ import {
   aggregateSessionTotals,
   computeLiveResults,
   expectedPlayerCount,
+  formatChipMismatch,
   formatScoreMismatch,
   resolveGameDefaults,
   scoreMismatchDiff,
@@ -354,5 +355,47 @@ describe("shouldUseLastSettings（Issue #115）", () => {
       shouldUseLastSettings({ ...last, gameType: "MAHJONG3", source: "USER" }, gameDefaults),
     ).toBe(true);
     expect(shouldUseLastSettings({ ...last, source: "USER" }, null)).toBe(true);
+  });
+});
+
+describe("チップ記録の集計（Issue #116）", () => {
+  it("aggregateSessionTotalsは半荘ごとのチップとチップ記録を合算する", () => {
+    const sessions: GameSessionDetail[] = [
+      {
+        eventId: "e1",
+        sessionNo: "0001",
+        gameType: "MAHJONG4",
+        calcMode: "MANUAL",
+        results: [
+          { userId: "a", rank: 1, score: 30000, rankPoints: 0 },
+          { userId: "b", rank: 2, score: 20000, rankPoints: 0 },
+        ],
+        chips: [{ userId: "a", chipCount: 1 }],
+      },
+    ];
+    const totals = aggregateSessionTotals(sessions, new Map(), [
+      {
+        eventId: "e1",
+        recordNo: "0001",
+        gameType: "MAHJONG4",
+        recordedAt: "2026-10-11T12:00:00.000Z",
+        chips: [
+          { userId: "a", chipCount: 3 },
+          { userId: "c", chipCount: -3 },
+        ],
+        chipTotal: 0,
+      },
+    ]);
+
+    const byUser = new Map(totals.map((t) => [t.userId, t]));
+    expect(byUser.get("a")?.totalChips).toBe(4);
+    expect(byUser.get("a")?.games).toBe(1);
+    expect(byUser.get("c")?.totalChips).toBe(-3);
+    expect(byUser.get("c")?.games).toBe(0);
+  });
+
+  it("formatChipMismatchは符号付きの枚数にする", () => {
+    expect(formatChipMismatch(3)).toBe("+3枚");
+    expect(formatChipMismatch(-2)).toBe("-2枚");
   });
 });

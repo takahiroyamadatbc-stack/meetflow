@@ -50,10 +50,12 @@ import {
   createSession,
   deleteSession,
   getLastGameSettings,
+  listChipRecords,
   listEventSessions,
   resultKeys,
   updateSession,
 } from "@/features/result/api";
+import { ChipRecordSection } from "@/features/result/ChipRecordSection";
 import {
   aggregateSessionTotals,
   computeLiveResults,
@@ -66,6 +68,7 @@ import {
 } from "@/features/result/calc";
 import type {
   CalcMode,
+  ChipRecord,
   GameSessionDetail,
   LastGameSettings,
   TobiAssignment,
@@ -145,6 +148,12 @@ export function ResultSessionCreatePage() {
     enabled: !!eventId,
   });
 
+  const { data: chipRecords, isLoading: chipRecordsLoading } = useQuery({
+    queryKey: resultKeys.eventChipRecords(eventId!),
+    queryFn: () => listChipRecords(eventId!),
+    enabled: !!eventId && !isEdit,
+  });
+
   const { data: lastSettings } = useQuery({
     queryKey: resultKeys.lastSettings(event?.communityId ?? "", eventId ?? ""),
     queryFn: () => getLastGameSettings(event!.communityId, eventId!),
@@ -152,7 +161,11 @@ export function ResultSessionCreatePage() {
   });
 
   const isLoading =
-    eventLoading || communityLoading || participantsLoading || sessionsLoading;
+    eventLoading ||
+    communityLoading ||
+    participantsLoading ||
+    sessionsLoading ||
+    (!isEdit && chipRecordsLoading);
 
   if (isLoading) {
     return (
@@ -206,6 +219,7 @@ export function ResultSessionCreatePage() {
       rows={rows}
       isAdmin={isAdmin}
       sessions={sessions}
+      chipRecords={chipRecords ?? []}
       nicknameByUserId={nicknameByUserId}
       lastSettings={lastSettings}
       gameDefaults={community?.gameDefaults}
@@ -219,6 +233,7 @@ function EventResultsPage({
   rows,
   isAdmin,
   sessions,
+  chipRecords,
   nicknameByUserId,
   lastSettings,
   gameDefaults,
@@ -227,6 +242,7 @@ function EventResultsPage({
   rows: { userId: string; nickname: string }[];
   isAdmin: boolean;
   sessions: GameSessionDetail[];
+  chipRecords: ChipRecord[];
   nicknameByUserId: Map<string, string>;
   lastSettings?: LastGameSettings;
   gameDefaults?: GameDefaults | null;
@@ -239,8 +255,11 @@ function EventResultsPage({
     totals: aggregateSessionTotals(
       sessions.filter((s) => s.gameType === gt),
       nicknameByUserId,
+      chipRecords.filter((r) => r.gameType === gt),
     ),
   })).filter((g) => g.totals.length > 0);
+  const defaultChipGameType: GameType =
+    orderedSessions[orderedSessions.length - 1]?.gameType ?? "MAHJONG4";
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -310,6 +329,15 @@ function EventResultsPage({
           gameDefaults={gameDefaults}
         />
       </div>
+
+      <ChipRecordSection
+        eventId={eventId}
+        rows={rows}
+        isAdmin={isAdmin}
+        chipRecords={chipRecords}
+        nicknameByUserId={nicknameByUserId}
+        defaultGameType={defaultChipGameType}
+      />
     </div>
   );
 }
@@ -396,7 +424,7 @@ function SessionListRow({
               対局{Number(session.sessionNo)}の記録を削除しますか？
             </AlertDialogTitle>
             <AlertDialogDescription>
-              この半荘の点数・チップの記録が削除されます。この操作は取り消せません。
+              この半荘の記録が削除されます。この操作は取り消せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -415,7 +443,6 @@ const hanchanRowSchema = z.object({
   userId: z.string(),
   nickname: z.string(),
   score: z.union([z.literal(""), z.coerce.number().int()]),
-  chipCount: z.coerce.number().int(),
 });
 
 const hanchanSchema = z.object({
@@ -478,7 +505,6 @@ function buildHanchanDefaults(
       // 自動計算モードでは、参加者としてデフォルトで選ばれている人の点数欄に
       // 配給原点をあらかじめ入力しておく（手動計算モードでは空欄のまま）。
       score: base.calcMode === "AUTO" && defaultParticipantIds.has(r.userId) ? base.startingPoints : "",
-      chipCount: 0,
     })),
   };
 }
@@ -674,7 +700,7 @@ function HanchanEntryForm({
         gameType: values.gameType,
         calcMode: values.calcMode,
         results: orderedResults,
-        chips: filledValues.map((r) => ({ userId: r.userId, chipCount: r.chipCount })),
+        // チップは半荘に紐付けず、チップ記録（Issue #116）として別に入力する
         ...(values.calcMode === "AUTO"
           ? {
               startingPoints: values.startingPoints,
@@ -708,7 +734,6 @@ function HanchanEntryForm({
             currentCalcMode === "AUTO" && nextSelected.includes(r.userId)
               ? currentStartingPoints
               : "",
-          chipCount: 0,
         })),
       );
       setTieOrder(rows.map((r) => r.userId));
@@ -1050,42 +1075,6 @@ function HanchanEntryForm({
             </div>
           )}
 
-          {filled.length > 0 && (
-            <div>
-              <p className="mb-2 text-sm font-medium">チップ（任意・成績集計とは別枠）</p>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-20">項目</TableHead>
-                      {filled.map((r) => (
-                        <TableHead key={r.userId} className="min-w-24">
-                          {r.nickname}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="font-medium">チップ枚数</TableCell>
-                      {filled.map((r) => (
-                        <TableCell key={r.userId}>
-                          <FormField
-                            control={form.control}
-                            name={`rows.${r.index}.chipCount`}
-                            render={({ field }) => (
-                              <Input type="number" {...field} value={field.value as number} />
-                            )}
-                          />
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-
           <Button type="submit" disabled={mutation.isPending}>
             この半荘を登録する
           </Button>
@@ -1128,7 +1117,6 @@ const sessionEditRowSchema = z.object({
   userId: z.string(),
   nickname: z.string(),
   score: z.coerce.number().int(),
-  chipCount: z.coerce.number().int(),
 });
 
 const sessionEditSchema = z.object({
@@ -1162,7 +1150,6 @@ function SessionEditForm({
   const handleApiError = useApiErrorToast();
 
   const scoreByUserId = new Map(existingSession.results.map((r) => [r.userId, r.score]));
-  const chipByUserId = new Map(existingSession.chips.map((c) => [c.userId, c.chipCount]));
 
   const form = useForm<SessionEditFormInput, unknown, SessionEditFormValues>({
     resolver: zodResolver(sessionEditSchema),
@@ -1177,7 +1164,6 @@ function SessionEditForm({
         userId: r.userId,
         nickname: r.nickname,
         score: scoreByUserId.get(r.userId) ?? 0,
-        chipCount: chipByUserId.get(r.userId) ?? 0,
       })),
     },
   });
@@ -1245,7 +1231,9 @@ function SessionEditForm({
         gameType: existingSession.gameType,
         calcMode: values.calcMode,
         results: orderedResults,
-        chips: values.rows.map((r) => ({ userId: r.userId, chipCount: r.chipCount })),
+        // Issue #116より前に半荘ごとに入力されたチップは、編集画面では表示せず
+        // そのまま保持する（チップの入力・編集はチップ記録で行う）
+        chips: existingSession.chips,
         ...(values.calcMode === "AUTO"
           ? {
               startingPoints: values.startingPoints,
@@ -1533,40 +1521,6 @@ function SessionEditForm({
               </div>
             </div>
           )}
-
-          <div>
-            <p className="mb-2 text-sm font-medium">チップ（任意・成績集計とは別枠）</p>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-20">項目</TableHead>
-                    {rows.map((r) => (
-                      <TableHead key={r.userId} className="min-w-24">
-                        {r.nickname}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="font-medium">チップ枚数</TableCell>
-                    {rows.map((r, index) => (
-                      <TableCell key={r.userId}>
-                        <FormField
-                          control={form.control}
-                          name={`rows.${index}.chipCount`}
-                          render={({ field }) => (
-                            <Input type="number" {...field} value={field.value as number} />
-                          )}
-                        />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          </div>
 
           {isAdmin && (
             <Button type="submit" disabled={mutation.isPending}>

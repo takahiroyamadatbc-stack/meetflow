@@ -138,6 +138,11 @@ _ROUTES: list[tuple[str, str, str]] = [
     ("GET", "/events/{eventId}/sessions", "result"),
     ("PUT", "/events/{eventId}/sessions/{sessionNo}", "result"),
     ("DELETE", "/events/{eventId}/sessions/{sessionNo}", "result"),
+    # Issue #116: 半荘に紐付けないチップ記録
+    ("POST", "/events/{eventId}/chip-records", "result"),
+    ("GET", "/events/{eventId}/chip-records", "result"),
+    ("PUT", "/events/{eventId}/chip-records/{recordNo}", "result"),
+    ("DELETE", "/events/{eventId}/chip-records/{recordNo}", "result"),
     ("GET", "/communities/{communityId}/game-sessions/last-settings", "result"),
     ("GET", "/users/{userId}/results", "result"),
     ("GET", "/communities/{communityId}/rankings", "result"),

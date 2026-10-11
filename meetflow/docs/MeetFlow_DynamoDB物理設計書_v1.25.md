@@ -1,4 +1,4 @@
-# MeetFlow DynamoDB 物理テーブル設計書 v1.24
+# MeetFlow DynamoDB 物理テーブル設計書 v1.25
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・操作ログ設計書v1.0・AWSシステム構成設計書v1.0を踏まえて設計。
 > v1.0→v1.1、v1.1→v1.2、v1.2→v1.3、v1.3→v1.4、v1.4→v1.5、…、v1.22→v1.23の変更点はそれぞれ本文中と末尾の変更点サマリを参照。
@@ -481,6 +481,40 @@ GSI2SK:  {playedAt}
 >
 > **[v1.19追加]** F-805（機能要件書v1.11）コミュニティ内ランキングに対応するため、`GSI2PK`/`GSI2SK`を追加した。GSI2は本来「コミュニティのパーティションを介さない直接IDルックアップ」（2章）用途だが、3.19 Feedback/3.20 Announcementで既に「GSI2PKに固定文字列を入れる種別横断の一覧化」という用途拡張の前例があり（v1.12）、本エンティティも同様にGSI2の役割を拡張して相乗りさせる形とした。メンバー数分のQueryをループする案（読み取り時にメンバー一覧→ユーザーごとGSI1個別Query）ではなく、コミュニティ×種目単位の範囲クエリを1回で完結させることを優先し、GSI本数を2本に保ったまま（新規GSI3は追加しない）N+1クエリを回避している。**注意（既存データへの影響）**：本属性追加前に登録済みのGameResult/GameResultChipアイテムには`GSI2PK`/`GSI2SK`が存在しないため、GSI2経由のランキング集計からは漏れる。デプロイ済み環境に既存データがある場合は、当該アイテムへ属性を後付けする一度限りのバックフィルが必要（バックフィル要否は実装時に確認する）。
 
+
+### 3.13b ChipRecord / ChipRecordChip **[v1.25新規]**
+
+```
+ChipRecord（チップ記録の本体）
+PK:   EVENT#{eventId}
+SK:   CHIPREC#{recordNo}
+
+ChipRecordChip（参加者ごとの行）
+PK:      EVENT#{eventId}
+SK:      CHIPREC#{recordNo}#CHIP#{userId}
+GSI1PK:  USER#{userId}
+GSI1SK:  COMMUNITY#{communityId}#{recordedAt}
+GSI2PK:  COMMUNITY#{communityId}#{gameType}
+GSI2SK:  {recordedAt}
+```
+
+| 属性(ChipRecord) | 型 | 説明 |
+|---|---|---|
+| gameType | S | ゲーム種別（`MAHJONG4`/`MAHJONG3`） |
+| recordedAt | S | 記録日時（ISO8601）。編集しても変えない |
+| createdBy | S | 記録したユーザーのuserId |
+
+| 属性(ChipRecordChip) | 型 | 説明 |
+|---|---|---|
+| chipCount | N | チップ枚数 |
+| playedAt | S | ISO8601（`recordedAt`と同じ値。GameResultChipと揃える） |
+| gameType | S | ゲーム種別（ChipRecordから書き込み時に非正規化） |
+
+**アクセスパターン**
+- イベント内の全チップ記録取得：`PK=EVENT#{id}, SK begins_with CHIPREC#`
+- 個人成績・ランキングの集計は、GameResultChipと同じGSI1/GSI2のクエリで取得する（SKに`#CHIP#`を含む行をチップとして扱う既存の判別方法がそのまま使える）
+
+> **[v1.25新規]** Issue #116：チップを半荘（GameSession）に紐付けず、イベント単位で好きなタイミングで何回でも記録できるようにするため追加した。ChipRecordChipはGameResultChipと同じキー形式・属性で保存するため、ResultLambdaの集計処理（`get_user_results`/`get_community_ranking`）は変更不要。新規のGSIは不要。既存のGameResultChip（半荘ごとのチップ）は移行せずそのまま集計に含める。
 ---
 
 ### 3.14 Notification
@@ -1009,3 +1043,11 @@ Issue #40「コミュニティ内ランキング表示機能の追加」のデ�
 | No | 変更内容 | 理由 |
 |---|---|---|
 | 1 | 3.2 Communityに`gameDefaults`（Map、任意属性）を追加 | Issue #115：成績入力のデフォルトの配給原点・返し点・ウマをコミュニティ単位で設定できるようにするため。新規のPK/SK/GSIは不要（Community.METADATAへの属性追加のみ）。既存レコードには属性が無いため未設定として扱う（マイグレーション不要） |
+
+---
+
+## 33. v1.24 → v1.25 変更点サマリ
+
+| No | 変更内容 | 理由 |
+|---|---|---|
+| 1 | 3.13b ChipRecord / ChipRecordChipを新規追加 | Issue #116：チップを半荘に紐付けず、イベント単位で好きなタイミングで何回でも記録できるようにするため。ChipRecordChipはGameResultChipと同じGSI1/GSI2キー形式で、既存の集計にそのまま含まれる。既存データのマイグレーションは不要 |

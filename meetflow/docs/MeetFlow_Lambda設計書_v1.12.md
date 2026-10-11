@@ -1,4 +1,4 @@
-# MeetFlow Lambda設計書 v1.11
+# MeetFlow Lambda設計書 v1.12
 
 > 要件定義書v1.1・機能要件書v1.1・API設計書v1.1・DynamoDB物理設計書v1.1を踏まえて設計。v1.1→v1.2は要件定義書v1.3・機能要件書v1.3・API設計書v1.5・DynamoDB物理設計書v1.4を踏まえて更新。v1.2→v1.3は機能要件書v1.5・API設計書v1.7・DynamoDB物理設計書v1.6を踏まえて更新。v1.3→v1.4はAPI設計書v1.8（招待URL無効化・OperationLog閲覧APIの実装）を踏まえて更新。v1.7→v1.8はAPI設計書v1.19（Issue #42：登録済み対局セッションの削除API新設）を踏まえて更新。v1.8→v1.9は要件定義書v1.9・機能要件書v1.11・API設計書v1.25・DynamoDB物理設計書v1.19（Issue #40：コミュニティ内ランキング機能）を踏まえて更新。v1.9→v1.10はIssue #97（確定済み・定員未充足イベントへの追加候補通知）を踏まえて更新。v1.10→v1.11はIssue #109（成績入力の「前回設定」引き継ぎをユーザー単位からイベント単位に変更）を踏まえて更新。
 > **設計方針決定：ドメイン単位（7個）+ マッチング処理の分離**
@@ -383,6 +383,9 @@ API Gatewayのみ。
 | `PUT /events/{eventId}/sessions/{sessionNo}` | 登録済み対局セッションの編集。OWNER/ADMIN限定。参加者構成（userIdの集合）は変更不可 |
 | `DELETE /events/{eventId}/sessions/{sessionNo}` **[v1.8新規]** | Issue #42：登録済み対局セッションの削除。OWNER/ADMIN限定（PUTと同じ権限方針）。GameSession本体・全参加者分のGameResult・GameResultChipを`TransactWriteItems`でまとめて削除する |
 | `GET /events/{eventId}/sessions` | イベント内の登録済み対局セッション一覧。コミュニティメンバーであれば誰でも閲覧可能 |
+| `POST /events/{eventId}/chip-records` **[v1.12新規]** | Issue #116：チップ記録の登録（半荘に紐付けない）。コミュニティのアクティブなメンバーであれば誰でも実行可能。`handlers/chip_records.py` |
+| `GET /events/{eventId}/chip-records` **[v1.12新規]** | イベント内のチップ記録一覧。コミュニティメンバーであれば誰でも閲覧可能 |
+| `PUT`/`DELETE /events/{eventId}/chip-records/{recordNo}` **[v1.12新規]** | チップ記録の編集・削除。OWNER/ADMIN限定（半荘の編集・削除と同じ権限方針）。本体＋参加者ごとの行を`TransactWriteItems`でまとめて書き換える |
 | `GET /communities/{communityId}/game-sessions/last-settings` **[v1.11修正]** | 直近の対局設定（配給原点・返し点・ウマ・計算モード）取得。次回入力時のデフォルト値として利用。クエリパラメータ`eventId`を渡すと同一イベント内で直前に(自分以外を含む)誰かが入力した設定を優先し、イベント内に前例が無ければ呼び出しユーザー本人の直近設定にフォールバックする |
 | `GET /users/{userId}/results` | F-804 成績取得。**権限チェック：閲覧者と対象ユーザーが同一コミュニティに所属している場合のみ返却**（DynamoDB物理設計書v1.1のGSI1SK設計＝`COMMUNITY#{communityId}#{playedAt}`で担保） |
 | `GET /communities/{communityId}/rankings` **[v1.9新規]** | F-805 コミュニティ内ランキング取得。閲覧権限はコミュニティメンバーであれば誰でも可（管理者限定にしない） |
@@ -813,3 +816,13 @@ Issue #97「確定済みで定員に空きのあるイベントについて、�
 | 2 | IAM最小権限（8.4）に変更なし。同一イベント内の直前セッション検索は既存の`GetItem`/`Query`権限のみで完結する | 上記と同一の決定事項 |
 
 Issue #109「成績入力の『前回設定』引き継ぎがユーザー単位のため、別の人が入力するとウマ/飛び賞/返しが再入力になる」に対応。コミュニティ単位の恒久デフォルト設定（`ranking-settings`と同様のパターン）は別Issueで将来検討とし、今回はイベントスコープ化のみで対応した。
+
+---
+
+## v1.11 → v1.12 変更点サマリ
+
+| No | 変更内容 | 対応する決定事項 |
+|---|---|---|
+| 1 | 8.2 ResultLambdaのハンドラーにチップ記録の4エンドポイント（`/events/{eventId}/chip-records`系）を追加 | Issue #116：チップを半荘に紐付けず、好きなタイミングで何回でも入力できるようにしたい |
+| 2 | 8.2 `GET /communities/{communityId}/game-sessions/last-settings`のレスポンスに、引き継ぎ元を示す`source`（`EVENT`/`USER`）を追加（API設計書v1.32） | Issue #115：成績入力の初期値で、同一イベント内の前回設定をコミュニティのデフォルト設定より優先し、入力者本人の前回設定はコミュニティのデフォルト設定が無い種目にのみ使う |
+| 3 | IAM最小権限（8.4）に変更なし。チップ記録の読み書きは既存の`GetItem`/`PutItem`/`Query`/`DeleteItem`/`TransactWriteItems`権限で完結する | 上記と同一の決定事項 |
