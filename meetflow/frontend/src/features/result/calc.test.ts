@@ -115,9 +115,66 @@ describe("computeLiveResults", () => {
     expect(dWithout.rankPoints).toBe(-55);
     expect(dWith.rankPoints).toBe(-65);
 
-    const aResult = withoutBoxUnder.find((r) => r.userId === "a")!;
-    // 受取人側の飛び賞加点はboxUnderSettlementの影響を受けない
-    expect(aResult.rankPoints).toBe(55);
+    const aWithout = withoutBoxUnder.find((r) => r.userId === "a")!;
+    const aWith = withBoxUnder.find((r) => r.userId === "a")!;
+    // 受取人側の飛び賞加点（+10）はboxUnderSettlementの影響を受けない
+    expect(aWith.rankPoints).toBe(55);
+    // Issue #114: 切り捨てたマイナス分(10000点)は1位が負担する
+    expect(aWithout.rankPoints).toBe(45); // (40000-10000-30000)/1000 + 15 + 20 + 10
+  });
+
+  it("boxUnderSettlement=falseの場合、箱下が複数人でもマイナス分の合計を1位が負担し、着順・ウマは生の点数のまま（Issue #114）", () => {
+    const rows = [
+      { userId: "a", nickname: "A", score: 58000 },
+      { userId: "b", nickname: "B", score: 52000 },
+      { userId: "c", nickname: "C", score: -4000 },
+      { userId: "d", nickname: "D", score: -6000 },
+    ];
+
+    const result = computeLiveResults(
+      rows,
+      "AUTO",
+      startingPoints,
+      returnPoints,
+      umaByRank,
+      undefined,
+      { boxUnderSettlement: false },
+    );
+
+    // 1位は58000-10000=48000点で2位(52000点)を下回るが、着順・ウマ・オカはそのまま
+    expect(result.map((r) => [r.userId, r.rank, r.rankPoints])).toEqual([
+      ["a", 1, 53], // (48000-30000)/1000 + 15 + 20
+      ["b", 2, 27], // (52000-30000)/1000 + 5
+      ["c", 3, -35], // (0-30000)/1000 - 5
+      ["d", 4, -45], // (0-30000)/1000 - 15
+    ]);
+    expect(result.reduce((sum, r) => sum + r.rankPoints, 0)).toBe(0);
+  });
+
+  it("boxUnderSettlement=falseで1位が同点の場合、タイブレークで1位になった参加者がマイナス分を負担する（Issue #114）", () => {
+    const rows = [
+      { userId: "a", nickname: "A", score: 40000 },
+      { userId: "b", nickname: "B", score: 40000 },
+      { userId: "c", nickname: "C", score: 25000 },
+      { userId: "d", nickname: "D", score: -5000 },
+    ];
+
+    const result = computeLiveResults(
+      rows,
+      "AUTO",
+      startingPoints,
+      returnPoints,
+      umaByRank,
+      ["b", "a", "c", "d"],
+      { boxUnderSettlement: false },
+    );
+
+    expect(result.map((r) => [r.userId, r.rank, r.rankPoints])).toEqual([
+      ["b", 1, 40], // (40000-5000-30000)/1000 + 15 + 20
+      ["a", 2, 15], // (40000-30000)/1000 + 5
+      ["c", 3, -10],
+      ["d", 4, -45],
+    ]);
   });
 });
 
